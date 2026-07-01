@@ -29,7 +29,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="traecli",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -162,7 +162,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="traecli",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -186,7 +186,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="traecli",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )

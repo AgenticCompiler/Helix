@@ -9,8 +9,8 @@ from triton_agent.skill_loader import load_skill_script_module
 
 def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
     module = load_skill_script_module(
-        "triton-npu-optimize-submit-baseline",
-        "optimize_submit_baseline",
+        "ascend-npu-optimize-state",
+        "baseline/check",
     )
     return _normalize_result(module.check_baseline(baseline_dir))
 
@@ -23,8 +23,8 @@ def check_round(
     optimize_target: Literal["kernel", "operator"] | None = None,
 ) -> OptimizeCheckResult:
     module = load_skill_script_module(
-        "triton-npu-optimize-submit-round",
-        "optimize_submit_round",
+        "ascend-npu-optimize-state",
+        "round/check",
     )
     kwargs: dict[str, object] = {
         "current_round": current_round,

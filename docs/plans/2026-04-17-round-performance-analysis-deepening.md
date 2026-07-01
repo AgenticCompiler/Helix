@@ -209,9 +209,9 @@ Expected: PASS
 ### Task 7: Update the `perf-analysis.md` contract and optimize-facing docs
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 - Modify: `src/triton_agent/prompts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_contracts.py`

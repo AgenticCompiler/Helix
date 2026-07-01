@@ -231,9 +231,9 @@ Expected: PASS.
 ### Task 3: Update Optimize Skill Docs And README To Match The New Default
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 - Modify: `README.md`
 - Modify: `tests/test_generation_contracts.py`
 
@@ -243,8 +243,8 @@ Extend `tests/test_generation_contracts.py` with a contract test shaped like:
 
 ```python
     def test_optimize_docs_default_to_layered_analysis_and_do_not_reference_require_analysis(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        workflow = _read("skills/triton-npu-optimize/references/workflow.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
+        workflow = _read("skills/triton/triton-npu-optimize/references/workflow.md")
         readme = _read("README.md")
 
         self.assertIn("pattern triage", optimize)
@@ -320,7 +320,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git diff -- docs/specs/2026-04-22-optimize-layered-analysis-default-design.md docs/plans/2026-04-22-optimize-layered-analysis-default.md README.md src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/models.py src/triton_agent/prompts.py src/triton_agent/optimize/models.py src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/execution.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/guidance.py src/triton_agent/backends/base.py skills/triton-npu-optimize/SKILL.md skills/triton-npu-optimize/references/workflow.md skills/triton-npu-optimize/references/artifacts.md tests/test_cli.py tests/test_models.py tests/test_optimize_guidance.py tests/test_backends_base.py tests/test_supervisor.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_claude_runner.py tests/test_traecli_runner.py tests/test_generation_contracts.py
+git diff -- docs/specs/2026-04-22-optimize-layered-analysis-default-design.md docs/plans/2026-04-22-optimize-layered-analysis-default.md README.md src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/models.py src/triton_agent/prompts.py src/triton_agent/optimize/models.py src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/execution.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/guidance.py src/triton_agent/backends/base.py skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/workflow.md skills/triton/triton-npu-optimize/references/artifacts.md tests/test_cli.py tests/test_models.py tests/test_optimize_guidance.py tests/test_backends_base.py tests/test_supervisor.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_claude_runner.py tests/test_traecli_runner.py tests/test_generation_contracts.py
 ```
 
 Expected: only the approved layered-analysis workflow, `--require-analysis` removal, matching docs, and aligned tests changed.

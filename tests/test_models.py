@@ -45,7 +45,7 @@ class AgentRequestTests(unittest.TestCase):
             stream_output=False,
             force_overwrite=False,
             agent_name="codex",
-            skill_name="triton-npu-gen-test",
+            skill_name="ascend-npu-gen-test",
             prompt="original",
             workdir=Path("/tmp"),
             mcp_servers=("triton-agent-run-eval",),
@@ -77,10 +77,8 @@ class AgentRequestTests(unittest.TestCase):
             staged_skill_names=(
                 "triton-npu-optimize",
                 "triton-npu-optimize-knowledge",
-                "triton-npu-optimize-submit-baseline",
-                "triton-npu-optimize-submit-round",
-                "triton-npu-optimize-start-round",
-                "triton-npu-analyze-round-performance",
+                "ascend-npu-optimize-state",
+                "ascend-npu-analyze-round-performance",
             ),
             staged_skill_sources={
                 "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2",

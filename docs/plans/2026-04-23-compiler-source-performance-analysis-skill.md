@@ -12,15 +12,15 @@
 
 ## File Map
 
-- Modify: `skills/triton-npu-analyze-compiler-source/SKILL.md`
+- Modify: `skills/triton/triton-npu-analyze-compiler-source/SKILL.md`
   The performance-focused skill contract and output requirements.
-- Create: `skills/triton-npu-analyze-compiler-source/references/navigation-map.md`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md`
   Source-tree-oriented navigation reference.
-- Create: `skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
   Performance-question-oriented navigation reference.
-- Create: `skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
   A locate-only navigator for compiler source subtrees.
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
   Clarify compiler-source escalation as a performance-focused, next-action-oriented step.
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
   Align the compiler-source handoff with the new performance-focused skill identity.
@@ -33,9 +33,9 @@
 
 **Files:**
 - Modify: `tests/test_generation_contracts.py`
-- Modify: `skills/triton-npu-analyze-compiler-source/SKILL.md`
-- Create: `skills/triton-npu-analyze-compiler-source/references/navigation-map.md`
-- Create: `skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
+- Modify: `skills/triton/triton-npu-analyze-compiler-source/SKILL.md`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
 
 - [ ] **Step 1: Replace the placeholder contract assertions with failing performance-focused tests**
 
@@ -43,7 +43,7 @@ In `tests/test_generation_contracts.py`, replace the existing compiler-source sk
 
 ```python
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(self) -> None:
-        content = _read("skills/triton-npu-analyze-compiler-source/SKILL.md")
+        content = _read("skills/triton/triton-npu-analyze-compiler-source/SKILL.md")
 
         self.assertIn("Analyze Compiler Source For Performance", content)
         self.assertIn("Round Performance Question", content)
@@ -62,10 +62,10 @@ In `tests/test_generation_contracts.py`, replace the existing compiler-source sk
 
     def test_compiler_source_navigation_references_exist_and_capture_expected_sections(self) -> None:
         navigation = _read(
-            "skills/triton-npu-analyze-compiler-source/references/navigation-map.md"
+            "skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md"
         )
         playbook = _read(
-            "skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md"
+            "skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md"
         )
 
         self.assertIn("# Compiler Source Navigation Map", navigation)
@@ -94,7 +94,7 @@ Expected: FAIL because `SKILL.md` still mentions compiler errors and the two ref
 
 - [ ] **Step 3: Rewrite `SKILL.md` around a performance-only workflow**
 
-Replace `skills/triton-npu-analyze-compiler-source/SKILL.md` with a document shaped like this:
+Replace `skills/triton/triton-npu-analyze-compiler-source/SKILL.md` with a document shaped like this:
 
 ```markdown
 ---
@@ -175,7 +175,7 @@ Write `opt-round-N/compiler-analysis.md` with these sections:
 
 - [ ] **Step 4: Add `navigation-map.md` with source-tree-first navigation guidance**
 
-Create `skills/triton-npu-analyze-compiler-source/references/navigation-map.md` with this structure and the concrete subtree bullets below:
+Create `skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md` with this structure and the concrete subtree bullets below:
 
 ```markdown
 # Compiler Source Navigation Map
@@ -234,7 +234,7 @@ rg -n "Passes\\.td|Passes\\.h" <source-root>/bishengir/include/bishengir
 
 - [ ] **Step 5: Add `perf-question-playbook.md` with symptom-driven playbooks**
 
-Create `skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md` with this structure:
+Create `skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md` with this structure:
 
 ```markdown
 # Performance Question Playbook
@@ -297,9 +297,9 @@ Run:
 
 ```bash
 git add \
-  skills/triton-npu-analyze-compiler-source/SKILL.md \
-  skills/triton-npu-analyze-compiler-source/references/navigation-map.md \
-  skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md \
+  skills/triton/triton-npu-analyze-compiler-source/SKILL.md \
+  skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md \
+  skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md \
   tests/test_generation_contracts.py
 git commit -m "docs: redesign compiler source analysis skill"
 ```
@@ -308,7 +308,7 @@ git commit -m "docs: redesign compiler source analysis skill"
 
 **Files:**
 - Create: `tests/test_inspect_compiler_source.py`
-- Create: `skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
 
 - [ ] **Step 1: Write failing unit tests for a locate-only navigator**
 
@@ -458,7 +458,7 @@ Expected: FAIL because the script file does not exist yet.
 
 - [ ] **Step 3: Implement `inspect_compiler_source.py` with a single `locate` command**
 
-Create `skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py` around this structure:
+Create `skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py` around this structure:
 
 ```python
 #!/usr/bin/env python3
@@ -615,7 +615,7 @@ Run:
 
 ```bash
 git add \
-  skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py \
+  skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py \
   tests/test_inspect_compiler_source.py
 git commit -m "feat: add compiler source navigator"
 ```
@@ -624,7 +624,7 @@ git commit -m "feat: add compiler source navigator"
 
 **Files:**
 - Modify: `tests/test_generation_contracts.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
 
 - [ ] **Step 1: Add failing assertions for the sibling-skill wording**
@@ -633,7 +633,7 @@ In `tests/test_generation_contracts.py`, update `test_optimize_skills_document_c
 
 ```python
     def test_optimize_skills_document_compiler_source_escalation(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         round_analysis = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
 
         self.assertIn("compiler-source escalation", optimize)
@@ -659,7 +659,7 @@ Expected: FAIL because the sibling skills still describe the compiler-source ste
 
 - [ ] **Step 3: Update the optimize skill to describe compiler source as a performance-focused escalation**
 
-In `skills/triton-npu-optimize/SKILL.md`, replace the current compiler-source bullets with language shaped like this:
+In `skills/triton/triton-npu-optimize/SKILL.md`, replace the current compiler-source bullets with language shaped like this:
 
 ```markdown
 ### compiler-source escalation
@@ -694,7 +694,7 @@ Run:
 
 ```bash
 git add \
-  skills/triton-npu-optimize/SKILL.md \
+  skills/triton/triton-npu-optimize/SKILL.md \
   skills/triton-npu-analyze-round-performance/SKILL.md \
   tests/test_generation_contracts.py
 git commit -m "docs: align compiler source escalation wording"
@@ -703,11 +703,11 @@ git commit -m "docs: align compiler source escalation wording"
 ### Task 4: Run Verification And Final Sanity Checks
 
 **Files:**
-- Modify if needed: `skills/triton-npu-analyze-compiler-source/SKILL.md`
-- Modify if needed: `skills/triton-npu-analyze-compiler-source/references/navigation-map.md`
-- Modify if needed: `skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
-- Modify if needed: `skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
-- Modify if needed: `skills/triton-npu-optimize/SKILL.md`
+- Modify if needed: `skills/triton/triton-npu-analyze-compiler-source/SKILL.md`
+- Modify if needed: `skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md`
+- Modify if needed: `skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
+- Modify if needed: `skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
+- Modify if needed: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify if needed: `skills/triton-npu-analyze-round-performance/SKILL.md`
 - Modify if needed: `tests/test_generation_contracts.py`
 - Modify if needed: `tests/test_inspect_compiler_source.py`
@@ -761,11 +761,11 @@ If one of the verification steps forced a follow-up fix, commit it with:
 
 ```bash
 git add \
-  skills/triton-npu-analyze-compiler-source/SKILL.md \
-  skills/triton-npu-analyze-compiler-source/references/navigation-map.md \
-  skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md \
-  skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py \
-  skills/triton-npu-optimize/SKILL.md \
+  skills/triton/triton-npu-analyze-compiler-source/SKILL.md \
+  skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md \
+  skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md \
+  skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py \
+  skills/triton/triton-npu-optimize/SKILL.md \
   skills/triton-npu-analyze-round-performance/SKILL.md \
   tests/test_generation_contracts.py \
   tests/test_inspect_compiler_source.py

@@ -231,9 +231,9 @@ Expected: PASS
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Add failing prompt tests for round-analysis guidance**

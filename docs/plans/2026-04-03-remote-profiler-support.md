@@ -47,7 +47,7 @@
 **Files:**
 - Modify: `skills/triton-npu-profile-operator/SKILL.md`
 - Modify: `skills/triton-npu-run-eval/SKILL.md`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 
 - [ ] **Step 1: Rewrite the profiler skill to prefer `../triton-npu-run-eval/scripts/run-command.py profile-bench` as the default execution path**
 - [ ] **Step 2: Document that `standalone` benchmarks profile `python3 bench_<op>.py --operator-file <operator-file>` and must not receive `--bench` or `--num-bench`**

@@ -184,6 +184,106 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             self.assertEqual(payload["output_text"], "ok")
             self.assertEqual(payload["stdout"], "done\n")
 
+    def test_buffered_progress_probe_resets_stall_timer_without_output(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=[],
+            stderr_text="",
+            returncode=0,
+            poll_values=[None, None, 0],
+            default_poll_return=0,
+        )
+        probe_values = iter([0.05, 0.12])
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            with patch("triton_agent.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
+                with patch("triton_agent.process_runner.time.sleep"):
+                    result = run_buffered_process(
+                        ["codex", "exec"],
+                        "/tmp",
+                        stall_timeout_seconds=0.1,
+                        session_id_extractor=lambda _line: None,
+                        progress_probe=lambda: next(probe_values, None),
+                    )
+        self.assertFalse(result.stalled)
+        self.assertEqual(result.return_code, 0)
+
+    def test_buffered_progress_probe_absence_allows_stall(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=[],
+            stderr_text="",
+            returncode=0,
+            poll_values=[None, None, None],
+            default_poll_return=None,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            with patch("triton_agent.process_runner._wait_for_process_exit", return_value=True):
+                with patch("triton_agent.process_runner.time.monotonic", side_effect=[0.0, 0.11]):
+                    with patch("triton_agent.process_runner.time.sleep"):
+                        result = run_buffered_process(
+                            ["codex", "exec"],
+                            "/tmp",
+                            stall_timeout_seconds=0.1,
+                            session_id_extractor=lambda _line: None,
+                            progress_probe=lambda: None,
+                        )
+        self.assertTrue(result.stalled)
+        self.assertEqual(result.return_code, 1)
+
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_buffered_stall_timeout_terminates_process_group(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=[],
+            stderr_text="",
+            returncode=None,
+            poll_values=[None, None, None],
+            pid=4321,
+            default_poll_return=None,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                with patch("triton_agent.process_runner.time.monotonic", side_effect=[0.0, 0.11, 0.11, 1.12]):
+                    with patch("triton_agent.process_runner.time.sleep"):
+                        result = run_buffered_process(
+                            ["codex", "exec"],
+                            "/tmp",
+                            stall_timeout_seconds=0.1,
+                            session_id_extractor=lambda _line: None,
+                            interrupt_policy=InterruptPolicy(),
+                        )
+        self.assertTrue(result.stalled)
+        self.assertEqual(result.return_code, 1)
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [
+                ((4321, signal.SIGTERM),),
+                ((4321, _SIGKILL),),
+            ],
+        )
+
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_buffered_successful_exit_reaps_lingering_process_group(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=["done\n"],
+            stderr_text="",
+            returncode=0,
+            poll_values=[None, 0],
+            pid=4321,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                result = run_buffered_process(
+                    ["codex", "exec"],
+                    "/tmp",
+                    stall_timeout_seconds=10,
+                    session_id_extractor=lambda _line: None,
+                    interrupt_policy=InterruptPolicy(),
+                )
+        self.assertFalse(result.stalled)
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [((4321, signal.SIGTERM),)],
+        )
+
     @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
     def test_keyboard_interrupt_sends_two_sigints_then_force_kills(self) -> None:
         process = _BufferedFakeProcess(
@@ -459,9 +559,15 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(process.wait.call_count, 2)
 
-    def test_raises_eio_when_child_does_not_exit_within_grace_window(self) -> None:
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_abnormal_eio_before_child_exit_terminates_process_group_before_raising(self) -> None:
         stdout = StringIO()
-        process = _StreamingFakeProcess(wait_code=0, poll_values=[None], default_poll_return=None)
+        process = _StreamingFakeProcess(
+            wait_code=0,
+            poll_values=[None],
+            pid=4321,
+            default_poll_return=None,
+        )
         process.wait = Mock(side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=0.1))
         with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
             with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
@@ -471,13 +577,23 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                         side_effect=OSError(EIO, "Input/output error"),
                     ):
                         with patch("triton_agent.process_runner.os.close"):
-                            with self.assertRaises(OSError):
-                                run_streaming_process(
-                                    ["codex", "exec"],
-                                    "/tmp",
-                                    stall_timeout_seconds=10,
-                                    stdout=stdout,
-                                )
+                            with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                                with patch("triton_agent.process_runner._wait_for_process_exit", return_value=False):
+                                    with self.assertRaises(OSError):
+                                        run_streaming_process(
+                                            ["codex", "exec"],
+                                            "/tmp",
+                                            stall_timeout_seconds=10,
+                                            stdout=stdout,
+                                            interrupt_policy=InterruptPolicy(),
+                                        )
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [
+                ((4321, signal.SIGTERM),),
+                ((4321, _SIGKILL),),
+            ],
+        )
 
     def test_zero_timeout_disables_streaming_stall_detection(self) -> None:
         stdout = StringIO()
@@ -495,6 +611,28 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                                 "/tmp",
                                 stall_timeout_seconds=0,
                                 stdout=stdout,
+                            )
+        self.assertFalse(result.stalled)
+        self.assertEqual(result.return_code, 0)
+
+    def test_streaming_progress_probe_resets_stall_timer_without_output(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0, 0])
+        probe_values = iter([0.05, 0.12])
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[([], [], []), ([], [], [])],
+                ):
+                    with patch("triton_agent.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=0.1,
+                                stdout=stdout,
+                                progress_probe=lambda: next(probe_values, None),
                             )
         self.assertFalse(result.stalled)
         self.assertEqual(result.return_code, 0)
@@ -569,6 +707,21 @@ class UnifiedProcessRunnerTests(unittest.TestCase):
                 session_id_extractor=lambda _line: None,
             )
         mocked.assert_called_once()
+
+    def test_dispatches_progress_probe(self) -> None:
+        def probe() -> None:
+            return None
+
+        with patch("triton_agent.process_runner.run_buffered_process", return_value=_result()) as mocked:
+            run_process(
+                ["codex"],
+                "/tmp",
+                mode="buffered",
+                stall_timeout_seconds=10,
+                session_id_extractor=lambda _line: None,
+                progress_probe=probe,
+            )
+        self.assertIs(mocked.call_args.kwargs["progress_probe"], probe)
 
 
 class _BufferedFakeStdout:

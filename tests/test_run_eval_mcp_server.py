@@ -134,6 +134,93 @@ class RunEvalMCPServerTests(unittest.TestCase):
             },
         )
 
+    def test_run_bench_tool_forwards_baseline_operator_file(self) -> None:
+        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
+        observed: dict[str, object] = {}
+
+        def fake_run_subcommand(
+            subcommand: str,
+            arguments: list[str],
+            *,
+            leased_device: Optional[str] = None,
+            workspace: Path,
+        ):
+            observed["leased_device"] = leased_device
+            observed["subcommand"] = subcommand
+            observed["arguments"] = arguments
+            observed["workspace"] = workspace
+            return {
+                "return_code": 0,
+                "stdout": "Perf file: /tmp/opt_kernel_perf.txt\n",
+                "stderr": "",
+                "perf_path": "/tmp/opt_kernel_perf.txt",
+            }
+
+        async def _call_tool():
+            with (
+                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
+                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
+            ):
+                return await server.call_tool(
+                    "run-bench",
+                    {
+                        "bench_file": "/tmp/bench_kernel.py",
+                        "operator_file": "/tmp/opt_kernel.py",
+                        "baseline_operator_file": "/tmp/kernel.py",
+                    },
+                )
+
+        asyncio.run(_call_tool())
+
+        arguments = cast(list[str], observed["arguments"])
+        self.assertIn("--baseline-operator-file", arguments)
+        self.assertIn("/tmp/kernel.py", arguments)
+
+    def test_run_bench_tool_forwards_compare_perf_options(self) -> None:
+        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
+        observed: dict[str, object] = {}
+
+        def fake_run_subcommand(
+            subcommand: str,
+            arguments: list[str],
+            *,
+            leased_device: Optional[str] = None,
+            workspace: Path,
+        ):
+            observed["leased_device"] = leased_device
+            observed["subcommand"] = subcommand
+            observed["arguments"] = arguments
+            observed["workspace"] = workspace
+            return {
+                "return_code": 0,
+                "stdout": "Perf file: /tmp/opt_kernel_perf.txt\n",
+                "stderr": "",
+                "perf_path": "/tmp/opt_kernel_perf.txt",
+            }
+
+        async def _call_tool():
+            with (
+                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
+                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
+            ):
+                return await server.call_tool(
+                    "run-bench",
+                    {
+                        "bench_file": "/tmp/bench_kernel.py",
+                        "operator_file": "/tmp/opt_kernel.py",
+                        "baseline_operator_file": "/tmp/kernel.py",
+                        "skip_latency_errors": True,
+                        "metric_source": "all",
+                    },
+                )
+
+        asyncio.run(_call_tool())
+
+        arguments = cast(list[str], observed["arguments"])
+        self.assertIn("--skip-latency-errors", arguments)
+        self.assertIn("--metric-source", arguments)
+        self.assertIn("all", arguments)
+
     def test_run_test_tools_reuse_released_slot(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
         seen_devices: list[Optional[str]] = []

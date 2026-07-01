@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from triton_agent.optimize.skill_contract import optimize_submit_round_module
+from triton_agent.optimize.skill_contract import optimize_state_round_module
 
-_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
+_OPTIMIZE_ROUND_MODULE = optimize_state_round_module()
 
 cleanup_dir_pt_files = _OPTIMIZE_ROUND_MODULE.cleanup_dir_pt_files  # type: ignore[reportUnknownVariableType]
 ordinary_optimize_pt_cleanup_enabled = _OPTIMIZE_ROUND_MODULE.ordinary_optimize_pt_cleanup_enabled  # type: ignore[reportUnknownVariableType]

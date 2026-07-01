@@ -588,9 +588,9 @@ class CodexJsonLineParser:
             return "compare_perf"
         if "compare-result" in lower:
             return "compare_result"
-        if "check-baseline" in lower:
+        if "submit-baseline" in lower:
             return "check_baseline"
-        if "check-round" in lower:
+        if "submit-round" in lower:
             return "check_round"
         if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
             return "correctness_test"
@@ -696,14 +696,24 @@ class CodexJsonLineParser:
         parts = normalized.split("/")
         for marker in (".codex", ".opencode"):
             if len(parts) >= 4 and parts[0] == marker and parts[1] == "skills":
-                skill_name = parts[2]
-                if len(parts) == 4 and parts[3] == "SKILL.md":
-                    return "skill_md", skill_name
-                if len(parts) >= 4 and parts[3] == "references":
-                    return "skill_reference", skill_name
-                if len(parts) >= 4 and parts[3] == "scripts":
-                    return "skill_script", skill_name
-                return "skill_other", skill_name
+                if len(parts) >= 5 and parts[2] in ("common", "triton"):
+                    skill_name = parts[3]
+                    if len(parts) == 5 and parts[4] == "SKILL.md":
+                        return "skill_md", skill_name
+                    if len(parts) >= 5 and parts[4] == "references":
+                        return "skill_reference", skill_name
+                    if len(parts) >= 5 and parts[4] == "scripts":
+                        return "skill_script", skill_name
+                    return "skill_other", skill_name
+                else:
+                    skill_name = parts[2]
+                    if len(parts) == 4 and parts[3] == "SKILL.md":
+                        return "skill_md", skill_name
+                    if len(parts) >= 4 and parts[3] == "references":
+                        return "skill_reference", skill_name
+                    if len(parts) >= 4 and parts[3] == "scripts":
+                        return "skill_script", skill_name
+                    return "skill_other", skill_name
         if "/opt-round-" in f"/{normalized}":
             return "round_artifact", None
         if normalized.startswith("baseline/"):

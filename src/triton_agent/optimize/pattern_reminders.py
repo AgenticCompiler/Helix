@@ -4,38 +4,39 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from triton_agent.resources import skills_root
+from triton_agent.skill_catalog import resolve_skill_source_dir
 from triton_agent.skill_loader import load_skill_script_module
 
 
-DEFAULT_GENERIC_OPTIMIZE_KNOWLEDGE_SKILL = "triton-npu-optimize-knowledge"
+def _optimize_knowledge_skill_name(language: str) -> str:
+    return f"{language}-npu-optimize-knowledge"
 
 
 def resolve_generic_optimize_knowledge_skill_name(
     staged_skill_names: tuple[str, ...] | None,
     staged_skill_sources: dict[str, str] | None,
+    *,
+    language: str = "triton",
 ) -> str | None:
+    optimize_knowledge_skill = _optimize_knowledge_skill_name(language)
     if (
         staged_skill_names is not None
-        and DEFAULT_GENERIC_OPTIMIZE_KNOWLEDGE_SKILL not in staged_skill_names
+        and optimize_knowledge_skill not in staged_skill_names
     ):
         return None
 
-    skill_name = DEFAULT_GENERIC_OPTIMIZE_KNOWLEDGE_SKILL
+    skill_name = optimize_knowledge_skill
     if staged_skill_sources is not None:
-        skill_name = staged_skill_sources.get(
-            DEFAULT_GENERIC_OPTIMIZE_KNOWLEDGE_SKILL,
-            DEFAULT_GENERIC_OPTIMIZE_KNOWLEDGE_SKILL,
-        )
+        skill_name = staged_skill_sources.get(optimize_knowledge_skill, optimize_knowledge_skill)
 
-    skill_path = skills_root() / skill_name
+    skill_path = resolve_skill_source_dir(skill_name)
     if not skill_path.exists():
         raise FileNotFoundError(f"Selected optimize knowledge skill does not exist: {skill_path}")
     return skill_name
 
 
 def build_high_priority_pattern_reminder_lines(skill_name: str) -> list[str]:
-    patterns_dir = skills_root() / skill_name / "references" / "patterns"
+    patterns_dir = resolve_skill_source_dir(skill_name) / "references" / "patterns"
     if not patterns_dir.exists():
         raise FileNotFoundError(f"Pattern directory does not exist: {patterns_dir}")
 

@@ -33,6 +33,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -117,6 +118,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -160,9 +162,16 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
     round_batch_size = 99 if interact else getattr(args, "round_batch_size", 5)
+    post_optimize_command_value = getattr(args, "post_optimize_command", None)
+    post_optimize_command = (
+        post_optimize_command_value
+        if isinstance(post_optimize_command_value, str) and post_optimize_command_value.strip()
+        else None
+    )
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
+        language=getattr(args, "lang", "triton"),
         verbose=bool(getattr(args, "verbose", False)),
         stream_output=bool(getattr(args, "stream_output", True)),
         remote=getattr(args, "remote", None),
@@ -177,6 +186,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
         prompt=getattr(args, "prompt", None),
+        post_optimize_command=post_optimize_command,
         target_chip=target_chip,
         optimize_target=optimize_target,
         optimize_knowledge=optimize_knowledge,

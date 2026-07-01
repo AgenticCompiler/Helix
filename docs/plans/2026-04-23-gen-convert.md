@@ -16,7 +16,7 @@
 - Modify: `src/triton_agent/cli.py`
 - Modify: `src/triton_agent/generation/orchestration.py`
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `skills/triton-npu-convert-pytorch-operator/SKILL.md`
+- Modify: `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_commands.py`
 - Modify: `tests/test_generation_contracts.py`
@@ -166,7 +166,7 @@ Expected:
 ## Task 3: Rewrite The Skill And README Contract
 
 **Files:**
-- Modify: `skills/triton-npu-convert-pytorch-operator/SKILL.md`
+- Modify: `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md`
 - Modify: `README.md`
 - Modify: `tests/test_generation_contracts.py`
 
@@ -174,7 +174,7 @@ Expected:
 
 ```python
 def test_convert_skill_and_readme_document_differential_only_conversion(self) -> None:
-    convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
+    convert_skill = _read("skills/triton/triton-npu-convert-pytorch-operator/SKILL.md")
     readme = _read("README.md")
     self.assertIn("correctness oracle", convert_skill)
     self.assertIn("differential test", convert_skill)

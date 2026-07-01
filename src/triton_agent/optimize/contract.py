@@ -7,15 +7,17 @@ from triton_agent.resources import skills_root
 
 _BASELINE_CONTRACT_PATH = (
     skills_root()
-    / "triton-npu-optimize-submit-baseline"
+    / "common"
+    / "ascend-npu-optimize-state"
     / "references"
-    / "contract.json"
+    / "baseline-contract.json"
 )
 _ROUND_CONTRACT_PATH = (
     skills_root()
-    / "triton-npu-optimize-submit-round"
+    / "common"
+    / "ascend-npu-optimize-state"
     / "references"
-    / "contract.json"
+    / "round-contract.json"
 )
 _BASELINE_CONTRACT_DATA = json.loads(_BASELINE_CONTRACT_PATH.read_text(encoding="utf-8"))
 _ROUND_CONTRACT_DATA = json.loads(_ROUND_CONTRACT_PATH.read_text(encoding="utf-8"))

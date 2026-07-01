@@ -51,6 +51,7 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         update_skills_dir=update_skills_dir,
         source=source,
         agent_name=str(getattr(args, "agent", "codex")),
+        language=getattr(args, "lang", "triton"),
         max_iterations=max_iterations,
         concurrency=concurrency,
         stream_output=bool(getattr(args, "stream_output", True)),
@@ -58,4 +59,5 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         force=bool(getattr(args, "force", False)),
         skip_existing=bool(getattr(args, "skip_existing", False)),
         promote_converged_skills=bool(getattr(args, "promote_converged_skills", False)),
+        base_revision=str(getattr(args, "git_base", None) or ""),
     )

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import shutil
@@ -34,8 +36,10 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return out
 """
 
-_RUN_EVAL_SCRIPT_DIR = (
-    Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_RUN_EVAL_SCRIPT_DIR = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
+_OPTIMIZE_STATE_SCRIPT = (
+    _REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-state" / "scripts" / "cli.py"
 )
 if str(_RUN_EVAL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_RUN_EVAL_SCRIPT_DIR))
@@ -49,7 +53,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -67,7 +72,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -91,11 +97,74 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(args.npu_devices, "0,1,4-5")
 
+    def test_run_bench_parser_accepts_baseline_operator_file(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_baseline_flag", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_abs.py",
+                "--operator-file",
+                "opt_abs.py",
+                "--baseline-operator-file",
+                "baseline_abs.py",
+            ]
+        )
+
+        self.assertEqual(args.baseline_operator_file, "baseline_abs.py")
+
+    def test_run_bench_parser_accepts_compare_perf_options(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_bench_compare_flags", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_abs.py",
+                "--operator-file",
+                "opt_abs.py",
+                "--baseline-operator-file",
+                "baseline_abs.py",
+                "--skip-latency-errors",
+                "--metric-source",
+                "all",
+            ]
+        )
+
+        self.assertTrue(args.skip_latency_errors)
+        self.assertEqual(args.metric_source, "all")
+
     def test_script_run_bench_threads_npu_devices_to_local_runner(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -188,7 +257,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -254,11 +324,382 @@ class SkillCommandScriptTests(unittest.TestCase):
             [bench_file.resolve(), operator.resolve(), "torch-npu-profiler", None, str(perf_file)],
         )
 
+    def test_script_run_bench_with_baseline_operator_auto_compares(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_baseline_compare", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            observed: list[object] = []
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                npu_devices: Optional[str] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                observed.extend([bench_path, operator_path, bench_mode, npu_devices, kwargs.get("output")])
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    candidate_perf,
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        fake_run_local_bench,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(module, "_load_compare_perf_function", return_value=lambda baseline_path, new_path, **_kwargs: 0):
+                        exit_code = module.main(
+                            [
+                                "run-bench",
+                                "--bench-file",
+                                str(bench_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed,
+            [bench_file.resolve(), operator.resolve(), "torch-npu-profiler", None, None],
+        )
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Baseline perf file: {baseline_perf.resolve()}\n"
+                f"Perf file: {candidate_perf}\n"
+            ),
+        )
+
+    def test_script_run_bench_remote_prints_both_kept_workspaces_when_baseline_is_generated(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_compare", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_remote_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                remote: str,
+                remote_workdir: Optional[str],
+                npu_devices: Optional[str] = None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: Optional[object] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path, str]:
+                del bench_path, bench_mode, remote, remote_workdir, npu_devices, keep_remote_workdir, verbose, stderr, kwargs
+                if operator_path == baseline.resolve():
+                    return (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        baseline_perf,
+                        "/tmp/baseline-ws",
+                    )
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    candidate_perf,
+                    "/tmp/candidate-ws",
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
+                        fake_run_remote_bench,
+                    ),
+                ):
+                    with patch.object(module, "_load_compare_perf_function", return_value=lambda baseline_path, new_path, **_kwargs: 0):
+                        exit_code = module.main(
+                            [
+                                "run-bench",
+                                "--bench-file",
+                                str(bench_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline),
+                                "--remote",
+                                "alice@example.com",
+                                "--keep-remote-workdir",
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Baseline perf file: {baseline_perf}\n"
+                "Remote workspace: /tmp/baseline-ws\n"
+                "Remote workspace: /tmp/candidate-ws\n"
+                f"Perf file: {candidate_perf}\n"
+            ),
+        )
+
+    def test_script_run_bench_remote_failure_with_perf_prints_baseline_workspace_once(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_failure", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_remote_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                remote: str,
+                remote_workdir: Optional[str],
+                npu_devices: Optional[str] = None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: Optional[object] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path, str]:
+                del bench_path, operator_path, bench_mode, remote, remote_workdir, npu_devices, keep_remote_workdir, verbose, stderr, kwargs
+                return (
+                    {
+                        "return_code": 1,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    baseline_perf,
+                    "/tmp/baseline-ws",
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
+                        fake_run_remote_bench,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--baseline-operator-file",
+                            str(baseline),
+                            "--remote",
+                            "alice@example.com",
+                            "--keep-remote-workdir",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue().count("Remote workspace: /tmp/baseline-ws\n"), 1)
+
+    def test_script_run_bench_forwards_compare_perf_options(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_compare_flags", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            observed_compare: list[object] = []
+
+            def fake_compare_perf(
+                baseline_path: Path,
+                compare_path: Path,
+                *,
+                skip_latency_errors: bool = False,
+                metric_source: str = "auto",
+            ) -> int:
+                observed_compare.extend([baseline_path, compare_path, skip_latency_errors, metric_source])
+                return 0
+
+            with patch.object(
+                module,
+                "_load_bench_functions",
+                return_value=(
+                    lambda _path: {"bench-mode": "msprof"},
+                    lambda *_args, **_kwargs: (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        candidate_perf,
+                    ),
+                    lambda *_args, **_kwargs: None,
+                ),
+            ):
+                with patch.object(module, "_load_compare_perf_function", return_value=fake_compare_perf):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--baseline-operator-file",
+                            str(baseline),
+                            "--skip-latency-errors",
+                            "--metric-source",
+                            "total-op",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_compare,
+            [baseline_perf.resolve(), candidate_perf, True, "total-op"],
+        )
+
     def test_script_run_bench_uses_remote_env_when_flag_missing(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -347,7 +788,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -374,7 +816,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -402,7 +845,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -449,8 +893,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             [
                 "bash",
                 script,
-                "skills/triton-npu-run-eval/scripts/bench_runner.py",
-                "skills/triton-npu-run-eval/scripts/profile_runner.py",
+                "skills/common/ascend-npu-run-eval/scripts/bench_runner.py",
+                "skills/common/ascend-npu-run-eval/scripts/profile_runner.py",
             ],
             cwd=repo_root,
             capture_output=True,
@@ -464,7 +908,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -502,7 +947,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -523,7 +969,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -609,7 +1056,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -694,7 +1142,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -745,7 +1194,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -838,7 +1288,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -884,7 +1335,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -982,7 +1434,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1097,7 +1550,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1128,7 +1582,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1171,7 +1626,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1212,7 +1668,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1261,7 +1718,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1350,11 +1808,147 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_script_run_test_optimize_auto_compares_remote_result_via_remote_helper(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "opt_kernel_result.pt"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            observed_remote_compare_calls: list[tuple[Path, Path, str, str | None, bool, TextIO | None]] = []
+
+            def fake_run_remote_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                remote: str,
+                remote_workdir: str | None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: TextIO | None = None,
+            ) -> tuple[dict[str, object], Path, str]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                self.assertEqual(remote, "alice@example.com")
+                self.assertEqual(remote_workdir, "/tmp/triton-agent")
+                self.assertFalse(keep_remote_workdir)
+                self.assertFalse(verbose)
+                self.assertIs(stderr, sys.stderr)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                    "/tmp/triton-agent-123",
+                )
+
+            def fake_compare_remote_result(
+                baseline_path: Path,
+                new_path: Path,
+                remote: str,
+                remote_workdir: str | None,
+                *,
+                verbose: bool = False,
+                stderr: TextIO | None = None,
+            ) -> int:
+                observed_remote_compare_calls.append(
+                    (baseline_path, new_path, remote, remote_workdir, verbose, stderr)
+                )
+                return 0
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("local test runner should not run for remote tests")
+                        ),
+                        fake_run_remote_test,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                                AssertionError("local comparison should not run for remote tests")
+                            ),
+                            fake_compare_remote_result,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-optimize",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--ref-result",
+                                str(baseline_result),
+                                "--remote",
+                                "alice@example.com",
+                                "--remote-workdir",
+                                "/tmp/triton-agent",
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_remote_compare_calls,
+            [
+                (
+                    baseline_result.resolve(),
+                    archive,
+                    "alice@example.com",
+                    "/tmp/triton-agent",
+                    False,
+                    stderr,
+                )
+            ],
+        )
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_script_run_test_optimize_uses_existing_derived_baseline_result(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1452,7 +2046,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1567,7 +2162,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1645,7 +2241,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1669,7 +2266,7 @@ class SkillCommandScriptTests(unittest.TestCase):
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         source_skills = repo_root / "skills"
-        source_script = source_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
+        source_script = source_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -1679,7 +2276,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 symlinked_skills.symlink_to(source_skills, target_is_directory=True)
             except OSError as exc:
                 self.skipTest(f"directory symlinks are unavailable: {exc}")
-            symlinked_script = symlinked_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            symlinked_script = symlinked_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
 
             completed = subprocess.run(
                 [sys.executable, str(symlinked_script), "--help"],
@@ -1697,7 +2294,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1717,7 +2315,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1738,7 +2337,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1761,7 +2361,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1833,7 +2434,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1847,12 +2449,16 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--bench-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--output", completed.stdout)
+        self.assertIn("--baseline-operator-file", completed.stdout)
+        self.assertIn("--skip-latency-errors", completed.stdout)
+        self.assertIn("--metric-source", completed.stdout)
 
     def test_load_compare_perf_function_reuses_perf_artifacts_implementation(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1871,7 +2477,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1892,7 +2499,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1906,61 +2514,702 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(hints["stderr"], Optional[TextIO])
 
-    def test_optimize_submit_baseline_script_help_runs_without_installed_entrypoint(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "triton-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
-        )
+    def test_optimize_state_submit_baseline_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
-            [sys.executable, str(script), "--help"],
+            [sys.executable, str(script), "submit-baseline", "--help"],
             capture_output=True,
             text=True,
             check=False,
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_submit_baseline.py", completed.stdout)
-        self.assertIn("check-baseline", completed.stdout)
-        self.assertNotIn("check-round", completed.stdout)
+        self.assertIn("cli.py submit-baseline", completed.stdout)
+        self.assertIn("--baseline-dir", completed.stdout)
+        self.assertNotIn("submit-round", completed.stdout)
 
-    def test_optimize_submit_round_script_help_runs_without_installed_entrypoint(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "triton-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_round_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
-            [sys.executable, str(script), "--help"],
+            [sys.executable, str(script), "submit-round", "--help"],
             capture_output=True,
             text=True,
             check=False,
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_submit_round.py", completed.stdout)
-        self.assertIn("check-round", completed.stdout)
-        self.assertNotIn("check-baseline", completed.stdout)
+        self.assertIn("cli.py submit-round", completed.stdout)
+        self.assertIn("--round-dir", completed.stdout)
+        self.assertNotIn("submit-baseline", completed.stdout)
 
-    def test_optimize_submit_baseline_script_supports_runtime_without_pt_cleanup_module(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        script = (
-            repo_root
-            / "skills"
-            / "triton-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
+    def test_optimize_state_start_round_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        completed = subprocess.run(
+            [sys.executable, str(script), "start-round", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
         )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("cli.py start-round", completed.stdout)
+        self.assertIn("--round-dir", completed.stdout)
+        self.assertIn("--round-strategy", completed.stdout)
+        self.assertIn("--analysis-policy", completed.stdout)
+        self.assertIn("--reason", completed.stdout)
+
+    def test_optimize_state_set_current_round_state_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        completed = subprocess.run(
+            [sys.executable, str(script), "set-current-round-state", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("cli.py set-current-round-state", completed.stdout)
+        self.assertIn("--round-strategy", completed.stdout)
+        self.assertIn("--analysis-policy", completed.stdout)
+        self.assertIn("--reason", completed.stdout)
+
+    def test_optimize_state_start_round_returns_json_hint_when_workflow_state_missing(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("workflow state", payload["issues"][0])
+        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("submit-baseline", payload["guideline"])
+        self.assertIn("start-round", payload["guideline"])
+        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertIn("hard_rules", payload)
+        self.assertIn("Only one optimize round may be active at a time.", payload["hard_rules"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_start_round_returns_json_hint_when_baseline_is_pending(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "baseline",
+                        "current_round": None,
+                        "baseline": {"status": "pending", "submitted_at": None},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("submit-baseline", payload["guideline"])
+        self.assertIn("hard_rules", payload)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_start_round_success_returns_strategy_state(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-23T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            attempts_text = (round_dir / "attempts.md").read_text(encoding="utf-8")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["round"], "opt-round-1")
+        self.assertEqual(payload["round_strategy"], "exploration")
+        self.assertEqual(payload["analysis_policy"], "pattern_entry")
+        self.assertEqual(payload["reason"], "Need to narrow the first promising direction.")
+        self.assertIn("hard_rules", payload)
+        self.assertIn(
+            "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
+            payload["hard_rules"],
+        )
+        self.assertIn("## State Update", attempts_text)
+        self.assertIn("Source: start-round", attempts_text)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_start_round_creates_missing_round_directory(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-9"
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260630-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-30T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Create the next round directory when it is missing.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            round_dir_exists = round_dir.is_dir()
+            attempts_exists = (round_dir / "attempts.md").exists()
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(round_dir_exists)
+        self.assertTrue(attempts_exists)
+
+    def test_optimize_state_set_current_round_state_success_updates_active_round(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-2"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 2,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "2": {
+                                "status": "active",
+                                "round_dir": "opt-round-2",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "structural_change",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Profiler evidence is now required before the main rewrite.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            attempts_text = (round_dir / "attempts.md").read_text(encoding="utf-8")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["round"], "opt-round-2")
+        self.assertEqual(payload["round_strategy"], "structural_change")
+        self.assertEqual(payload["analysis_policy"], "profile_required")
+        self.assertEqual(payload["previous_round_strategy"], "exploration")
+        self.assertEqual(payload["previous_analysis_policy"], "pattern_entry")
+        self.assertEqual(payload["reason"], "Profiler evidence is now required before the main rewrite.")
+        self.assertEqual(
+            state_payload["rounds"]["2"]["strategy_state"]["round_strategy"],
+            "structural_change",
+        )
+        self.assertIn("Source: set-current-round-state", attempts_text)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_finds_workspace_from_round_subdirectory(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-5"
+            round_dir.mkdir()
+            nested_cwd = round_dir / "notes"
+            nested_cwd.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 5,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "5": {
+                                "status": "active",
+                                "round_dir": "opt-round-5",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Need profiler evidence before the next edit.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=nested_cwd,
+                env=env,
+            )
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            state_payload["rounds"]["5"]["strategy_state"]["analysis_policy"],
+            "profile_required",
+        )
+
+    def test_optimize_state_start_round_rejects_invalid_strategy_in_argparse(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "unknown_strategy",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("invalid choice", completed.stderr)
+
+    def test_optimize_state_set_current_round_state_rejects_invalid_policy_in_argparse(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "unknown_policy",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("invalid choice", completed.stderr)
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_when_no_active_round(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "focused_tuning",
+                    "--reason",
+                    "Need to deepen analysis before the next edit.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("No optimize round is currently active", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_when_workflow_state_is_missing(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "focused_tuning",
+                    "--reason",
+                    "Need to repair missing workflow state before changing round strategy.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("workflow state", payload["issues"][0])
+        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("submit-baseline", payload["guideline"])
+        self.assertIn("start-round", payload["guideline"])
+        self.assertIn("set-current-round-state", payload["guideline"])
+        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_for_noop_update(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-3"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 3,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "3": {
+                                "status": "active",
+                                "round_dir": "opt-round-3",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "focused_tuning",
+                                    "analysis_policy": "ir_required",
+                                    "reason": "IR is already required for this round.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "focused_tuning",
+                    "--analysis-policy",
+                    "ir_required",
+                    "--reason",
+                    "same state",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("no-op", payload["issues"][0])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_for_policy_rollback(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-4"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "focused_tuning",
+                                    "analysis_policy": "ir_required",
+                                    "reason": "IR is already required for this round.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Trying to reduce evidence depth should fail.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("shallower", payload["issues"][0])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_baseline_supports_runtime_without_pt_cleanup_module(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
 
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
@@ -2020,7 +3269,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-baseline",
+                    "submit-baseline",
                     "--baseline-dir",
                     str(workspace / "baseline"),
                 ],
@@ -2039,16 +3288,190 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertEqual(completed.stderr, "")
             self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
 
-    def test_optimize_submit_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "triton-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_baseline_updates_workflow_state_when_present(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260622-123456-abcdef",
+                        "phase": "baseline",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "pending", "submitted_at": None},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-baseline",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertEqual(state_payload["baseline"]["status"], "passed")
+
+    def test_optimize_state_submit_baseline_bootstraps_missing_workflow_state(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-baseline",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertEqual(state_payload["baseline"]["status"], "passed")
+        self.assertNotIn("source_operator", state_payload)
+
+    def test_optimize_state_submit_baseline_returns_json_hint_when_workflow_state_is_invalid(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text("{", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-baseline",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("restart the optimize session", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_outputs_json_only_with_guideline_and_next_option(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2105,12 +3528,41 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (workdir / ".triton-agent").mkdir()
+            (workdir / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260630-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-30T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-30T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-30T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             completed = subprocess.run(
                 [
                     sys.executable,
                     str(script),
-                    "check-round",
+                    "submit-round",
                     "--round-dir",
                     str(round_dir),
                     "--current-round",
@@ -2132,7 +3584,407 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertIn("guideline", payload)
             self.assertNotIn("summary", payload)
             self.assertIn("Round 4/25 in the current worker batch is complete.", payload["guideline"])
+            self.assertIn(
+                "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand to open opt-round-5 before beginning the next round.",
+                payload["guideline"],
+            )
             self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (round_dir / "attempts.md").write_text("# Round 4 Attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("# Round 4 Summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 2.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("import triton\nimport triton.language as tl\n\n@triton.jit\ndef kernel(x_ptr, y_ptr, N, BLOCK: tl.constexpr):\n    pid = tl.program_id(0)\n    offs = pid * BLOCK + tl.arange(0, BLOCK)\n    x = tl.load(x_ptr + offs)\n    y = x * 2\n    tl.store(y_ptr + offs, y)\n\nkernel[(1,)](x, y, N, BLOCK=128)\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir(exist_ok=True)
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-23T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("start-round", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_returns_json_hint_when_workflow_state_is_missing(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("workflow state", payload["issues"][0])
+        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("submit-baseline", payload["guideline"])
+        self.assertIn("start-round", payload["guideline"])
+        self.assertIn("submit-round", payload["guideline"])
+        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_returns_structured_json_when_round_dir_is_missing(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260630-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 7,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-30T12:34:56Z"},
+                        "rounds": {
+                            "7": {
+                                "status": "active",
+                                "round_dir": "opt-round-7",
+                                "started_at": "2026-06-30T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-30T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            missing_round_dir = workspace / "opt-round-7"
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(missing_round_dir),
+                    "--current-round",
+                    "7",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("missing round directory", payload["issues"][0])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_updates_workflow_state_when_present(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260622-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-22T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-22T12:40:00Z",
+                                "ended_at": None,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertIsNone(state_payload["current_round"])
+        self.assertEqual(state_payload["rounds"]["4"]["status"], "passed")
 
 
 if __name__ == "__main__":

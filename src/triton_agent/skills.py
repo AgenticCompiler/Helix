@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
+
+from triton_agent.skill_catalog import (
+    get_skill_catalog_entry,
+    list_catalog_skill_names,
+)
 
 
 @dataclass(frozen=True)
@@ -60,14 +66,23 @@ class SkillLinkSet:
     temporary_git_dir: Path | None = None
 
 
+def _reset_temporary_git_repo_enabled() -> bool:
+    value = os.environ.get("TRITON_AGENT_RESET_GIT_REPO")
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
 class SkillLinkManager:
     def __init__(self, skills_root: Path) -> None:
         self.skills_root = skills_root.resolve()
 
-    def _iter_skill_dirs(self) -> Iterable[Path]:
-        for entry in sorted(self.skills_root.iterdir()):
-            if entry.is_dir():
-                yield entry
+    def _iter_skill_dirs(self) -> Iterable[tuple[str, Path]]:
+        for skill_name in list_catalog_skill_names():
+            entry = get_skill_catalog_entry(skill_name)
+            path = self.skills_root / entry.source_group / skill_name
+            if path.exists() and path.is_dir():
+                yield skill_name, path
 
     def _iter_selected_skill_dirs(
         self,
@@ -75,8 +90,8 @@ class SkillLinkManager:
         skill_sources: dict[str, str] | None = None,
     ) -> Iterable[tuple[str, Path]]:
         if skill_names is None:
-            for entry in self._iter_skill_dirs():
-                yield entry.name, entry
+            for name, path in self._iter_skill_dirs():
+                yield name, path
             return
 
         seen: set[str] = set()
@@ -85,7 +100,11 @@ class SkillLinkManager:
                 continue
             seen.add(skill_name)
             source_name = skill_sources.get(skill_name, skill_name) if skill_sources else skill_name
-            skill_dir = self.skills_root / source_name
+            try:
+                entry = get_skill_catalog_entry(source_name)
+            except KeyError:
+                raise RuntimeError(f"Requested skill does not exist: {source_name}")
+            skill_dir = self.skills_root / entry.source_group / source_name
             if not skill_dir.exists() or not skill_dir.is_dir():
                 raise RuntimeError(f"Requested skill does not exist: {skill_dir}")
             yield skill_name, skill_dir
@@ -171,7 +190,10 @@ class SkillLinkManager:
 
             if config.copy_root_when_missing and not target.exists() and skill_names is None:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(self.skills_root, target, symlinks=False)
+                for name, skill_dir in self._iter_skill_dirs():
+                    staged_path = target / name
+                    if not staged_path.exists():
+                        shutil.copytree(skill_dir, staged_path, symlinks=False)
                 created.append(target)
                 if not root_pre_existed:
                     created.insert(0, backend_root_path)
@@ -204,7 +226,7 @@ class SkillLinkManager:
                 self._remove_path(path)
             except OSError as exc:
                 warnings.append(f"Failed to remove skill copy {path}: {exc}")
-        if link_set.temporary_git_dir is not None:
+        if link_set.temporary_git_dir is not None and _reset_temporary_git_repo_enabled():
             try:
                 self._remove_path(link_set.temporary_git_dir)
             except OSError as exc:
@@ -223,7 +245,10 @@ class SkillLinkManager:
     def describe_cleanup(self, link_set: SkillLinkSet) -> list[str]:
         messages = [f"removed skill copy {path}" for path in reversed(link_set.created_paths)]
         if link_set.temporary_git_dir is not None:
-            messages.append(f"removed temporary git repo {link_set.temporary_git_dir}")
+            if _reset_temporary_git_repo_enabled():
+                messages.append(f"removed temporary git repo {link_set.temporary_git_dir}")
+            else:
+                messages.append(f"preserved temporary git repo {link_set.temporary_git_dir}")
         if not messages:
             return ["No skill copies needed cleanup."]
         return messages

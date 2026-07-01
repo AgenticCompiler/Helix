@@ -76,7 +76,7 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 class OptimizeCheckTests(unittest.TestCase):
-    def test_optimize_checks_delegate_to_split_submit_script_modules(self) -> None:
+    def test_optimize_checks_delegate_to_optimize_state_script_modules(self) -> None:
         module = SimpleNamespace(
             check_baseline=lambda path: {
                 "status": "fail",
@@ -103,12 +103,12 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.summary, "checked opt-round-1")
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-baseline",
-            "optimize_submit_baseline",
+            "ascend-npu-optimize-state",
+            "baseline/check",
         )
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-round",
-            "optimize_submit_round",
+            "ascend-npu-optimize-state",
+            "round/check",
         )
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
@@ -223,7 +223,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "round")
             self.assertIn(
-                "round operator no longer preserves a recognizable Triton kernel launch path",
+                "round operator no longer preserves a recognizable Ascend kernel launch path",
                 result.issues,
             )
 
@@ -458,7 +458,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
 
-    def test_check_round_with_remaining_batch_rounds_names_next_round_and_reflection(self) -> None:
+    def test_check_round_with_remaining_batch_rounds_names_next_round_without_reflection_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
@@ -470,23 +470,15 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.next_option, "opt-round-3")
             self.assertIn("Round 2/4 in the current worker batch is complete.", result.summary)
             self.assertIn("Next round: opt-round-3.", result.summary)
-            self.assertIn("Do not rush into the next code change.", result.summary)
             self.assertIn(
-                "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round.",
+                "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand to open opt-round-3 before beginning the next round.",
                 result.summary,
             )
-            self.assertIn(
-                "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first.",
-                result.summary,
-            )
-            self.assertIn(
-                "Do not use agents or subagents to optimize multiple rounds in parallel.",
-                result.summary,
-            )
-            self.assertIn(
-                "Do not treat the next round as a parameter-only tuning sweep.",
-                result.summary,
-            )
+            self.assertNotIn("Do not rush into the next code change.", result.summary)
+            self.assertNotIn("First decide which operator, kernel path, or wrapper bottleneck", result.summary)
+            self.assertNotIn("Decide whether existing evidence is already sufficient", result.summary)
+            self.assertNotIn("Do not use agents or subagents to optimize multiple rounds in parallel.", result.summary)
+            self.assertNotIn("Do not treat the next round as a parameter-only tuning sweep.", result.summary)
 
     def test_check_round_final_batch_round_says_batch_target_is_complete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

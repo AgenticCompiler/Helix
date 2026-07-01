@@ -1,3 +1,4 @@
+import json
 import pickle
 import subprocess
 import sys
@@ -199,6 +200,98 @@ def main(operator_api):
         self.assertIsNone(archived)
         self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=3", stdout.getvalue())
 
+    def test_run_local_test_launches_worker_subprocess_and_reads_result_file(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            test_file = root / "test_abs.py"
+            operator = root / "abs.py"
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+
+            result_file_holder: dict[str, Path] = {}
+
+            def fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
+                del extra_env
+                self.assertEqual(workdir, str(root.resolve()))
+                self.assertEqual(stall_timeout_seconds, 300)
+                self.assertIn("local-test-worker", command)
+                result_file = Path(command[command.index("--result-file") + 1])
+                result_file_holder["path"] = result_file
+                result_file.write_text(
+                    json.dumps(
+                        {
+                            "result": {
+                                "return_code": 0,
+                                "stdout": "worker stdout\n",
+                                "stderr": "",
+                                "stalled": False,
+                                "session_id": None,
+                            },
+                            "archived_result": None,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "return_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "stalled": False,
+                    "session_id": None,
+                }
+
+            with patch.object(module, "run_buffered_process", side_effect=fake_buffered, create=True):
+                result, archived = module.run_local_test(test_file, operator, "standalone")
+
+        self.assertEqual(result["stdout"], "worker stdout\n")
+        self.assertIsNone(archived)
+        self.assertIn("path", result_file_holder)
+        self.assertEqual(result_file_holder["path"].name, "local-test-result.json")
+
+    def test_run_local_test_reads_archived_result_path_from_worker_payload(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archived_path = root / "abs_result.pt"
+            test_file = root / "differential_test_abs.py"
+            operator = root / "abs.py"
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            operator.write_text("def build_api():\n    return lambda value: value\n", encoding="utf-8")
+
+            def fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
+                del workdir, stall_timeout_seconds, extra_env
+                result_file = Path(command[command.index("--result-file") + 1])
+                archived_path.write_bytes(b"pt")
+                result_file.write_text(
+                    json.dumps(
+                        {
+                            "result": {
+                                "return_code": 0,
+                                "stdout": "",
+                                "stderr": "",
+                                "stalled": False,
+                                "session_id": None,
+                            },
+                            "archived_result": str(archived_path),
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "return_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "stalled": False,
+                    "session_id": None,
+                }
+
+            with patch.object(module, "run_buffered_process", side_effect=fake_buffered, create=True):
+                result, archived = module.run_local_test(test_file, operator, "differential")
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(archived, archived_path.resolve())
+
     def test_run_local_test_executes_declarative_differential_cases(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -237,10 +330,11 @@ def build_differential_test_cases(operator_api):
             with patch.dict(sys.modules, {"torch": SimpleNamespace(save=fake_save)}, clear=False):
                 result, archived = module.run_local_test(test_file, operator, "differential")
 
-            payload = pickle.loads((root / "abs_result.pt").read_bytes())
+            torch = module.importlib.import_module("torch")
+            payload = torch.load(root / "abs_result.pt")
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(archived, root / "abs_result.pt")
+        self.assertEqual(archived, (root / "abs_result.pt").resolve())
         self.assertEqual(
             payload,
             {
@@ -400,6 +494,63 @@ def build_differential_test_cases(operator_api):
         self.assertIn('"inputs"', recorded_command[2])
         self.assertIn('"cases"', recorded_command[2])
         self.assertNotIn('"results"', recorded_command[2])
+
+    def test_run_remote_test_uses_shared_eval_timeout(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text(
+                """# test-mode: standalone
+# compute-kind: compute
+# api-name: abs_entry
+# api-kind: torch-function
+# kernels: KernelA
+
+def main(operator_api):
+    print(operator_api())
+""",
+                encoding="utf-8",
+            )
+            fake_result = {
+                "return_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.dict(
+                module.os.environ,
+                {
+                    "TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "300",
+                    "TRITON_AGENT_TEST_TIMEOUT_SECONDS": "900",
+                },
+                clear=False,
+            ):
+                with patch.object(
+                    module,
+                    "create_remote_workspace",
+                    return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
+                ), patch.object(module, "copy_file_to_remote"), patch.object(
+                    module,
+                    "run_remote_command_streaming",
+                    return_value=fake_result,
+                ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                    result, archived, remote_workspace = module.run_remote_test(
+                        test_file,
+                        operator,
+                        "standalone",
+                        "user@host",
+                        None,
+                    )
+
+        self.assertEqual(result, fake_result)
+        self.assertIsNone(archived)
+        self.assertEqual(remote_workspace, "/tmp/remote")
+        self.assertEqual(remote_run.call_args.kwargs["stall_timeout_seconds"], 300)
 
     def test_remote_differential_generated_script_executes_successfully(self) -> None:
         module = load_test_runner_module()

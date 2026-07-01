@@ -117,7 +117,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0].status, "aligned")
             self.assertEqual(len(results[0].iterations), 2)
-            self.assertEqual(results[0].matched_patterns, ["tiling"])
+            self.assertEqual(results[0].matched_patterns, ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(results[0].updated_patterns, ["tiling", "loop-invariant-hoisting"])
             self.assertTrue((op_dir / "simulate" / "foo.py").exists())
             self.assertTrue((op_dir / "simulate" / "generated_foo.py").exists())
@@ -127,7 +127,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             self.assertEqual(report["iterations"][0]["updated_patterns"], ["loop-invariant-hoisting"])
             simulate_calls = [call for call in calls if call.get("skills_root") == skills_dir]
             self.assertEqual(len(simulate_calls), 2)
-            promote.assert_called_once_with(knowledge_dir)
+            promote.assert_called_once_with(knowledge_dir, language="triton")
 
 
 def _json_path_from_prompt(prompt: str) -> Path:

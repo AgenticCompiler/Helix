@@ -9,6 +9,7 @@ from unittest.mock import patch
 import tempfile
 import subprocess
 import shutil
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -107,7 +108,39 @@ class RemoteExecutionTests(unittest.TestCase):
             )
 
         self.assertIn("[remote]", stderr.getvalue())
-        self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+        self.assertIn("scp -P 2200 local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+
+    def test_copy_file_to_remote_avoids_windows_drive_letter_in_scp_source_argument(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.copy_file_to_remote(
+                module.parse_remote_spec("alice@example.com"),
+                Path("D:/Project/input.py"),
+                "/tmp/input.py",
+            )
+
+        self.assertEqual(
+            mocked.call_args.args[0],
+            ["scp", "input.py", "alice@example.com:/tmp/input.py"],
+        )
+        self.assertEqual(mocked.call_args.args[1], "D:/Project")
+
+    def test_copy_file_from_remote_avoids_windows_drive_letter_in_scp_destination_argument(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.copy_file_from_remote(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/result.pt",
+                Path("D:/Project/result.pt"),
+            )
+
+        self.assertEqual(
+            mocked.call_args.args[0],
+            ["scp", "alice@example.com:/tmp/result.pt", "result.pt"],
+        )
+        self.assertEqual(mocked.call_args.args[1], "D:/Project")
 
     def test_remote_execution_env_prefers_explicit_flags_over_environment(self) -> None:
         remote, remote_workdir = remote_env_module.resolve_remote_execution(
@@ -313,6 +346,165 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertTrue(process.stdout.closed)
         self.assertTrue(process.stderr.closed)
 
+    def test_run_runtime_buffered_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def readline(self) -> str:
+                return ""
+
+            def close(self) -> None:
+                return None
+
+        class _FakeStderr:
+            def __iter__(self):
+                return iter(())
+
+            def close(self) -> None:
+                return None
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module.run_buffered_process(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_buffered_process_decodes_utf8_output_from_bytes(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def __init__(self) -> None:
+                self._lines = [b"\xe8\xbf\x9c\xe7\xab\xaf\xe8\xbe\x93\xe5\x87\xba\n", b""]
+                self.closed = False
+
+            def readline(self) -> bytes:
+                return self._lines.pop(0)
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeStderr:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def __iter__(self):
+                return iter([b"\xe6\x9d\x83\xe9\x99\x90\xe9\x94\x99\xe8\xaf\xaf\n"])
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 1
+
+            def poll(self):
+                return 1
+
+        with patch.object(module.subprocess, "Popen", return_value=_FakeProcess()):
+            result = module.run_buffered_process(["ssh", "alice@example.com"], ".", 10)
+
+        self.assertEqual(result["stdout"], "远端输出\n")
+        self.assertEqual(result["stderr"], "权限错误\n")
+
+    def test_run_runtime_streaming_windows_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def read(self, _size: int) -> bytes:
+                return b""
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self) -> int:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module._run_streaming_windows(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_streaming_pty_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self, timeout=None) -> int:
+                del timeout
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        fake_pty = SimpleNamespace(openpty=lambda: (11, 12))
+        fake_select = SimpleNamespace(select=lambda _r, _w, _x, _t: ([], [], []))
+
+        with patch.object(module, "pty", fake_pty), patch.object(
+            module,
+            "select",
+            fake_select,
+        ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ), patch.object(module.os, "close"):
+            result = module._run_streaming_pty(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_eval_timeout_env_rejects_negative_values(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.dict(module.os.environ, {"TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
+            with self.assertRaises(ValueError):
+                module.eval_stall_timeout_seconds()
+
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -460,7 +652,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             compare_script,
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "compare_result.py",
         )
@@ -605,7 +798,11 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         command,
                     )
                 )
-                case_id = command[-2]
+                case_id = (
+                    command[command.index("--case-id") + 1]
+                    if "--case-id" in command
+                    else command[-2]
+                )
                 return make_skill_result(
                     0,
                     (
@@ -1010,6 +1207,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "kernel.py",
                             "--case-id",
                             "case-1",
+                            "--iterations",
+                            "55",
                         ],
                     )
                 ],
@@ -1134,6 +1333,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "opt-round-13/opt_kernel.py",
                             "--case-id",
                             "case-1",
+                            "--iterations",
+                            "55",
                         ],
                     )
                 ],
@@ -1185,7 +1386,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
                 self.assertEqual(command[0], "msprof")
-                if command[-1] == "case-1":
+                case_id = command[command.index("--case-id") + 1]
+                if case_id == "case-1":
                     return make_skill_result(1, "", "case one failed\n")
                 return make_skill_result(0, "profile stdout\n", "")
 
@@ -1223,6 +1425,61 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
+
+    def test_read_remote_msprof_metrics_supports_kernel_suffix_alias_and_total_op(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            remote_workspace = Path(tmp) / "remote-workspace"
+            remote_workspace.mkdir()
+            for support_path in module._bench_runtime_support_paths():
+                shutil.copy2(support_path, remote_workspace / support_path.name)
+
+            output_dir = remote_workspace / "ASCEND_PROFILER_OUTPUT"
+            output_dir.mkdir()
+            (output_dir / "op_statistic_1.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
+                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            def _fake_remote_buffered(spec, remote_workspace_arg, command, **kwargs):
+                del kwargs
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace_arg, str(remote_workspace))
+                self.assertEqual(command[:2], ["python3", "-c"])
+                completed = subprocess.run(
+                    command,
+                    cwd=remote_workspace,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                return make_skill_result(completed.returncode, completed.stdout, completed.stderr)
+
+            with patch.object(module, "run_remote_command_buffered", side_effect=_fake_remote_buffered):
+                metrics = module._read_remote_msprof_metrics(
+                    "spec",
+                    str(remote_workspace),
+                    str(output_dir),
+                    ["KernelA"],
+                )
+
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
+                {"op_type": "HelperKernel", "avg_time_us": 3.5},
+            ],
+        )
+        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
 
     def test_run_remote_bench_msprof_records_na_when_remote_kernel_row_is_missing(self) -> None:
         module = load_bench_runner_module()
@@ -1540,6 +1797,114 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertIn('"kernel_avg_time_us":null', perf_text)
             self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
+
+
+class RemoteProbeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.bench = load_bench_runner_module()
+        run_runtime = load_operator_eval_script_module("run_runtime")
+        self.spec = run_runtime.parse_remote_spec("user@host")
+
+    def test_probe_remote_script_includes_clamp_and_preloaded(self) -> None:
+        script = self.bench._build_remote_torch_npu_profiler_probe_run_all_script(
+            verbose=False, warmup_cap=1, repeats_cap=3
+        )
+        self.assertIn("dataclasses.replace", script)
+        self.assertIn("min(c.warmup, 1)", script)
+        self.assertIn("min(c.repeats, 3)", script)
+        self.assertIn("preloaded=(clamped, resolution)", script)
+        self.assertIn("runtime.load_bench_cases", script)
+
+    def test_canonical_remote_script_does_not_clamp(self) -> None:
+        script = self.bench._build_remote_torch_npu_profiler_run_all_script(verbose=False)
+        self.assertNotIn("dataclasses.replace", script)
+        self.assertNotIn("preloaded=", script)
+
+    def test_remote_profiler_uses_probe_script_when_caps_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+            )
+        command = mocked_run.call_args.args[2]
+        script = command[2]
+        self.assertIn("preloaded=(clamped, resolution)", script)
+        self.assertIn("min(c.warmup, 1)", script)
+
+    def test_remote_profiler_uses_canonical_script_without_caps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+            )
+        command = mocked_run.call_args.args[2]
+        script = command[2]
+        self.assertNotIn("preloaded=", script)
+        self.assertNotIn("dataclasses.replace", script)
+
+    def test_run_remote_probe_threads_probe_caps(self) -> None:
+        sentinel = ({"return_code": 0, "stdout": "", "stderr": ""}, None, "ws")
+        with patch.object(self.bench, "run_remote_bench", return_value=sentinel) as mocked:
+            self.bench.run_remote_probe(
+                Path("bench.py"),
+                Path("op.py"),
+                "torch-npu-profiler",
+                "user@host",
+                None,
+                warmup_cap=1,
+                repeats_cap=3,
+            )
+        self.assertEqual(mocked.call_args.kwargs.get("probe_caps"), (1, 3))
+
+    def test_remote_profiler_passes_devices_env_when_caps_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+                devices=("4", "5"),
+            )
+        self.assertEqual(
+            mocked_run.call_args.kwargs["extra_env"]["ASCEND_RT_VISIBLE_DEVICES"],
+            "4,5",
+        )
+
+    def test_remote_profiler_omits_devices_env_without_devices(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+            )
+        self.assertNotIn(
+            "ASCEND_RT_VISIBLE_DEVICES",
+            mocked_run.call_args.kwargs["extra_env"],
+        )
 
 
 if __name__ == "__main__":

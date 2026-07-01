@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -109,6 +110,35 @@ def copy_file(source: Path, destination: Path) -> None:
 def run_command(command: Sequence[str], cwd: Path) -> None:
     print("+ " + subprocess.list2cmdline(list(command)), flush=True)
     subprocess.run(command, cwd=str(cwd), check=True)
+
+
+def _generate_build_meta(root: Path) -> None:
+    meta_path = root / "src" / "triton_agent" / "_build_meta.json"
+    commit = os.environ.get("TRITON_AGENT_BUILD_GIT_COMMIT", "").strip()
+    if not commit:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            commit = "unknown"
+        else:
+            if result.returncode == 0 and result.stdout.strip():
+                commit = result.stdout.strip()
+            else:
+                commit = "unknown"
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps({"git_commit": commit}), encoding="utf-8")
+
+
+def _cleanup_build_meta(root: Path) -> None:
+    meta_path = root / "src" / "triton_agent" / "_build_meta.json"
+    if meta_path.exists():
+        meta_path.unlink()
 
 
 def ensure_spec_file(spec_path: Path, root: Path) -> Path:
@@ -221,7 +251,12 @@ def build(args: argparse.Namespace) -> int:
         command.append("--clean")
     command.append(str(spec_path))
 
-    run_command(command, root)
+    _generate_build_meta(root)
+
+    try:
+        run_command(command, root)
+    finally:
+        _cleanup_build_meta(root)
 
     if not executable.is_file():
         raise FileNotFoundError(f"Expected onefile executable was not created: {executable}")

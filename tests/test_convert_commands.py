@@ -83,8 +83,8 @@ class ConvertRuntimeTests(unittest.TestCase):
             request.staged_skill_names,
             (
                 "triton-npu-convert-pytorch-operator",
-                "triton-npu-gen-test",
-                "triton-npu-run-eval",
+                "ascend-npu-gen-test",
+                "ascend-npu-run-eval",
                 "triton-npu-repair-guide",
             ),
         )
@@ -117,7 +117,7 @@ class ConvertRuntimeTests(unittest.TestCase):
 
         self.assertEqual(
             request.staged_skill_sources,
-            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+            {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
         self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
 
@@ -252,8 +252,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 captured["staged_skill_names"],
                 (
                     "triton-npu-convert-pytorch-operator",
-                    "triton-npu-gen-test",
-                    "triton-npu-run-eval",
+                    "ascend-npu-gen-test",
+                    "ascend-npu-run-eval",
                     "triton-npu-repair-guide",
                 ),
             )

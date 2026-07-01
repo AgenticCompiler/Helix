@@ -2,7 +2,7 @@
 
 ## Summary
 
-Remove `skills/triton-npu-optimize/scripts/extract_code_facts.py` and the prompt guidance that treats it as a pattern-triage helper.
+Remove `skills/triton/triton-npu-optimize/scripts/extract_code_facts.py` and the prompt guidance that treats it as a pattern-triage helper.
 
 The current helper only emits two narrow facts, both based on ad hoc AST heuristics. That is not broad enough to justify a permanent routing utility, and it is not valuable enough to keep as a first-class optimize aid.
 

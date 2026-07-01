@@ -58,7 +58,7 @@ After the card is updated, regenerate the checked-in `pattern_index.md` so the g
 ## Validation
 
 - Review the rewritten `compile_hint.md` for title/content alignment.
-- Regenerate `skills/triton-npu-optimize-knowledge/references/pattern_index.md`.
+- Regenerate `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`.
 - Run the pattern-index generator with `--check` to confirm the checked-in index is current.
 
 ## Scope Boundaries
