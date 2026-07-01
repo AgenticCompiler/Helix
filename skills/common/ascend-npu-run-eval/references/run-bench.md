@@ -29,7 +29,7 @@ Mode notes:
 
 In `msprof` mode, kernel-miss cases still write `latency-<case-id>: NA`, but also include raw op statistics plus a `# latency-error-case-*` explanation.
 In `msprof-simulator` and `torch-npu-profiler` modes, the extracted simulation data (`extracted_bin_data/`) is copied to the directory specified by `--extract-dest-dir` if provided; otherwise it defaults to the parent directory of `--bench-file`. Pass `--extract-dest-dir baseline/` during baseline preparation, and pass `--extract-dest-dir opt-round-N/` to keep each round's data separate.
-- In `msprof-simulator` and `torch-npu-profiler` mode, `--simulator-case-idx <N>` specifies which benchmark case to run for simulation. Use this when a prior optimization round has identified a specific case as the focus.
+- In `torch-npu-profiler` and `msprof-simulator` mode, `--simulator-case-idx <N>` specifies which single benchmark case to run for simulation (`N` is 1-based: use `1` for the first benchmark case, not `0`). When this option is omitted, simulation uses case 1. Do not as sume case 1 represents the current bottleneck. Use `--simulator-case-idx <N>` when a prior optimization round has identified a specific case as the focus, or when a specific shape (often a non-default case) shows poor speedup, regression, or stalls across rounds. This makes the generated `extracted_bin_data/` contain simulator data for that selected case, so downstream analysis works from shape-specific evidence.
 
 Examples:
 

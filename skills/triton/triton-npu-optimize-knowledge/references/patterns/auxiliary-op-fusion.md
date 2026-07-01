@@ -51,6 +51,16 @@ When the precondition holds and a fusion attempt regresses:
 2. **Choose at most one evidence-backed follow-up form for the current round.** If the first form regresses but shape, dependency, or simulator evidence still favors fusion, try the single most plausible alternative: single-pass compact fusion for proven small-K rows, a two-pass single-kernel form for wide rows, or shape-dispatched composition when the shape set clearly splits. Defer other variants to later rounds instead of spending the current round on a sequence of speculative benchmarks.
 3. **Keep a Tritonized auxiliary path only with concrete evidence.** A preprocessing kernel plus downstream kernel is valid when shape analysis, profile data, simulator data, or measured results show single-kernel fusion is blocked by compile/correctness issues or loses because of register/UB pressure, occupancy loss, repeated reads, or another measured bottleneck. Record the specific reason.
 
+### After a Failed Fusion Attempt
+
+When a full hot-path fusion attempt fails, do not immediately shrink the target to a small local fusion. First classify the failure:
+
+1. **Implementation-form failure**: correctness, compile, UB, stride, register pressure, or unsupported addressing failed in one form. Keep the same hot-path fusion target and try one alternative form that removes the specific blocker. For example, if an external pack/reorder kernel with strided loads fails, try store-time packing inside the fused compute/store kernel using contiguous row loads.
+2. **Substage-specific blocker**: one substage is blocked, but other auxiliary stages are still fusible. Fuse all remaining stages and leave only the blocked substage outside the fused kernel. Record the blocked substage and the concrete evidence. Do not use the blocked substage as a reason to keep unrelated auxiliary Torch/CANN ops on the same hot path.
+3. **True pattern failure**: after a coherent hot-path attempt plus one evidence-backed alternative, correctness passes but warm `total-op` still regresses, or the removed auxiliary chain is no longer a bottleneck. Only then re-rank other patterns.
+
+A partial local fusion, such as fusing only the first wrapper op in a longer auxiliary chain, is acceptable as a temporary validated fallback. Record it as partial, including which auxiliary stages remain outside the fused path and the concrete blocker for each remaining stage. Do not describe a local fallback as full hot-path fusion or as proof that the broader fusion surface is exhausted.
+
 **Failure signal that this framing itself is wrong**: if a coherent implementation plus one evidence-backed follow-up both regress on net `total-op`, and the bottleneck is no longer the removed auxiliary chain, re-rank other candidate patterns instead of continuing to force fusion in the same round.
 
 ## Signals
