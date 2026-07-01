@@ -34,6 +34,7 @@ This pattern is most valuable when the materialized layout tensor is large enoug
 ### Code
 
 - A wrapper computes `tmp = x.permute(...).contiguous()` or `tmp = x.transpose(...).contiguous()` before launching another kernel.
+- A wrapper calls `.expand(...).contiguous()` (or `.repeat(...)`) to replicate a singleton dimension into a full tensor before the kernel — the expanded source is a *shared operand* inside the kernel (every output row consumes the same source row), and the `.contiguous()` copy is the materialization to elide. `op_statistic` typically reports it as `aclnnInplaceCopy` / `BroadcastTo`.
 - A dispatch branch squeezes a singleton dimension, calls a lower-rank helper, then performs `out.copy_(tmp.reshape(out_shape))`.
 - A kernel writes an intermediate layout and a later copy writes the same number of elements to the final output.
 - Flat offset code decodes output coordinates and maps them back to input strides, but only as a generic fallback for a small set of known permutations.
@@ -78,6 +79,41 @@ or, for non-square / non-block-pointer cases:
 values = tl.load(src + src_offsets, mask=src_mask)
 tl.store(dst + dst_offsets, values.permute(1, 0), mask=dst_mask)
 ```
+
+## Singleton-Dimension (Broadcast) Elision: Do Not Re-Mask the Shared Load
+
+When the materialization being elided is a **broadcast/expand** — a singleton source dimension replicated to a larger output dimension (e.g. `cos` of shape `(B, H, 1, D)` expanded to `(B, H, S, D)` via `.expand(...).contiguous()`) — the source tensor becomes a *shared operand* inside the kernel: every output row in a tile consumes the same source row. The shared load's pointer therefore has a leading dim of 1, shape `(1, N)`, while the output tile is `(M, N)`.
+
+The recurring mistake is to apply the output rows' boundary mask `mask_m[:, None]` (shape `(M, 1)`) to the shared load. Triton then refuses to broadcast a `(1, N)` pointer against an `(M, 1)` mask:
+
+```
+ValueError: Cannot broadcast, the expanded size of the tensor (1) must match
+the existing size (M) at non-singleton dimension 0: [M, 1], [1, N]
+```
+
+The **wrong fix** is to force the shared pointer to `(M, N)` so the mask fits — e.g. `tl.full([M, 1], scalar, ...)` / `tl.zeros([M, 1]) + scalar` / `offs_m[:, None] * 0 + scalar` / `tl.broadcast_to(scalar, [M, N])`. This *re-materializes the broadcast inside the kernel*: on Ascend NPU these constructs lower to per-element SCALAR initialization that the compiler cannot fold away, so the copy you just elided reappears as in-kernel scalar fill — frequently slower than the `aclnnInplaceCopy` / `BroadcastTo` it replaced (observed 5x+ kernel regression on a RoPE operator). The pattern's whole point was to delete that materialization; forcing a 2D pointer puts it straight back.
+
+The **correct idiom**: leave the shared load at its natural rank with **no mask on the broadcast/shared dimension**. A `(1, N)` (or even 1-D `(N,)`) load produces a `(1, N)` value that broadcasts for free in the subsequent VECTOR arithmetic against `(M, N)` compute operands. Mask only dimensions that can actually run out of bounds on the shared tensor — typically the inner/contiguous tail, and only at the tensor's very end.
+
+```python
+# DO: shared cos/sin loaded once per group, no row mask -> (1, N)
+cos_low  = tl.load(cos_ptr + bh * full_dim + pair_offs[None, :])
+cos_high = tl.load(cos_ptr + bh * full_dim + half_dim + pair_offs[None, :])
+# per-row output loads stay masked -> (M, N)
+x_even = tl.load(x_ptr + row_base + 2 * pair_offs[None, :], mask=row_mask[:, None], other=0.0)
+# broadcast is free in VECTOR arithmetic: (M, N) * (1, N) -> (M, N)
+out_low = x_even.to(tl.float32) * cos_low.to(tl.float32) - x_odd.to(tl.float32) * sin_low.to(tl.float32)
+```
+
+```python
+# DON'T: mask the shared load's row dim -> (1, N) ptr vs (M, 1) mask shape conflict
+cos_low = tl.load(cos_ptr + cos_row_base + pair_offs[None, :], mask=row_mask[:, None], other=0.0)
+# DON'T: "fix" the conflict by forcing a 2D pointer -> re-materializes the broadcast as SCALAR fill
+cos_row_base = tl.full([BLOCK_M, 1], bh * full_dim, dtype=tl.int32)
+cos_low = tl.load(cos_ptr + cos_row_base + pair_offs[None, :], mask=row_mask[:, None], other=0.0)
+```
+
+**Diagnostic caution.** If your first in-kernel formulation of this pattern regresses, check whether you forced a shared/broadcast load to 2D to satisfy a mask (`tl.full` / `tl.zeros` / `* 0` / explicit fill / `tl.broadcast_to` of a scalar) *before* concluding the pattern is non-viable on this backend. The fix is almost always to drop the mask on the shared dimension, not to enlarge the pointer. A broadcast-load regression caused by `tl.full` is an implementation bug, not evidence that layout-materialization-elision fails on Ascend.
 
 ## Implementation Guidance
 
@@ -130,7 +166,8 @@ The same structural idea also underlies non-last-dimension reductions that avoid
 4. Total global-memory traffic decreases for the targeted branch.
 5. Block-pointer `shape`, `strides`, `offsets`, `block_shape`, and `order` match the physical source and destination layouts.
 6. Singleton-axis rewrites preserve flattened element order before writing directly to a reshaped final output.
-7. Fallback paths still cover non-contiguous, unsupported-rank, or uncommon layout cases.
+7. For broadcast/singleton elision: shared/broadcast loads carry **no mask on the broadcast dimension** and were not forced to 2D via `tl.full` / `tl.zeros` / `* 0` / `tl.broadcast_to` of a scalar. The broadcast must be carried by VECTOR arithmetic (`(M, N) * (1, N)`), not by re-materialized pointer fill — otherwise the elided copy reappears as in-kernel SCALAR overhead.
+8. Fallback paths still cover non-contiguous, unsupported-rank, or uncommon layout cases.
 
 ## Related Patterns
 
