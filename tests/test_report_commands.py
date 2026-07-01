@@ -90,7 +90,7 @@ class ReportCommandHandlerTests(unittest.TestCase):
             root = Path(tmp)
             workspace = root / "case0"
             workspace.mkdir()
-            args = parser.parse_args(["report-batch", "-i", str(root), "--report-workers", "1"])
+            args = parser.parse_args(["report-batch", "-i", str(root), "-c", "1"])
 
             with patch(
                 "triton_agent.commands.report_batch.write_report_batch_state",
@@ -111,4 +111,4 @@ class ReportCommandHandlerTests(unittest.TestCase):
                             exit_code = handle_report_batch(parser, args)
 
         self.assertEqual(exit_code, 0)
-        mocked.assert_called_once_with(workspace, "codex", True)
+        mocked.assert_called_once_with(workspace, "opencode", True)
