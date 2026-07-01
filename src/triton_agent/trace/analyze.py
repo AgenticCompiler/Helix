@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from triton_agent.otel_trace import trace_summary_path
+from triton_agent.trace.core import trace_summary_path
 
 
 def analyze_trace(*, trace_path: Path) -> list[str]:

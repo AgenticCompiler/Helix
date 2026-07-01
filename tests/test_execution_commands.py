@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.models import AgentResult
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 class ExecutionCommandHandlerTests(unittest.TestCase):

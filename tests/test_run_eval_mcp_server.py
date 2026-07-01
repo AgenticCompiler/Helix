@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent import run_eval_mcp_server as module
+from triton_agent.eval import mcp_server as module
 
 
 class RunEvalMCPServerTests(unittest.TestCase):

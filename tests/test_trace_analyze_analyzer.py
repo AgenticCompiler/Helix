@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.trace_analyze.analyzer import build_summary
+from triton_agent.trace.analyze import build_summary
 
 
 class TraceAnalysisAnalyzerTests(unittest.TestCase):

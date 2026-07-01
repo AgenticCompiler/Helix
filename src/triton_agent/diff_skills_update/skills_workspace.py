@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from triton_agent.skill_catalog import resolve_skill_source_dir
+from triton_agent.skills.catalog import resolve_skill_source_dir
 
 
 def knowledge_skill_name(language: str) -> str:

@@ -6,7 +6,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skills import SkillLinkManager
+from triton_agent.skills.staging import SkillLinkManager
 
 
 _BACKEND_SKILL_DIRS = {
@@ -300,7 +300,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             (source / "common" / "ascend-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
-            with mock.patch("triton_agent.skills.shutil.which", return_value=None):
+            with mock.patch("triton_agent.skills.staging.shutil.which", return_value=None):
                 links = manager.prepare_skills("codex", workspace, skill_names=("ascend-npu-gen-test",))
 
             self.assertIsNone(links.temporary_git_dir)

@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from triton_agent.otel_trace import append_trace_event, utc_timestamp
+from triton_agent.trace.core import append_trace_event, utc_timestamp
 
 
 @dataclass

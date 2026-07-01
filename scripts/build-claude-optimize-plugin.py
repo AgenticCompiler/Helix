@@ -11,9 +11,9 @@ from dataclasses import dataclass
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import CommandKind
-from triton_agent.resources import application_root
-from triton_agent.skill_catalog import resolve_skill_source_dir
-from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.paths import application_root
+from triton_agent.skills.catalog import resolve_skill_source_dir
+from triton_agent.skills.selection import resolve_staged_skills
 
 
 _PLUGIN_NAME = "triton-agent-optimize"

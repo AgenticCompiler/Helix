@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from triton_agent.run_eval_mcp_server import (
+from triton_agent.eval.mcp_server import (
     RUN_EVAL_MCP_SERVER_NAME,
     RunningHttpMCPServer,
     start_http_server,

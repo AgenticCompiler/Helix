@@ -26,7 +26,7 @@ from triton_agent.commands.optimize import optimize_run_options_from_args
 from triton_agent.generation.outputs import prepare_generation_target
 from triton_agent.models import AgentResult
 from triton_agent.models import CommandKind
-from triton_agent.output import render_result
+from triton_agent.terminal.render import render_result
 from triton_agent.paths import (
     default_generated_output_path,
     resolve_execution_target,
@@ -41,8 +41,8 @@ from triton_agent.optimize.prompts import (
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
 )
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
-from triton_agent.execution import _normalize_agent_result as normalize_agent_result
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.eval.runners import _normalize_agent_result as normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
@@ -3352,7 +3352,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -5059,7 +5059,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",

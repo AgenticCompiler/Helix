@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from triton_agent.skill_catalog import resolve_skill_source_dir
+from triton_agent.skills.catalog import resolve_skill_source_dir
 
 DEFAULT_OPERATORS_DIR = "operators"
 DEFAULT_PLAN_NAME = "workspace-plan.json"

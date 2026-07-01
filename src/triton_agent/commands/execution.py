@@ -7,7 +7,7 @@ from typing import TextIO
 
 from triton_agent.commands.comparison import compare_perf_files
 from triton_agent.commands.comparison import compare_remote_result_files, compare_result_files
-from triton_agent.execution import (
+from triton_agent.eval.runners import (
     AgentResult,
     resolve_bench_mode_default,
     resolve_test_mode_from_metadata,
@@ -19,8 +19,8 @@ from triton_agent.execution import (
     run_remote_probe_bench,
     run_remote_test,
 )
-from triton_agent.output import render_result
-from triton_agent.remote_execution_env import resolve_remote_execution
+from triton_agent.terminal.render import render_result
+from triton_agent.remote.env import resolve_remote_execution
 
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."

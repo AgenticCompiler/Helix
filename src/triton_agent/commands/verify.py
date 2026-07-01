@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Literal, cast
 
-from triton_agent.remote_execution_env import resolve_remote_execution
+from triton_agent.remote.env import resolve_remote_execution
 from triton_agent.verify.batch import run_verify_batch
 from triton_agent.verify.core import VerifyOptions, prepare_verify_target, run_verify
 

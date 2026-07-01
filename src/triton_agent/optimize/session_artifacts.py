@@ -11,7 +11,7 @@ from triton_agent.optimize.workflow_state import (
     archive_round_timings_from_state,
     prepare_or_restore_optimize_workflow_state,
 )
-from triton_agent.subagents import SubagentManager, SubagentStageSet
+from triton_agent.optimize.subagents import SubagentManager, SubagentStageSet
 
 
 @dataclass

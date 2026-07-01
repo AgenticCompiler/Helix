@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 import triton_agent.commands.comparison as comparison_module
 from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
 
 
