@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal, Union, cast
 
 from triton_agent.optimize.models import OptimizeCheckResult
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 
 
 def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:

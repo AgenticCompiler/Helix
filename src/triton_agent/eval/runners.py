@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Protocol, TextIO, cast
 
 from triton_agent.models import AgentResult
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 _RunSkillPayload = Mapping[str, object]
 

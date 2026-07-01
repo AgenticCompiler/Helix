@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from triton_agent.backends.hook_common import HookStageOptions, HookStageState, cleanup_hook_stage
-from triton_agent.otel_trace import append_trace_event, utc_timestamp
+from triton_agent.trace.core import append_trace_event, utc_timestamp
 
 
 _CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"

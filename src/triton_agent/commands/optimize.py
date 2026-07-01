@@ -8,14 +8,14 @@ from typing import Literal, cast
 from triton_agent.commands.input_resolution import resolve_single_operator_input
 from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import CommandKind
-from triton_agent.npu_affinity import resolve_batch_concurrency
+from triton_agent.batch.affinity import resolve_batch_concurrency
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.validation import validate_optimize_options
 from triton_agent.optimize_upload.client import UploadUrlMissingError
 from triton_agent.optimize_upload.workflow import upload_optimize_workspace
-from triton_agent.output import render_result
+from triton_agent.terminal.render import render_result
 
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

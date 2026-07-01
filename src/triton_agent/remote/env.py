@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from typing import Protocol, cast
 
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class RemoteExecutionEnvModule(Protocol):

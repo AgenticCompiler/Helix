@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from triton_agent.resources import application_root
+from triton_agent.paths import application_root
 
 
 @dataclass(frozen=True)

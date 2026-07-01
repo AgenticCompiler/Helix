@@ -7,8 +7,8 @@ from typing import Any, Literal, TextIO, cast
 from triton_agent.backends.factory import create_runner
 from triton_agent.diff_skills_update.skills_workspace import knowledge_skill_name
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.skills import SkillLinkManager
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.skills.staging import SkillLinkManager
+from triton_agent.terminal.verbose import emit_verbose_lines
 
 
 def run_diff_skills_agent(

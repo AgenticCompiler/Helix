@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.hook_common import HookStageOptions
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.otel_trace import TRACE_PATH_ENV, TRACE_RUN_ID_ENV
+from triton_agent.trace.core import TRACE_PATH_ENV, TRACE_RUN_ID_ENV
 from triton_agent.prompts import build_prompt
 
 

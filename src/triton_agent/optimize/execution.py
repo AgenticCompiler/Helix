@@ -18,7 +18,7 @@ from triton_agent.optimize.recovery import (
     render_transient_recovery_note,
 )
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
@@ -36,12 +36,12 @@ from triton_agent.optimize.prompts import (
     build_optimize_supervisor_prompt,
 )
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
-from triton_agent.otel_trace import (
+from triton_agent.trace.core import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
 )
-from triton_agent.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:

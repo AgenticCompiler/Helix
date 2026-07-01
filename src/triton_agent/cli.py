@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional, TextIO
 
-from triton_agent import help_style
+from triton_agent.terminal.help import style_help_text
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
@@ -30,12 +30,12 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
-from triton_agent.remote_execution_env import (
+from triton_agent.remote.env import (
     apply_remote_execution_env,
     remote_target_env_name,
     remote_workdir_env_name,
 )
-from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
+from triton_agent.remote.ssh_preflight import ensure_remote_ssh_ready
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
@@ -537,7 +537,7 @@ class TritonArgumentParser(argparse.ArgumentParser):
         stream: TextIO = sys.stdout if file is None else file
         text = self.format_help()
         option_tokens = {option for action in self._actions for option in action.option_strings}
-        styled = help_style.style_help_text(
+        styled = style_help_text(
             text,
             stream,
             option_tokens=option_tokens,

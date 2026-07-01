@@ -11,7 +11,7 @@ from triton_agent.optimize.baseline import (
     inspect_baseline_artifacts,
     load_baseline_state,
 )
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 
 
 class OptimizeBaselineTests(unittest.TestCase):

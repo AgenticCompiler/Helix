@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from triton_agent.resources import skills_root
+from triton_agent.paths import skills_root
 
 
 _BASELINE_CONTRACT_PATH = (

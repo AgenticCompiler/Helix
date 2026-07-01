@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
-from triton_agent.subagents import SubagentManager
+from triton_agent.optimize.subagents import SubagentManager
 
 
 class SubagentManagerTests(unittest.TestCase):

@@ -4,8 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from triton_agent.skill_catalog import resolve_skill_source_dir
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.catalog import resolve_skill_source_dir
+from triton_agent.skills.loader import load_skill_script_module
 
 
 def _optimize_knowledge_skill_name(language: str) -> str:
