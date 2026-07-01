@@ -43,6 +43,42 @@ class TestTraeCliJsonLineParser(unittest.TestCase):
         self.assertEqual(parser.parse_line(first + "\n"), "Thinking: The user wants")
         self.assertEqual(parser.parse_line(second + "\n"), " a test file.")
 
+    def test_summary_mode_does_not_emit_later_reasoning_chunks(self) -> None:
+        parser = TraeCliJsonLineParser({"TRITON_AGENT_SHOW_OUTPUT_THINKING": "summary"})
+        first = json.dumps(
+            {
+                "type": "stream_event",
+                "delta": {"reasoning_content": "first line\nsecond line"},
+            }
+        )
+        second = json.dumps(
+            {
+                "type": "stream_event",
+                "delta": {"reasoning_content": " hidden details"},
+            }
+        )
+        result = parser.parse_line(first + "\n")
+        assert result is not None
+        self.assertIn("Thinking: first line", result)
+        self.assertIsNone(parser.parse_line(second + "\n"))
+
+    def test_off_mode_suppresses_streamed_reasoning(self) -> None:
+        parser = TraeCliJsonLineParser({"TRITON_AGENT_SHOW_OUTPUT_THINKING": "off"})
+        reasoning = json.dumps(
+            {
+                "type": "stream_event",
+                "delta": {"reasoning_content": "hidden reasoning"},
+            }
+        )
+        assistant = json.dumps(
+            {
+                "type": "assistant",
+                "message": {"reasoning_content": "hidden reasoning"},
+            }
+        )
+        self.assertIsNone(parser.parse_line(reasoning + "\n"))
+        self.assertIsNone(parser.parse_line(assistant + "\n"))
+
     def test_assistant_tool_call_renders_arrow_line(self) -> None:
         parser = self._parser()
         line = json.dumps(
@@ -108,7 +144,7 @@ class TestTraeCliJsonLineParser(unittest.TestCase):
         result = parser.parse_line(assistant + "\n")
         self.assertIsNone(result)
 
-    def test_unknown_event_renders_compact_json_line(self) -> None:
+    def test_unknown_event_renders_text_line(self) -> None:
         parser = self._parser()
         line = json.dumps(
             {
@@ -121,6 +157,30 @@ class TestTraeCliJsonLineParser(unittest.TestCase):
         assert result is not None
         self.assertIn("[event:tool_result]", result)
         self.assertIn("tool-1", result)
+        self.assertNotIn("{", result)
+        self.assertNotIn("}", result)
+
+    def test_unknown_tool_arguments_render_text_preview(self) -> None:
+        parser = self._parser()
+        line = json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "CustomTool",
+                                "arguments": json.dumps({"path": "kernel.py", "count": 3}),
+                            }
+                        }
+                    ]
+                },
+            }
+        )
+        result = parser.parse_line(line + "\n")
+        assert result is not None
+        self.assertIn("→ CustomTool path=kernel.py, count=3", result)
+        self.assertNotIn('{"path"', result)
 
 
 class TestTraeCliJsonOutputFilter(unittest.TestCase):

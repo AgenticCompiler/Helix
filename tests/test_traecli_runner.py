@@ -36,7 +36,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command, ["traecli", "--print", "--yolo", "Prompt body"])
 
-    def test_stream_output_uses_stream_json_flags(self) -> None:
+    def test_stream_output_uses_native_print_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = TraeCLIRunner()
@@ -57,20 +57,9 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             command = runner.build_command(request)
-            self.assertEqual(
-                command,
-                [
-                    "traecli",
-                    "--print",
-                    "--yolo",
-                    "--output-format",
-                    "stream-json",
-                    "--include-partial-messages",
-                    "Prompt body",
-                ],
-            )
+            self.assertEqual(command, ["traecli", "--print", "--yolo", "Prompt body"])
 
-    def test_output_filter_enabled_for_stream_output(self) -> None:
+    def test_output_filter_disabled_for_stream_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = TraeCLIRunner()
@@ -89,6 +78,41 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 skill_name="triton-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
+            )
+            self.assertIsNone(runner.output_filter(request))
+
+    def test_log_tools_uses_stream_json_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = TraeCLIRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="traecli",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=True,
+            )
+            self.assertEqual(
+                runner.build_command(request),
+                [
+                    "traecli",
+                    "--print",
+                    "--yolo",
+                    "--output-format",
+                    "stream-json",
+                    "--include-partial-messages",
+                    "Prompt body",
+                ],
             )
             output_filter = runner.output_filter(request)
             self.assertIsNotNone(output_filter)

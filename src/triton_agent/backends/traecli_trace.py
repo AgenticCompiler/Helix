@@ -48,7 +48,7 @@ class TraeCliShowOutputRenderer:
                 f"{_THINKING_ENV}=presence]\n\n"
             )
         prefix = "Thinking: " if first_chunk else ""
-        if self.thinking_mode == "summary" and not first_chunk:
+        if self.thinking_mode in {"excerpt", "summary"} and not first_chunk:
             return None
         if self.thinking_mode == "summary" and first_chunk:
             return f"Thinking: {_summarize_text(stripped)}\n\n"
@@ -146,15 +146,15 @@ class TraeCliJsonLineParser:
 
     def _handle_unknown(self, event: dict[str, Any]) -> str | None:
         event_type = str(event.get("type", ""))
-        clean: dict[str, Any] = {}
+        details: list[str] = []
         for key in ("type", "subtype", "message", "error", "stop_reason", "tool_use_id"):
             if key in event:
-                clean[key] = event[key]
+                details.append(f"{key}: {_format_event_value(event[key])}")
         if "tool_result" in event:
-            clean["tool_result"] = event["tool_result"]
-        if not clean:
+            details.append(f"tool_result: {_format_event_value(event['tool_result'])}")
+        if not details:
             return None
-        return f"[event:{event_type}] {json.dumps(clean, ensure_ascii=False)}\n"
+        return f"[event:{event_type}] {'; '.join(details)}\n"
 
     def _handle_system(self, event: dict[str, Any]) -> str | None:
         if event.get("subtype") != "init" or self._banner_emitted:
@@ -176,14 +176,11 @@ class TraeCliJsonLineParser:
                 reasoning,
                 first_chunk=not self._thinking_open,
             )
+            self._streamed_reasoning = True
             if rendered is not None:
                 self._thinking_open = True
-                self._streamed_reasoning = True
                 return prefix + rendered
-            if not self._thinking_open:
-                self._thinking_open = True
-                self._streamed_reasoning = True
-            return prefix + reasoning
+            return prefix or None
 
         content = _string_or_empty(delta.get("content"))
         if content:
@@ -309,10 +306,7 @@ def _format_tool_summary(tool: str, arguments: str) -> str:
         if command:
             return f"{tool} {command}"
     if args:
-        preview = json.dumps(args, ensure_ascii=False)
-        if len(preview) > 120:
-            preview = preview[:117] + "..."
-        return f"{tool} {preview}"
+        return f"{tool} {_format_key_value_preview(args)}"
     return tool
 
 
@@ -342,6 +336,36 @@ def _display_path(path: str) -> str:
         marker = ".opencode/skills/" if ".opencode/skills/" in normalized else ".traecli/skills/"
         return normalized.split(marker, 1)[1]
     return Path(normalized).name or normalized
+
+
+def _format_key_value_preview(args: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key, value in args.items():
+        parts.append(f"{key}={_format_event_value(value)}")
+        if len(parts) >= 3:
+            break
+    preview = ", ".join(parts)
+    if len(args) > len(parts):
+        preview += f", +{len(args) - len(parts)} more"
+    return _one_line_excerpt(preview, limit=120)
+
+
+def _format_event_value(value: Any) -> str:
+    if isinstance(value, str):
+        return _one_line_excerpt(value, limit=120)
+    if isinstance(value, bool) or isinstance(value, int) or isinstance(value, float) or value is None:
+        return str(value)
+    if isinstance(value, dict):
+        for key in ("content", "text", "message", "error"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return _one_line_excerpt(nested, limit=120)
+        keys = ", ".join(str(key) for key in list(value)[:5])
+        suffix = "" if len(value) <= 5 else f", +{len(value) - 5} more"
+        return f"fields: {keys}{suffix}" if keys else "empty object"
+    if isinstance(value, list):
+        return f"{len(value)} item(s)"
+    return _one_line_excerpt(str(value), limit=120)
 
 
 def _string_or_empty(value: Any) -> str:

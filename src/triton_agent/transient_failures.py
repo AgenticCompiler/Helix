@@ -15,7 +15,8 @@ OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS = (2, 4, 8)
 
 
 def contains_transient_agent_failure_text(text: str) -> bool:
-    return any(pattern in text for pattern in TRANSIENT_AGENT_FAILURE_PATTERNS)
+    normalized = text.casefold()
+    return any(pattern in normalized for pattern in TRANSIENT_AGENT_FAILURE_PATTERNS)
 
 
 def is_transient_agent_failure(result: "AgentResult") -> bool:

@@ -30,6 +30,14 @@ class OptimizeRetryPolicyTests(unittest.TestCase):
         )
         self.assertTrue(is_transient_agent_failure(result))
 
+    def test_is_transient_agent_failure_is_case_insensitive(self) -> None:
+        result = AgentResult(
+            return_code=1,
+            stdout="",
+            stderr="Rate Limit exceeded",
+        )
+        self.assertTrue(is_transient_agent_failure(result))
+
     def test_is_optimize_worker_retryable_rejects_stalled_and_interrupt(self) -> None:
         stalled = AgentResult(return_code=1, stdout="", stderr="", stalled=True)
         interrupted = AgentResult(return_code=130, stdout="", stderr="")
