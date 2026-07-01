@@ -51,6 +51,19 @@ Profiler interpretation notes:
 6. Add shape/dtype gates when one global `BLOCK_M` regresses some regimes.
 7. Compose with inner-tile and launch-parameter tuning only after each row-batching step is validated.
 
+### Tiered BLOCK_M example
+
+```python
+if total_rows >= 131072:
+    BLOCK_M = 64
+elif total_rows >= 32768:
+    BLOCK_M = 32
+else:
+    BLOCK_M = 8
+grid = (triton.cdiv(total_rows, BLOCK_M),)
+```
+
+
 ## Implementation sketches (Triton)
 
 ### Variant A: 2D BLOCK_M (PREFERRED) — coalesced multi-row access with broadcasting
