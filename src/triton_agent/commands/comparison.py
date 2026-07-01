@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 from typing import Protocol, TextIO, cast
 
-from triton_agent.remote_execution_env import resolve_remote_execution
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.remote.env import resolve_remote_execution
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class CompareResultModule(Protocol):

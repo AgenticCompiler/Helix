@@ -18,8 +18,8 @@ from urllib.parse import parse_qs, quote
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from triton_agent.npu_affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
-from triton_agent.skill_loader import operator_eval_script_path
+from triton_agent.batch.affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
+from triton_agent.skills.loader import operator_eval_script_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable

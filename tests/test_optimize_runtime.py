@@ -30,7 +30,7 @@ from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
 from triton_agent.optimize.resume import reset_optimize_workspace
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 def _optimize_invocation_kind(request: AgentRequest) -> str:

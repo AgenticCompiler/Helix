@@ -16,14 +16,14 @@ from triton_agent.models import AgentResult
 
 class ReportCommandHandlerTests(unittest.TestCase):
     def test_build_hardware_info_text_omits_target_chip(self) -> None:
-        with patch("triton_agent.hardware_info.capture_hardware_info", return_value={}):
+        with patch("triton_agent.report.hardware.capture_hardware_info", return_value={}):
             text = build_hardware_info_text()
 
         self.assertEqual(text, "")
 
     def test_build_hardware_info_text_queries_hardware_without_target_chip_argument(self) -> None:
         with patch(
-            "triton_agent.hardware_info.capture_hardware_info",
+            "triton_agent.report.hardware.capture_hardware_info",
             return_value={"chip_name": "Ascend 910B"},
         ) as mocked:
             text = build_hardware_info_text()
@@ -46,7 +46,7 @@ class ReportCommandHandlerTests(unittest.TestCase):
 
             with patch("triton_agent.commands.report.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.hardware_info.capture_hardware_info",
+                    "triton_agent.report.hardware.capture_hardware_info",
                     return_value={
                         "chip_name": "Ascend 910B",
                         "cann_version": "8.1.RC1",

@@ -9,7 +9,7 @@ from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.models import CommandKind
-from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.skills.selection import resolve_staged_skills
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "build-claude-optimize-plugin.py"
 

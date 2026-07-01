@@ -7,16 +7,16 @@ from pathlib import Path
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
-from triton_agent.otel_trace import new_trace_run_id
+from triton_agent.trace.core import new_trace_run_id
 from triton_agent.prompts import build_prompt
-from triton_agent.resources import skills_root
-from triton_agent.show_output_log import show_output_log_path
-from triton_agent.skill_staging import resolve_staged_skills
-from triton_agent.skills import SkillLinkManager
+from triton_agent.paths import skills_root
+from triton_agent.terminal.logs import show_output_log_path
+from triton_agent.skills.selection import resolve_staged_skills
+from triton_agent.skills.staging import SkillLinkManager
 
 
 def build_hardware_info_text() -> str:
-    from triton_agent.hardware_info import capture_hardware_info
+    from triton_agent.report.hardware import capture_hardware_info
 
     hardware = capture_hardware_info()
     hw_info_lines: list[str] = []

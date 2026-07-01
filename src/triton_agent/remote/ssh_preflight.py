@@ -4,7 +4,7 @@ import locale
 import subprocess
 from typing import Protocol, TypedDict, cast
 
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class RemoteSpec(TypedDict):

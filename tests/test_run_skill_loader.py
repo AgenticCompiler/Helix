@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skill_loader import (
+from triton_agent.skills.loader import (
     load_operator_eval_script_module,
     load_skill_script_module,
     operator_eval_script_path,

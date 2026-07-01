@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
 
-from triton_agent.skill_catalog import (
+from triton_agent.skills.catalog import (
     get_skill_catalog_entry,
     list_catalog_skill_names,
 )

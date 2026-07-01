@@ -12,7 +12,7 @@ from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.naming import resolve_round_perf_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.optimize.round_contract import load_round_state
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class BenchPerfParserModule(Protocol):
