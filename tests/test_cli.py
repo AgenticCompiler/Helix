@@ -6056,5 +6056,67 @@ class ResultNormalizationTests(unittest.TestCase):
             normalize_agent_result({"stdout": "", "stderr": ""})
 
 
+class _TtyStringIO(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class CliHelpColorTests(unittest.TestCase):
+    def test_format_help_remains_plain_text(self) -> None:
+        parser = build_parser()
+        help_text = parser.format_help()
+        self.assertNotIn("\033[", help_text)
+
+    def test_top_level_help_prints_color_on_tty(self) -> None:
+        parser = build_parser()
+        stdout = _TtyStringIO()
+        with patch.dict(os.environ, {}, clear=True):
+            parser.print_help(file=stdout)
+        output = stdout.getvalue()
+        self.assertIn("\033[36m-h\033[0m", output)
+        self.assertIn("\033[36m--help\033[0m", output)
+        self.assertIn("\033[36mgen-eval\033[0m", output)
+        self.assertIn("\033[36mconvert-batch\033[0m", output)
+        self.assertIn("\033[36mTRITON_AGENT_BATCH_NPU_DEVICES\033[0m", output)
+        self.assertNotIn("Generate, run, \033[36mverify\033[0m", output)
+        self.assertNotIn("Show optimization \033[36mstatus\033[0m for one workspace.", output)
+
+    def test_top_level_help_prints_plain_text_without_tty(self) -> None:
+        parser = build_parser()
+        stdout = StringIO()
+        parser.print_help(file=stdout)
+        output = stdout.getvalue()
+        self.assertNotIn("\033[", output)
+
+    def test_top_level_help_respects_no_color_on_tty(self) -> None:
+        parser = build_parser()
+        stdout = _TtyStringIO()
+        with patch.dict(os.environ, {"NO_COLOR": "1"}, clear=False):
+            parser.print_help(file=stdout)
+        output = stdout.getvalue()
+        self.assertNotIn("\033[", output)
+
+    def test_subcommand_help_prints_color_on_tty(self) -> None:
+        parser = build_parser()
+        stdout = _TtyStringIO()
+        with self.assertRaises(SystemExit):
+            with patch.dict(os.environ, {}, clear=True):
+                with patch.object(sys, "stdout", stdout):
+                    parser.parse_args(["gen-test", "--help"])
+        output = stdout.getvalue()
+        self.assertIn("\033[36m--help\033[0m", output)
+        self.assertIn("\033[36m--agent\033[0m", output)
+
+    def test_subcommand_help_respects_no_color_on_tty(self) -> None:
+        parser = build_parser()
+        stdout = _TtyStringIO()
+        with self.assertRaises(SystemExit):
+            with patch.dict(os.environ, {"NO_COLOR": "1"}, clear=False):
+                with patch.object(sys, "stdout", stdout):
+                    parser.parse_args(["gen-test", "--help"])
+        output = stdout.getvalue()
+        self.assertNotIn("\033[", output)
+
+
 if __name__ == "__main__":
     unittest.main()

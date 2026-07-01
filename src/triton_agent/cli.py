@@ -5,8 +5,9 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional, TextIO
 
+from triton_agent import help_style
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
@@ -520,15 +521,57 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
 }
 
 
+class TritonArgumentParser(argparse.ArgumentParser):
+    def __init__(
+        self,
+        *args: Any,
+        env_var_names: tuple[str, ...] = (),
+        command_names: tuple[str, ...] = (),
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._env_var_names = env_var_names
+        self._command_names = command_names
+
+    def print_help(self, file: Any = None) -> None:
+        stream: TextIO = sys.stdout if file is None else file
+        text = self.format_help()
+        option_tokens = {option for action in self._actions for option in action.option_strings}
+        styled = help_style.style_help_text(
+            text,
+            stream,
+            option_tokens=option_tokens,
+            env_var_tokens=self._env_var_names,
+            command_tokens=self._command_names,
+        )
+        stream.write(styled)
+
+
+def _collect_env_var_names() -> tuple[str, ...]:
+    names: list[str] = []
+    for _group_name, entries in _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS:
+        for name, _description in entries:
+            names.append(name)
+    return tuple(names)
+
+
+def _collect_command_names() -> tuple[str, ...]:
+    return tuple(kind.value for kind in CommandKind)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = TritonArgumentParser(
         prog="triton-agent",
         usage="triton-agent [-h] COMMAND ...",
         description=_TOP_LEVEL_DESCRIPTION,
         epilog=_build_top_level_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        env_var_names=_collect_env_var_names(),
+        command_names=_collect_command_names(),
     )
-    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, metavar="COMMAND", parser_class=TritonArgumentParser
+    )
     mcp_enabled_commands = {
         CommandKind.GEN_EVAL,
         CommandKind.GEN_EVAL_BATCH,
