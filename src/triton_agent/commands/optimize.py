@@ -19,6 +19,8 @@ from triton_agent.terminal.render import render_result
 
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_optimize_batch(parser, args)
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:

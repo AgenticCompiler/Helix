@@ -17,6 +17,8 @@ from triton_agent.terminal.verbose import emit_verbose_lines
 
 
 def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_gen_eval_batch(parser, args)
     return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
 
 

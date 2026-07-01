@@ -40,6 +40,8 @@ class _ConvertVerificationResult:
 
 
 def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_convert_batch(parser, args)
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")

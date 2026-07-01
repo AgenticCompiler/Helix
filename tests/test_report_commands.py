@@ -84,6 +84,13 @@ class ReportCommandHandlerTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["report-batch", "-i", "workspaces", "--target-chip", "A3"])
 
+    def test_report_defaults_to_opencode_agent(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["report", "-i", "workspace"])
+
+        self.assertEqual(args.agent, "opencode")
+
     def test_handle_report_batch_uses_workspace_reports_without_target_chip(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,6 +116,35 @@ class ReportCommandHandlerTests(unittest.TestCase):
                             return_value=(True, "ok"),
                         ) as mocked:
                             exit_code = handle_report_batch(parser, args)
+
+        self.assertEqual(exit_code, 0)
+        mocked.assert_called_once_with(workspace, "opencode", True)
+
+    def test_report_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        from triton_agent.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "case0"
+            workspace.mkdir()
+
+            with patch(
+                "triton_agent.commands.report_batch.write_report_batch_state",
+                return_value=root / "report-batch-state.json",
+            ):
+                with patch(
+                    "triton_agent.commands.report_batch.render_report_batch_file",
+                    return_value=root / "report-batch.md",
+                ):
+                    with patch(
+                        "triton_agent.commands.report_batch._discover_workspaces",
+                        return_value=[workspace],
+                    ):
+                        with patch(
+                            "triton_agent.commands.report_batch.generate_workspace_report",
+                            return_value=(True, "ok"),
+                        ) as mocked:
+                            exit_code = main(["report", "-i", str(root), "--concurrency", "2"])
 
         self.assertEqual(exit_code, 0)
         mocked.assert_called_once_with(workspace, "opencode", True)

@@ -8,22 +8,22 @@ This README is organized by task so you can quickly find the right command for t
 
 - `gen-test`: generate a correctness test for one operator.
 - `run-test`: run an existing generated test.
-- `gen-eval`: generate both test and benchmark assets for one operator.
+- `gen-eval`: generate both test and benchmark assets for one operator; pass `--concurrency` to use batch mode.
 - `gen-eval-batch`: generate evaluation assets for many operator workspaces.
-- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with standalone or differential testing.
+- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with standalone or differential testing; pass `--concurrency` to use batch mode.
 - `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `run-eval-mcp-server`: start the shared run-eval HTTP MCP server for standalone debugging.
-- `optimize`: optimize one operator.
+- `optimize`: optimize one operator; pass `--concurrency` to use batch mode.
 - `optimize-batch`: optimize many operator workspaces.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
 - `--no-upload`: skip automatic upload after optimize.
-- `log-check`: run Codex log strategy validation for one workspace.
+- `log-check`: run Codex log strategy validation for one workspace; pass `--concurrency` to use batch mode.
 - `log-check-batch`: run log strategy validation across multiple workspaces.
 - `clean`: remove known generated artifacts from one workspace or a batch root.
 - `status`: summarize optimization progress across many workspaces.
-- `verify`: rerun tests and benchmarks for the current best optimize round.
+- `verify`: rerun tests and benchmarks for the current best optimize round; pass `--concurrency` to use batch mode, where the concurrency value is ignored.
 - `verify-batch`: verify many optimize workspaces under one root.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
@@ -51,14 +51,18 @@ For batch workflows, point `--input` at either a directory whose immediate child
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
+uv run triton-agent gen-eval --input operators_root --concurrency 4
 uv run triton-agent gen-eval-batch --input .
 uv run triton-agent status --input operators_root
 uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
+uv run triton-agent verify --input operators_root --concurrency 1
 uv run triton-agent optimize-batch --input operators_root
+uv run triton-agent optimize --input operators_root --concurrency 4
 uv run triton-agent log-check --input .
 uv run triton-agent log-check-batch --input operators_root
+uv run triton-agent log-check --input operators_root --concurrency 4
 uv run triton-agent clean --input .
 uv run triton-agent clean --input operators_root
 ```
@@ -84,8 +88,8 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
 | `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
-| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
@@ -480,7 +484,9 @@ Optimize behavior:
 
 ## Work On Many Operators
 
-Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
+Use the batch commands when `--input` points to a directory of operator workspaces. You can either call the existing `*-batch` command, or pass `--concurrency` to the matching single-workspace command to run the same batch implementation. For example, `optimize --input operators_root --concurrency 4` is the batch-mode spelling of `optimize-batch --input operators_root --concurrency 4`.
+
+The switch is based on whether `--concurrency` is present. `--concurrency 1` still selects batch mode with one worker. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
 
 ### Batch NPU Affinity
 
@@ -489,11 +495,12 @@ Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you w
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 uv run triton-agent optimize-batch --input operators_root --concurrency 4
+uv run triton-agent optimize --input operators_root --concurrency 4
 ```
 
 When this variable is set:
 
-- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
+- `gen-eval`, `convert`, and `optimize` in explicit `--concurrency` batch mode assign one device per running workspace, as do their `*-batch` spellings.
 - `-c, --concurrency` may be a positive integer or `max`.
 - `-c max` / `--concurrency max` resolves to the effective batch affinity capacity.
 - numeric `-c` / `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
@@ -519,6 +526,7 @@ When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
+uv run triton-agent gen-eval --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -535,6 +543,7 @@ Common options:
 
 ```bash
 uv run triton-agent convert-batch --input operators_root
+uv run triton-agent convert --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -618,6 +627,7 @@ perf files, `compare-perf.txt` when a benchmark comparison runs, and `verify-sta
 ```bash
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent verify-batch --input operators_root --force-verify
+uv run triton-agent verify --input operators_root --concurrency 1
 ```
 
 Use this command when you want to validate every verifiable optimize workspace under one root.
@@ -631,6 +641,7 @@ The command scans immediate child workspaces and:
 Common options:
 
 - `--force-verify`: rerun verification even when a latest verify result already exists.
+- `--concurrency <N>`: only on the `verify` spelling; selects batch mode and prints a warning because verify batch does not run workspaces concurrently.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--keep-remote-workdir`
@@ -641,6 +652,7 @@ Common options:
 ```bash
 uv run triton-agent optimize-batch --input operators_root
 uv run triton-agent optimize-batch --input .
+uv run triton-agent optimize --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -738,12 +750,14 @@ For batch validation across many workspaces:
 
 ```bash
 uv run triton-agent log-check-batch --input operators_root
+uv run triton-agent log-check --input operators_root --concurrency 4
 ```
 
 Common options:
 
 - `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
 - `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
+- `-c, --concurrency <N>`: on `log-check`, selects batch mode; on `log-check-batch`, defaults to `1`.
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--no-stream-output`: disable live agent-output streaming.
 - `--verbose`: print more execution detail.

@@ -17,7 +17,7 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
 
-    agent_name = getattr(args, "agent", "opencode")
+    agent_name = getattr(args, "agent", None) or "opencode"
     stream_output = bool(getattr(args, "stream_output", True))
     concurrency = int(getattr(args, "concurrency", 1))
 
