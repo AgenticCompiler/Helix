@@ -100,7 +100,7 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
      - `**Operator workspaces (deduped):**`
      - one bullet per operator workspace (add when that operator first maps to the card; never duplicate).
    - Extend the list as you process more kernels; it records **which operators invoked this pattern** and drives coverage checks—do not rely on the bench `PATTERN_AND_LOG_SYNC_PROGRESS.md` table alone for that.
-   - At the **final synthesis step only** for that card (after audits), remove the inventory section so the committed card remains durable pattern guidance.
+   - At the **final synthesis step only** for that card (after audits), remove the inventory section so the committed card remains durable pattern guidance. Also scrub benchmark identity from any narrative or `Evidence` prose: do not name a specific NPUKernelBench operator (for example a numbered `NN_Name` kernel), and generalize exact tensor shapes and exact measured latencies into qualitative magnitudes. The committed card must teach the mechanism, not one benchmark case.
 
 6. **Pattern card updates and new pattern creation**
 
