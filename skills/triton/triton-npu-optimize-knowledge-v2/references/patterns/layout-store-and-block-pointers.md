@@ -93,6 +93,7 @@ tl.store(y_blk, tile)
 - **Layout ports across dtype/path can fail**: a layout specialization that wins in one dtype may regress in another.
 - **Store merge misuse**: merging noncontiguous or mask-incompatible stores breaks semantics.
 - **Structural mismatch persists**: regularizing load/store shape alone can regress if reduction/control structure remains unsuitable.
+- **Block-pointer store dtype mismatch**: when arithmetic is done in `tl.float32` but output tensors use `float16`/`bfloat16` storage, `tl.store` via block pointers enforces strict dtype matching that flat pointer stores do not. The compiler will reject a `tl.store(out_blk_ptr, float32_val)` call. **Fix**: explicitly cast the stored value before the store — `tl.store(out_blk_ptr, val.to(out_blk_ptr.dtype.element_ty), boundary_check=(0,))`. The `.to()` conversion is efficiently lowered by the compiler and the performance gain from block pointers typically outweighs its overhead. **Do not abandon block pointers because of this error** — it is a one-line fix, not a fundamental limitation.
 
 ## Risks
 
@@ -106,6 +107,7 @@ tl.store(y_blk, tile)
 - Parent-vs-child benchmark improvements on the same harness.
 - Evidence that gains come from better transfer shape (fewer tiny stores, improved contiguous access, reduced transpose overhead).
 - Block-pointer fields and mask behavior are consistent across dispatched regimes.
+- **Testing methodology:** When the kernel dispatches to multiple code paths (e.g., masked vs no-mask, single-pass vs multi-pass), apply block pointers to the **highest-overhead variant first** — the one with masks, boundary checks, and explicit address computation. Do NOT test on an already-optimized no-mask fast path and then generalize a null result. The no-mask path has minimal scalar overhead, so block pointer gains there are the smallest; if block pointers show no improvement on the highest-overhead variant, only then can they be rejected. On Ascend NPU, block pointers reduce scalar address generation via DMA descriptors even without `tl.advance` loops — they are not exclusively a loop-level optimization.
 
 ## Related Patterns
 
