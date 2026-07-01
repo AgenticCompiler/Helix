@@ -1928,6 +1928,24 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertIn("No operator workspaces found under", stderr.getvalue())
 
+    def test_main_status_skips_hidden_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "visible").mkdir()
+            (root / ".hidden").mkdir()
+            (root / ".hidden" / "kernel_perf.txt").write_text(
+                "latency-a: 10\n", encoding="utf-8"
+            )
+            stdout = StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[NO-SESSION] visible", rendered)
+            self.assertNotIn("hidden", rendered)
+
     def test_main_status_reports_no_session_workspaces(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

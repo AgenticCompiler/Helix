@@ -204,7 +204,9 @@ def inspect_optimize_status_workspace(
 def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> list[OptimizeStatusWorkspace]:
     return [
         inspect_optimize_status_workspace(workspace, verbose=verbose)
-        for workspace in sorted(path for path in root.iterdir() if path.is_dir())
+        for workspace in sorted(
+            path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+        )
     ]
 
 
