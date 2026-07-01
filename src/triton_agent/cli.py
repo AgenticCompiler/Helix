@@ -176,6 +176,7 @@ class _CommandSpec:
     has_remote: bool = False
     keep_remote_workdir: bool = False
     has_agent: bool = False
+    agent_default: str | None = None
     has_interact: bool = False
     has_show_output: bool = False
     has_test_mode: bool = False
@@ -188,7 +189,7 @@ class _CommandSpec:
     has_prompt: bool = False
     concurrency_default: int | None = None
     concurrency_accepts_max: bool = False
-    report_workers_default: int | None = None
+
     has_force_overwrite: bool = False
     has_format: bool = False
     has_language: bool = False
@@ -508,8 +509,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
                     "and generate per-workspace report.md via agent.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_show_output=True,
-        report_workers_default=4,
+        concurrency_default=1,
     ),
     CommandKind.CLEAN: _CommandSpec(
         handler=handle_clean,
@@ -622,7 +624,8 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_log_tools:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
-            subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
+            agent_default = spec.agent_default if spec.agent_default is not None else "codex"
+            subparser.add_argument("--agent", default=agent_default, choices=_AGENT_CHOICES)
             if command_kind in mcp_enabled_commands:
                 subparser.add_argument(
                     "--enable-mcp",
@@ -762,8 +765,7 @@ def build_parser() -> argparse.ArgumentParser:
                 type=concurrency_type,
                 default=spec.concurrency_default,
             )
-        if spec.report_workers_default is not None:
-            subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
+
         if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
         if command_kind == CommandKind.CLEAN:
@@ -815,6 +817,10 @@ def _build_environment_variables_section() -> list[str]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
+    tokens = argv if argv is not None else sys.argv[1:]
+    if tokens and tokens[0] == "help":
+        parser.print_help()
+        return 0
     args = parser.parse_args(_normalize_command_aliases(argv))
     try:
         _ensure_explicit_remote_ssh_ready_from_args(args)
