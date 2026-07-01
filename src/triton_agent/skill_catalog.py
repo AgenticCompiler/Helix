@@ -206,7 +206,9 @@ def get_skill_catalog_entry(skill_name: str) -> SkillCatalogEntry:
 
 def resolve_skill_source_dir(skill_name: str) -> Path:
     """Return the physical source directory for a logical skill name."""
-    return get_skill_catalog_entry(skill_name).physical_source_dir
+    entry = get_skill_catalog_entry(skill_name)
+    physical_dir = entry.physical_source_dir
+    return physical_dir
 
 
 def list_catalog_skill_names() -> tuple[str, ...]:

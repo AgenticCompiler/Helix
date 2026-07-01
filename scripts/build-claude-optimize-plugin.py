@@ -174,10 +174,7 @@ def _copy_hook_assets(destination_root: Path) -> None:
             shutil.copytree(source_path, destination_root / source_path.name)
         else:
             shutil.copy2(source_path, destination_root / source_path.name)
-    shutil.copy2(
-        source_root / "shared" / "tool_use_guard_policy.py",
-        destination_root / "tool_use_guard_policy.py",
-    )
+    shutil.copytree(application_root() / "src" / "hook_runtime", destination_root / "hook_runtime")
 
 
 def _copy_selected_skills(

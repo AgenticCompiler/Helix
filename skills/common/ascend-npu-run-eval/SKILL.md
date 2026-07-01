@@ -5,11 +5,12 @@ description: Execute and evaluate generated operator artifacts. Use when you nee
 
 # Run-Eval Router
 
-Use the bundled helper script in this skill. Treat `<skill-path>` as the staged
-path to this skill for the active backend:
+Use the bundled helper script in this skill. Treat
+`<ascend-npu-run-eval-skill-path>` as the staged path to the
+`ascend-npu-run-eval` skill for the active backend:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py <subcommand> ...
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...
 ```
 
 For `probe-bench`, use the surface that actually exposes that subcommand in the current workspace. If the staged `run-command.py` in this skill has not been updated yet, use the workspace's public `triton-agent probe-bench` command instead of guessing helper internals.
@@ -26,6 +27,6 @@ Read only the focused guide for the subcommand you are about to run:
 
 During normal use:
 
-- call `python3 <skill-path>/scripts/run-command.py <subcommand> ...` directly
+- call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly
 - do not read unrelated command guides
-- do not reread Python files under `<skill-path>/scripts/` unless you need to debug, patch, or verify helper behavior
+- do not reread Python files under `<ascend-npu-run-eval-skill-path>/scripts/` unless you need to debug, patch, or verify helper behavior

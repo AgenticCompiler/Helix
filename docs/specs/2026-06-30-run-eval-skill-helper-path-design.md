@@ -9,10 +9,12 @@ relative to the current working directory instead of the staged skill root.
 ## User-Visible Semantics
 
 - Live `ascend-npu-run-eval` skill instructions and examples should refer to the
-  helper entrypoint as `python3 <skill-path>/scripts/run-command.py ...`.
-- The docs should describe `<skill-path>` as the staged path of the current
-  skill for the active backend, rather than implying that `./scripts/` exists
-  under the agent's current working directory.
+  helper entrypoint as
+  `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py ...`.
+- The docs should describe `<ascend-npu-run-eval-skill-path>` as the staged path
+  of the `ascend-npu-run-eval` skill for the active backend, rather than
+  implying that `./scripts/` exists under the agent's current working
+  directory.
 - This change is documentation-contract only. It does not change helper script
   behavior, backend staging layout, or repository CLI entrypoints.
 
@@ -40,7 +42,7 @@ Update the live `skills/common/ascend-npu-run-eval/` documentation set so every
 agent-facing helper invocation uses the backend-neutral placeholder form:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py <subcommand> ...
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...
 ```
 
 Apply that wording to:
@@ -54,16 +56,17 @@ Apply that wording to:
 - `references/compare-result.md`
 - `references/compare-perf.md`
 
-The top-level skill doc should also explain what `<skill-path>` means in one
-short sentence so dependent skills can reference the run-eval surface without
-reintroducing backend-specific hard-coded staged paths.
+The top-level skill doc should also explain what
+`<ascend-npu-run-eval-skill-path>` means in one short sentence so dependent
+skills can reference the run-eval surface without reintroducing backend-specific
+hard-coded staged paths.
 
 ## Test Contract
 
 Extend `tests/test_generation_contracts.py` so it asserts the live
 `ascend-npu-run-eval` docs:
 
-- contain `<skill-path>/scripts/run-command.py`
+- contain `<ascend-npu-run-eval-skill-path>/scripts/run-command.py`
 - do not contain `python3 ./scripts/run-command.py`
 
 This keeps future doc edits from regressing to current-directory-relative helper

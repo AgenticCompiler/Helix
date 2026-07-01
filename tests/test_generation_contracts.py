@@ -245,7 +245,10 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("references/compare-result.md", skill)
         self.assertIn("references/compare-perf.md", skill)
         self.assertIn("do not read unrelated command guides", skill)
-        self.assertIn("do not reread Python files under `<skill-path>/scripts/`", skill)
+        self.assertIn(
+            "do not reread Python files under `<ascend-npu-run-eval-skill-path>/scripts/`",
+            skill,
+        )
         self.assertNotIn("## Run Test", skill)
         self.assertNotIn("## Run Bench", skill)
         self.assertNotIn("## Profile Bench", skill)
@@ -301,8 +304,11 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("run-test-optimize", skill)
         self.assertIn("run-bench", skill)
         self.assertIn("profile-bench", skill)
-        self.assertIn("<skill-path>/scripts/run-command.py", skill)
-        self.assertIn("call `python3 <skill-path>/scripts/run-command.py <subcommand> ...` directly", skill)
+        self.assertIn("<ascend-npu-run-eval-skill-path>/scripts/run-command.py", skill)
+        self.assertIn(
+            "call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly",
+            skill,
+        )
         self.assertNotIn("use the corresponding MCP tool", skill)
 
         for doc in (

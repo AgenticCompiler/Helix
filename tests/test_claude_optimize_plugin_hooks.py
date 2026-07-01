@@ -43,19 +43,68 @@ validate_existing_state = cast(
 
 
 class ClaudeOptimizePluginHookTests(unittest.TestCase):
-    def test_bootstrap_runtime_state_creates_runtime_dir_without_inferred_state(self) -> None:
+    def test_bootstrap_runtime_state_bootstraps_fresh_baseline_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
             result = bootstrap_runtime_state(workspace)
 
-            self.assertIsNotNone(result.additional_context)
-            assert result.additional_context is not None
             self.assertTrue((workspace / ".triton-agent").is_dir())
-            self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
-            self.assertIn("submit-baseline", result.additional_context)
-            self.assertIn("start-round", result.additional_context)
+            state_path = workspace / ".triton-agent" / "state.json"
+            self.assertTrue(state_path.exists())
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["phase"], "baseline")
+            self.assertEqual(payload["baseline"], {"status": "pending", "submitted_at": None})
+            self.assertNotIn("source_operator", payload)
+            self.assertIsNone(result.additional_context)
+
+    def test_bootstrap_runtime_state_rebuilds_resumable_workspace_without_operator_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n",
+                encoding="utf-8",
+            )
+            (workspace / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            result = bootstrap_runtime_state(workspace)
+
+            state_path = workspace / ".triton-agent" / "state.json"
+            self.assertTrue(state_path.exists())
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["phase"], "awaiting_round_start")
+            self.assertEqual(payload["baseline"], {"status": "passed", "submitted_at": None})
+            self.assertIsNone(payload["current_round"])
+            self.assertNotIn("source_operator", payload)
+            self.assertIsNone(result.additional_context)
 
     def test_validate_existing_state_reports_malformed_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -71,6 +120,24 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertIn("submit-baseline", result.additional_context)
             self.assertNotIn("Remove it", result.additional_context)
 
+    def test_bootstrap_runtime_state_returns_repair_guidance_when_resumable_markers_exist_but_baseline_state_is_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text("{", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+
+            result = bootstrap_runtime_state(workspace)
+
+            self.assertIsNotNone(result.additional_context)
+            assert result.additional_context is not None
+            self.assertIn("cannot determine source operator from baseline/state.json", result.additional_context)
+            self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
+
     def test_session_start_returns_repair_guidance_for_namespaced_agent_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -84,10 +151,13 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0)
-            payload = json.loads(result.stdout)
             self.assertTrue((workspace / ".triton-agent").is_dir())
-            self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
-            self.assertIn("submit-baseline", payload["hookSpecificOutput"]["additionalContext"])
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
+            self.assertEqual(result.stdout, "")
 
     def test_session_end_removes_runtime_dir_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

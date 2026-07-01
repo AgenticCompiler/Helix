@@ -2646,7 +2646,6 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "schema_version": 1,
                         "run_id": "optimize-20260623-123456-abcdef",
                         "phase": "baseline",
-                        "source_operator": "kernel.py",
                         "current_round": None,
                         "baseline": {"status": "pending", "submitted_at": None},
                         "rounds": {},
@@ -2700,7 +2699,6 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "schema_version": 1,
                         "run_id": "optimize-20260623-123456-abcdef",
                         "phase": "awaiting_round_start",
-                        "source_operator": "kernel.py",
                         "current_round": None,
                         "baseline": {"status": "passed", "submitted_at": "2026-06-23T12:34:56Z"},
                         "rounds": {},
@@ -3166,7 +3164,6 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "schema_version": 1,
                         "run_id": "optimize-20260627-123456-abcdef",
                         "phase": "round_active",
-                        "source_operator": "kernel.py",
                         "current_round": 4,
                         "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
                         "rounds": {
@@ -3412,7 +3409,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(state_payload["phase"], "awaiting_round_start")
         self.assertEqual(state_payload["baseline"]["status"], "passed")
-        self.assertEqual(state_payload["source_operator"], "kernel.py")
+        self.assertNotIn("source_operator", state_payload)
 
     def test_optimize_state_submit_baseline_returns_json_hint_when_workflow_state_is_invalid(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT

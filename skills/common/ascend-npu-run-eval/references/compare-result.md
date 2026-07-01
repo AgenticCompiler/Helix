@@ -3,7 +3,7 @@
 Use this command when you already have both archived payloads and want to rerun or inspect the comparison separately from `run-test-optimize`:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt>
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt>
 ```
 
 Rules:
@@ -15,5 +15,5 @@ Rules:
 Remote example:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt> --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

@@ -293,27 +293,50 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
-    def test_baseline_phase_allows_native_write_to_source_operator(self) -> None:
+    def test_baseline_phase_allows_native_write_to_regular_workspace_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            operator_file = workspace / "kernel.py"
-            operator_file.write_text("pass\n", encoding="utf-8")
+            notes_file = workspace / "notes.md"
+            notes_file.write_text("draft\n", encoding="utf-8")
             _write_workflow_state(
                 workspace,
                 phase="baseline",
                 baseline_status="pending",
-                source_operator="kernel.py",
             )
 
             result = _evaluate_plugin_args(
                 _policy(workspace),
                 "write",
-                {"filePath": str(operator_file), "content": "updated\n", "cwd": str(workspace)},
+                {"filePath": str(notes_file), "content": "updated\n", "cwd": str(workspace)},
                 workspace,
             )
 
             self.assertEqual(result, {"allowed": True})
+
+    @_skip_if_no_node
+    def test_baseline_phase_blocks_native_write_to_hidden_runtime_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            runtime_state = workspace / ".triton-agent" / "state.json"
+            runtime_state.parent.mkdir(parents=True)
+            _write_workflow_state(
+                workspace,
+                phase="baseline",
+                baseline_status="pending",
+            )
+
+            result = _evaluate_plugin_args(
+                _policy(workspace),
+                "write",
+                {"filePath": str(runtime_state), "content": "updated\n", "cwd": str(workspace)},
+                workspace,
+            )
+
+            self.assertFalse(result["allowed"])
+            self.assertIn("protected", str(result["message"]))
+            self.assertIn(".triton-agent/", str(result["message"]))
 
     @_skip_if_no_node
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
@@ -326,7 +349,6 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="awaiting_round_start",
                 baseline_status="passed",
-                source_operator="kernel.py",
             )
 
             result = _evaluate_plugin_args(
@@ -352,7 +374,6 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
-                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -374,6 +395,41 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
+    def test_round_active_allows_native_write_to_top_level_progress_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            _write_workflow_state(
+                workspace,
+                phase="round_active",
+                baseline_status="passed",
+                current_round=2,
+                rounds={
+                    "2": {
+                        "status": "active",
+                        "round_dir": "opt-round-2",
+                        "started_at": "2026-06-23T08:00:00Z",
+                        "ended_at": None,
+                    }
+                },
+            )
+
+            for file_name in ("opt-note.md", "learned_lessons.md", "supervisor-report.md"):
+                with self.subTest(file_name=file_name):
+                    result = _evaluate_plugin_args(
+                        _policy(workspace),
+                        "write",
+                        {
+                            "filePath": str(workspace / file_name),
+                            "content": "updated\n",
+                            "cwd": str(workspace),
+                        },
+                        workspace,
+                    )
+
+                    self.assertEqual(result, {"allowed": True})
+
+    @_skip_if_no_node
     def test_round_active_blocks_native_write_outside_current_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -384,7 +440,6 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
-                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -725,7 +780,6 @@ def _write_workflow_state(
     *,
     phase: str,
     baseline_status: str,
-    source_operator: str,
     current_round: Optional[int] = None,
     rounds: Optional[dict[str, object]] = None,
 ) -> None:
@@ -735,7 +789,6 @@ def _write_workflow_state(
         "schema_version": 1,
         "run_id": "optimize-20260623-guard",
         "phase": phase,
-        "source_operator": source_operator,
         "current_round": current_round,
         "baseline": {
             "status": baseline_status,

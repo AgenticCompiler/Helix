@@ -23,10 +23,7 @@ from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
 )
-from triton_agent.optimize.workflow_state import (
-    bootstrap_optimize_workflow_state,
-    render_optimize_phase_summary,
-)
+from triton_agent.optimize.workflow_state import render_optimize_phase_summary
 from triton_agent.optimize.models import (
     BaselinePreflightResult,
     BaselinePreflightState,
@@ -204,16 +201,6 @@ def execute_multi_invocation_optimize(
         )
         if not request.interact:
             baseline_result = controller.preflight_baseline(request)
-            if (
-                baseline_result.state is BaselinePreflightState.READY
-                and artifacts_state.workflow_state_path is not None
-            ):
-                bootstrap_optimize_workflow_state(
-                    artifacts_state.workflow_state_path,
-                    run_id=artifacts_state.archive.run_id,
-                    source_operator=request.input_path,
-                    baseline_reused=True,
-                )
             if baseline_result.state is not BaselinePreflightState.READY:
                 baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
                 if not baseline_fix_result.succeeded:
