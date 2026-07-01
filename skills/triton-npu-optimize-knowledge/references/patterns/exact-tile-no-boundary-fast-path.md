@@ -2,14 +2,15 @@
 
 ## Summary
 
-Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles, so Ascend lowering can avoid boundary-only masks, padding values, block-pointer `boundary_check`, and related control branches.
+Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles, so Ascend lowering can avoid boundary-only masks, padding values, block-pointer `boundary_check`, and related control branches. Also applies to 1D elementwise kernels (`n_elements % BLOCK_SIZE == 0`).
 
 ## Use When
 
-- A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
+- A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`, or for 1D elementwise kernels `n_elements % BLOCK_SIZE == 0` (common in AdamW, softmax, layer norm, fused update kernels).
 - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
 - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
 - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
+- The kernel uses `tl.load(..., mask=offsets < n_elements, other=0.0)` or similar boundary-only masks that are redundant when the shape is exactly tile-divisible.
 
 ## Avoid When
 
@@ -24,9 +25,11 @@ Split exact-tile hot paths from generic masked kernels when dispatch-time shape 
 ### Code
 
 - `tl.load(..., mask=tail_mask, other=...)` where the mask only protects block edges.
+- **1D elementwise signal**: `mask = offsets < n_elements` or `mask = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE) < n_elements` where `n_elements` is a total element count for a flattened tensor.
 - `tl.store(..., mask=tail_mask)` on shapes known to be full-tile.
 - `tl.make_block_ptr` loads or stores keep `boundary_check` for exact shapes.
 - Removing the mask does not change address math for the guarded shape.
+- The kernel uses `@triton.autotune` with configs that include a BLOCK_SIZE where at least one config makes `n_elements % BLOCK_SIZE == 0` for common shapes.
 
 ### Profile
 
@@ -40,6 +43,47 @@ Split exact-tile hot paths from generic masked kernels when dispatch-time shape 
 3. Remove only boundary/tail masks, padding, and `boundary_check` in the aligned kernel.
 4. Keep the generic masked kernel for all non-exact cases.
 5. Compare parent-vs-child performance on the exact case and verify fallback coverage.
+
+### Variant: 1D elementwise unmasked fast path
+
+For 1D elementwise kernels that process a flat tensor over `n_elements`, many benchmark shapes (especially powers of 2) are exactly divisible by the BLOCK_SIZE. Split into two kernels:
+
+- **Unmasked kernel**: launched when `n_elements % BLOCK_SIZE == 0`. All loads and stores use bare `tl.load(ptr + offsets)` and `tl.store(ptr + offsets, value)` without `mask=`, `other=`, or boundary predicates. On Ascend NPU, masked loads with `other=0.0` materialize the fill value in UB even for masked-out lanes; removing the mask eliminates both SCALAR predicate overhead and UB fill pressure.
+- **Masked kernel**: original kernel with `mask = offsets < n_elements` for all non-exact cases.
+
+```python
+@triton.jit
+def _kernel_unmasked(ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, ...):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    x = tl.load(ptr + offsets)            # no mask, no other
+    result = ... compute on x ...
+    tl.store(out_ptr + offsets, result)    # no mask
+
+@triton.jit
+def _kernel_masked(ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, ...):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(ptr + offsets, mask=mask, other=0.0)
+    result = ... compute on x ...
+    tl.store(out_ptr + offsets, result, mask=mask)
+
+def host_dispatch(ptr, out_ptr, n_elements, BLOCK_SIZE, ...):
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    if n_elements % BLOCK_SIZE == 0:
+        _kernel_unmasked[grid](ptr, out_ptr, n_elements, ..., BLOCK_SIZE=BLOCK_SIZE)
+    else:
+        _kernel_masked[grid](ptr, out_ptr, n_elements, ..., BLOCK_SIZE=BLOCK_SIZE)
+```
+
+### Variant: combining with autotune
+
+When the kernel uses `@triton.autotune`, the exact-tile fast path can still be applied. Remove `@triton.autotune` from the aligned/unmasked kernel and use a fixed BLOCK_SIZE instead, because:
+
+1. The unmasked kernel only runs when `n_elements % BLOCK_SIZE == 0`, so the tile size is determined by the divisibility condition at dispatch, not by autotune search.
+2. Autotune on the unmasked kernel would compile masked fallback variants that are never used under the exact-tile guard.
+3. Keep `@triton.autotune` on the masked fallback kernel for shapes that do need search.
 
 ### Variant: chunk recurrence tail peeling
 
@@ -87,6 +131,25 @@ value = tl.load(src + offs_m[:, None] * stride_m + offs_n[None, :])
 tl.store(dst + offs_m[:, None] * out_m + offs_n[None, :], value)
 ```
 
+### 1D elementwise kernel
+
+Dispatch logic:
+
+```python
+if n_elements % BLOCK_SIZE == 0:
+    _kernel_unmasked[grid](..., BLOCK_SIZE=BLOCK_SIZE)
+else:
+    _kernel_masked[grid](..., BLOCK_SIZE=BLOCK_SIZE)
+```
+
+Inside the unmasked kernel, all loads and stores omit `mask=` and `other=`:
+
+```python
+offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+x = tl.load(ptr + offs)          # no mask, no other
+tl.store(out_ptr + offs, result)  # no mask
+```
+
 ## Evidence
 
 NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim=0, index=(2560,27648)`. Splitting an aligned/no-boundary kernel reduced about `4239us -> 3850us` (**~1.10x**). The remaining bottleneck was still random global-memory gather, so treat this as control-overhead cleanup rather than an access-pattern fix.
@@ -97,6 +160,7 @@ NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim
 - Fallback still handles non-divisible shapes.
 - The aligned kernel IR no longer contains the targeted boundary checks or masks.
 - Parent-vs-child benchmark improves on the targeted case without broad regressions.
+- For 1D elementwise: verify unmasked path produces bit-identical results on exact-tile shapes, and unmasked kernel uses fixed BLOCK_SIZE (not autotuned) while masked kernel retains autotune.
 - For chunk recurrence tail peeling, test `T < BT`, `T == BT`, `T % BT == 0`, `T % BT != 0`, and varlen branches if present.
 
 ## Related Patterns
@@ -106,3 +170,4 @@ NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim
 - `block-pointer-dimensionality`
 - `discrete_memory_access`
 - `scalar-latency-traps`
+- `autotune`
