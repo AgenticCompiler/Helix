@@ -36,7 +36,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command, ["traecli", "--print", "--yolo", "Prompt body"])
 
-    def test_stream_output_uses_native_print_output(self) -> None:
+    def test_stream_output_uses_stream_json_for_realtime_rendering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = TraeCLIRunner()
@@ -57,9 +57,20 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             command = runner.build_command(request)
-            self.assertEqual(command, ["traecli", "--print", "--yolo", "Prompt body"])
+            self.assertEqual(
+                command,
+                [
+                    "traecli",
+                    "--print",
+                    "--yolo",
+                    "--output-format",
+                    "stream-json",
+                    "--include-partial-messages",
+                    "Prompt body",
+                ],
+            )
 
-    def test_output_filter_disabled_for_stream_output(self) -> None:
+    def test_output_filter_enabled_for_stream_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = TraeCLIRunner()
@@ -79,7 +90,15 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            self.assertIsNone(runner.output_filter(request))
+            output_filter = runner.output_filter(request)
+            self.assertIsNotNone(output_filter)
+            assert output_filter is not None
+            rendered = output_filter.feed(
+                '{"type":"stream_event","delta":{"content":"hello"}}\n',
+                flush=True,
+            )
+            self.assertEqual(rendered, "hello\n\n")
+            self.assertNotIn("{", rendered)
 
     def test_log_tools_uses_stream_json_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

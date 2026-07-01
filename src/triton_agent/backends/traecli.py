@@ -20,7 +20,7 @@ class TraeCLIRunner(AgentRunner):
         if request.interact:
             return [self.executable, request.prompt]
         command = [self.executable, "--print", "--yolo"]
-        if request.log_tools:
+        if request.stream_output or request.log_tools:
             command.extend(
                 [
                     "--output-format",
@@ -32,7 +32,7 @@ class TraeCLIRunner(AgentRunner):
         return command
 
     def output_filter(self, request: AgentRequest) -> "TraeCliJsonOutputFilter | None":
-        if request.interact or not request.log_tools:
+        if request.interact or (not request.stream_output and not request.log_tools):
             return None
         from triton_agent.backends.traecli_trace import TraeCliJsonOutputFilter
 
