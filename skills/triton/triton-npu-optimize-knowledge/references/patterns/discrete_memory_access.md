@@ -10,6 +10,8 @@ Stage a contiguous range into the Unified Buffer first, then use on-chip indexin
 - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
 - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
 - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+- Kernel reads even/odd pairs or stride-2 subsets from a contiguous row (interleave layout), and loading the full width once is affordable.
+- Wrapper-side layout conversion (torch.cat + reshape/contiguous, permute + contiguous) exists solely to make strided data contiguous for the kernel, and profiling shows aclnnCat / aclnnInplaceCopy consuming significant total-op time.
 
 ## Avoid When
 
@@ -23,6 +25,8 @@ Stage a contiguous range into the Unified Buffer first, then use on-chip indexin
 ### Code
 
 - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
+- Stride-2 interleave loads: `x_even = tl.load(ptr + row * dim + arange * 2)`, `x_odd = tl.load(ptr + row * dim + arange * 2 + 1)`.
+- Wrapper-side interleave conversion before kernel launch: `torch.cat(...).view(-1, half, 2).transpose(2, 1).contiguous()`.
 - Direct global-memory gather reads dominate more than the surrounding arithmetic.
 - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
 - A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
@@ -156,3 +160,31 @@ Ascend Triton lowering does not reliably support vector extraction patterns such
 tensor indexing to split a loaded vector/tile. Do not convert three scalar values into a vector only
 to extract components. Prefer separate scalar loads for tiny fixed setup values, and separate
 contiguous channel pointers for hot vector paths.
+
+## Interleave / Stride-2 Variant
+
+When a kernel reads even/odd pairs via stride-2 global loads, or the wrapper converts
+interleave layout to half layout via torch-level copies, replace both with a single
+contiguous full-width load plus on-chip `tl.gather` to extract even and odd elements.
+
+Before (stride-2 global reads):
+
+```python
+even_idx = tl.arange(0, BLOCK_N) * 2
+odd_idx = tl.arange(0, BLOCK_N) * 2 + 1
+x_even = tl.load(ptr + row_base + even_idx, mask=mask)
+x_odd = tl.load(ptr + row_base + odd_idx, mask=mask)
+```
+
+After (contiguous load + on-chip gather):
+
+```python
+base_idx = tl.arange(0, BLOCK_N)
+full = tl.load(ptr + row_base + base_idx * 2 + tl.arange(0, 2 * BLOCK_N) % 2,
+               mask=mask)
+x_even = tl.gather(full, base_idx, axis=0)
+x_odd = tl.gather(full, base_idx + BLOCK_N, axis=0)
+```
+
+This also eliminates wrapper-side layout-copy overhead (aclnnCat, aclnnInplaceCopy)
+that would otherwise appear in total-op profiling.

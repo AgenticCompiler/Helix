@@ -48,8 +48,20 @@ Profiler interpretation notes:
 3. Use 2D addressing: `row_offsets = offs_m[:, None] * row_stride` and `col_offsets = offs_n[None, :]` to create a full `[BLOCK_M, BLOCK_N]` tile.
 4. Keep one-pass inner-dimension streaming when possible.
 5. Tune `BLOCK_M` progressively with parent-vs-parent checks.
-6. Add shape/dtype gates when one global `BLOCK_M` regresses some regimes.
+6. Add shape/dtype gates when one global `BLOCK_M` regresses some regimes. A lightweight tiered approach: fewer rows per program for small shapes (more programs = better parallelism), more rows for large shapes (fewer programs = less launch overhead).
 7. Compose with inner-tile and launch-parameter tuning only after each row-batching step is validated.
+
+### Tiered BLOCK_M example
+
+```python
+if total_rows >= 131072:
+    BLOCK_M = 64
+elif total_rows >= 32768:
+    BLOCK_M = 32
+else:
+    BLOCK_M = 8
+grid = (triton.cdiv(total_rows, BLOCK_M),)
+```
 
 ## Implementation sketches (Triton)
 
