@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
+from triton_agent.optimize_knowledge.pattern_index import (
+    infer_pattern_index_style,
+    write_index as write_pattern_index,
+)
 from triton_agent.skills.catalog import resolve_skill_source_dir
 
 
@@ -31,23 +34,15 @@ def ensure_editable_knowledge_skill(skills_dir: Path, *, language: str = "triton
 
 
 def rebuild_pattern_index(knowledge_dir: Path) -> None:
-    script = knowledge_dir / "scripts" / "build_pattern_index.py"
     patterns_dir = knowledge_dir / "references" / "patterns"
     output = knowledge_dir / "references" / "pattern_index.md"
-    if not script.exists():
-        raise ValueError(f"Pattern index builder does not exist: {script}")
-    subprocess.run(
-        [
-            sys.executable,
-            str(script),
-            "--patterns-dir",
-            str(patterns_dir),
-            "--output",
-            str(output),
-        ],
-        cwd=knowledge_dir,
-        check=True,
+    result = write_pattern_index(
+        patterns_dir=patterns_dir,
+        output=output,
+        style=infer_pattern_index_style(knowledge_dir),
     )
+    if result != 0:
+        raise ValueError(f"Pattern index is out of date: {output}")
 
 
 def promote_editable_knowledge_skill(
@@ -118,7 +113,6 @@ def export_changed_pattern_cards(
     dest_knowledge = update_skills_dir / optimize_knowledge_skill_name(language)
     dest_patterns = dest_knowledge / "references" / "patterns"
     dest_patterns.mkdir(parents=True, exist_ok=True)
-    _ensure_index_scripts(source_knowledge_dir, dest_knowledge)
 
     exported: list[str] = []
     for path in changed_paths:
@@ -161,13 +155,6 @@ def find_pattern_card(knowledge_dir: Path, name: str) -> Path | None:
         if first_line == f"# {name}":
             return path
     return None
-
-
-def _ensure_index_scripts(source_knowledge_dir: Path, dest_knowledge: Path) -> None:
-    source_scripts = source_knowledge_dir / "scripts"
-    dest_scripts = dest_knowledge / "scripts"
-    if source_scripts.is_dir() and not dest_scripts.exists():
-        shutil.copytree(source_scripts, dest_scripts, symlinks=False)
 
 
 def _slugify(name: str) -> str:

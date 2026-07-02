@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Literal, cast
 
 from baseline.check import (
@@ -19,7 +20,10 @@ from shared.round_naming import expected_round_operator_name, expected_round_per
 
 
 _OPTIMIZE_DELETE_PT_FILES_ENV = "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES"
-_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+OptimizePtCleanupMode = Literal["never", "round", "run-test"]
+_PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
+_LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})
+_LEGACY_NEVER_CLEANUP_VALUES = frozenset({"0", "false", "no", "off"})
 _ROUND_METADATA_FILENAMES = {
     "attempts.md",
     "summary.md",
@@ -29,24 +33,67 @@ _ROUND_METADATA_FILENAMES = {
 }
 
 
-def ordinary_optimize_pt_cleanup_enabled() -> bool:
+def ordinary_optimize_pt_cleanup_mode() -> OptimizePtCleanupMode:
     raw_value = os.environ.get(_OPTIMIZE_DELETE_PT_FILES_ENV)
     if raw_value is None:
-        return False
-    return raw_value.strip().lower() in _TRUTHY_ENV_VALUES
+        return "round"
+    value = raw_value.strip().lower()
+    if value in _PT_CLEANUP_MODES:
+        return cast(OptimizePtCleanupMode, value)
+    if value in _LEGACY_ROUND_CLEANUP_VALUES:
+        return "round"
+    if value in _LEGACY_NEVER_CLEANUP_VALUES:
+        return "never"
+    return "round"
+
+
+def ordinary_optimize_pt_cleanup_enabled() -> bool:
+    return ordinary_optimize_pt_cleanup_mode() == "round"
+
+
+def is_ordinary_pt_result_file(path: Path) -> bool:
+    name_lower = path.name.lower()
+    return name_lower == "test_result.pt" or name_lower.endswith("_result.pt")
+
+
+def cleanup_pt_file(pt_file: Path) -> str | None:
+    if not pt_file.is_file() or not is_ordinary_pt_result_file(pt_file):
+        return None
+    try:
+        pt_file.unlink()
+        return pt_file.name
+    except OSError:
+        return None
 
 
 def cleanup_dir_pt_files(directory: Path) -> list[str]:
     cleaned: list[str] = []
-    for pt_file in sorted(directory.iterdir()):
-        if not pt_file.is_file():
-            continue
-        name_lower = pt_file.name.lower()
-        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
+    try:
+        candidates = sorted(directory.iterdir())
+    except OSError:
+        return cleaned
+    for pt_file in candidates:
+        cleaned_name = cleanup_pt_file(pt_file)
+        if cleaned_name is not None:
+            cleaned.append(cleaned_name)
+    return cleaned
+
+
+def cleanup_dir_prof_artifacts(directory: Path) -> list[str]:
+    cleaned: list[str] = []
+    try:
+        candidates = sorted(directory.iterdir())
+    except OSError:
+        return cleaned
+    for artifact in candidates:
+        if not artifact.name.startswith("PROF_"):
             continue
         try:
-            pt_file.unlink()
-            cleaned.append(pt_file.name)
+            if artifact.is_dir() and not artifact.is_symlink():
+                shutil.rmtree(artifact)
+            else:
+                artifact.unlink()
+            cleaned.append(artifact.name)
         except OSError:
             pass
     return cleaned
@@ -299,6 +346,7 @@ def check_round(
 
     if ordinary_optimize_pt_cleanup_enabled():
         cleanup_dir_pt_files(round_dir)
+    cleanup_dir_prof_artifacts(round_dir)
     local_optimum_warnings: tuple[str, ...] = ()
     if baseline_perf_path is not None:
         local_optimum_warnings = collect_local_optimum_warnings(

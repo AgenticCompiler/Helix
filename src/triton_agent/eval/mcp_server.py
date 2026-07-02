@@ -396,8 +396,8 @@ def _run_subcommand(
     leased_device: str | None,
     workspace: Path,
 ) -> dict[str, object]:
-    run_command_script = operator_eval_script_path("run-command")
-    command = [sys.executable, str(run_command_script), subcommand, *arguments]
+    run_eval_cli = operator_eval_script_path("cli")
+    command = [sys.executable, str(run_eval_cli), subcommand, *arguments]
     env = dict(os.environ)
     if leased_device is not None:
         env["ASCEND_RT_VISIBLE_DEVICES"] = leased_device

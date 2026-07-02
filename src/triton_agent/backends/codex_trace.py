@@ -607,8 +607,8 @@ class CodexJsonLineParser:
         """
         Detect and strip PowerShell wrapper from raw_command.
 
-        e.g.: "powershell.exe" -Command "python ./.codex/skills/.../run-command.py run-bench ..."
-        -> "python ./.codex/skills/.../run-command.py run-bench ..."
+        e.g.: "powershell.exe" -Command "python ./.codex/skills/.../cli.py run-bench ..."
+        -> "python ./.codex/skills/.../cli.py run-bench ..."
         """
         ps_re = re.compile(
             r"""^"([^"]*\\powershell\.exe)"\s+-Command\s+(?P<quote>['"])(?P<inner>.+)(?P=quote)$""",

@@ -107,6 +107,20 @@ def build_index_text(symptoms_dir: Path) -> str:
     return render_index(cards)
 
 
+def write_index(*, symptoms_dir: Path, output: Path, check: bool = False) -> int:
+    rendered = build_index_text(symptoms_dir)
+    if check:
+        current = output.read_text(encoding="utf-8")
+        if current != rendered:
+            print(f"Symptom index is out of date: {output}")
+            return 1
+        return 0
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the optimize symptom index from symptom cards.")
     parser.add_argument("--symptoms-dir", required=True)
@@ -114,17 +128,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
 
-    rendered = build_index_text(Path(args.symptoms_dir))
-    output_path = Path(args.output)
-    if args.check:
-        current = output_path.read_text(encoding="utf-8")
-        if current != rendered:
-            print(f"Symptom index is out of date: {output_path}")
-            return 1
-        return 0
-
-    output_path.write_text(rendered, encoding="utf-8")
-    return 0
+    return write_index(
+        symptoms_dir=Path(args.symptoms_dir),
+        output=Path(args.output),
+        check=bool(args.check),
+    )
 
 
 if __name__ == "__main__":

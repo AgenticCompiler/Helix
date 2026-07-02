@@ -7,16 +7,20 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
-from typing import Iterator, Protocol, TextIO, cast
+from typing import Iterator, Literal, Protocol, TextIO, cast
 
 from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
-_RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
 _BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
 _BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
 _BLOCKS_PARALLEL_SAFE_VALUE = "0"
+_OPTIMIZE_DELETE_PT_FILES_ENV = "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES"
+_PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
+_LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})
+_LEGACY_NEVER_CLEANUP_VALUES = frozenset({"0", "false", "no", "off"})
+PtCleanupMode = Literal["never", "round", "run-test"]
 
 
 def _profile_bench_hint(profile_dir: Path) -> str:
@@ -27,10 +31,56 @@ def _profile_bench_hint(profile_dir: Path) -> str:
     )
 
 
+def _pt_cleanup_mode() -> PtCleanupMode:
+    raw_value = os.environ.get(_OPTIMIZE_DELETE_PT_FILES_ENV)
+    if raw_value is None:
+        return "round"
+    value = raw_value.strip().lower()
+    if value in _PT_CLEANUP_MODES:
+        return cast(PtCleanupMode, value)
+    if value in _LEGACY_ROUND_CLEANUP_VALUES:
+        return "round"
+    if value in _LEGACY_NEVER_CLEANUP_VALUES:
+        return "never"
+    return "round"
+
+
+def _is_ordinary_pt_result_file(path: Path) -> bool:
+    name_lower = path.name.lower()
+    return name_lower == "test_result.pt" or name_lower.endswith("_result.pt")
+
+
+def _cleanup_pt_file(pt_file: Path) -> str | None:
+    if not pt_file.is_file() or not _is_ordinary_pt_result_file(pt_file):
+        return None
+    try:
+        pt_file.unlink()
+        return pt_file.name
+    except OSError:
+        return None
+
+
+def _cleanup_run_test_pt_files(paths: tuple[Path | None, ...]) -> list[str]:
+    if _pt_cleanup_mode() != "run-test":
+        return []
+    cleaned: list[str] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if path is None:
+            continue
+        resolved_path = path.resolve()
+        if resolved_path in seen:
+            continue
+        seen.add(resolved_path)
+        cleaned_name = _cleanup_pt_file(resolved_path)
+        if cleaned_name is not None:
+            cleaned.append(str(resolved_path))
+    return cleaned
+
+
 @contextlib.contextmanager
 def _guard_operator_execution_env(command: str) -> Iterator[None]:
     if command not in {
-        "run-test",
         "run-test-baseline",
         "run-test-optimize",
         "run-bench",
@@ -179,9 +229,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_test = subparsers.add_parser("run-test")
-    _add_run_test_arguments(run_test)
-
     run_test_baseline = subparsers.add_parser("run-test-baseline")
     _add_run_test_arguments(run_test_baseline)
 
@@ -223,13 +270,6 @@ def build_parser() -> argparse.ArgumentParser:
     profile_report.add_argument("--format", choices=["markdown", "json"], default="markdown")
     profile_report.add_argument("--top", type=int, default=5)
 
-    compare_result = subparsers.add_parser("compare-result")
-    compare_result.add_argument("--ref-result", "--oracle-result", dest="ref_result", required=True)
-    compare_result.add_argument("--new-result", required=True)
-    compare_result.add_argument("--remote")
-    compare_result.add_argument("--remote-workdir")
-    compare_result.add_argument("--verbose", action="store_true")
-
     compare_perf = subparsers.add_parser("compare-perf")
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
@@ -266,25 +306,6 @@ def main(argv: list[str] | None = None) -> int:
 def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     remote, remote_workdir = _resolve_remote_execution(args)
 
-    if args.command == "compare-result":
-        compare_result_files, compare_remote_result_files = _load_compare_result_functions()
-        ref_result = _resolve_existing_path(parser, args.ref_result, "Reference result")
-        new_result = _resolve_existing_path(parser, args.new_result, "New result")
-        if remote is not None:
-            try:
-                return compare_remote_result_files(
-                    ref_result,
-                    new_result,
-                    remote,
-                    remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            except (RuntimeError, ValueError) as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-        return compare_result_files(ref_result, new_result)
-
     if args.command == "compare-perf":
         compare_perf_files = _load_compare_perf_function()
         baseline_perf = _resolve_existing_path(parser, args.baseline, "Baseline perf")
@@ -296,7 +317,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             metric_source=args.metric_source,
         )
 
-    if args.command in {"run-test", "run-test-baseline", "run-test-optimize"}:
+    if args.command in {"run-test-baseline", "run-test-optimize"}:
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
@@ -357,8 +378,8 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                     verbose=bool(args.verbose),
                     stderr=sys.stderr,
                 )
-            elif resolved_test_mode == "differential":
-                print(_RUN_TEST_HINT)
+            if args.command == "run-test-optimize":
+                _cleanup_run_test_pt_files((archived_result,))
         elif ref_result is not None:
             print(
                 "Differential run-test did not produce an archived result required for automatic comparison.",
@@ -590,7 +611,7 @@ def _validate_run_test_comparison_inputs(
                 "--ref-result or --ref-operator-file"
             )
     elif ref_result is not None and ref_operator_file is not None:
-        parser.error("run-test differential mode accepts at most one of --ref-result or --ref-operator-file")
+        parser.error("run-test-baseline differential mode accepts at most one of --ref-result or --ref-operator-file")
 
     if ref_result is not None and resolved_test_mode != "differential":
         parser.error("--ref-result is supported only with --test-mode differential")

@@ -4,15 +4,12 @@ import argparse
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
+
+PatternIndexStyle = Literal["default", "extended", "tilelang"]
 
 REQUIRED_SECTIONS = ("Summary", "Use When")
-OPTIONAL_SECTIONS = (
-    "Avoid When",
-    "Signals",
-    "Related Patterns",
-    "What To Verify After Applying",
-)
 VALID_PRIORITIES = ("high", "normal")
 _FRONTMATTER_BOUNDARY = "---"
 _SECTION_HEADING_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$", flags=re.MULTILINE)
@@ -34,6 +31,15 @@ class PatternCard:
     related_patterns: list[str]
     verify_after_applying: list[str]
     source_path: Path
+
+
+def infer_pattern_index_style(knowledge_dir: Path) -> PatternIndexStyle:
+    name = knowledge_dir.name
+    if name.startswith("tilelang-"):
+        return "tilelang"
+    if name.endswith("-v2") or name.endswith("-v3"):
+        return "extended"
+    return "default"
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -147,10 +153,6 @@ def parse_pattern_card(path: Path) -> PatternCard:
     )
 
 
-def _render_bullets(items: list[str]) -> list[str]:
-    return [f"  - {item}" for item in items]
-
-
 def _iter_pattern_card_paths(patterns_dir: Path) -> list[Path]:
     ignored_names = {"README.md", "index.md"}
     return [
@@ -175,7 +177,11 @@ def build_high_priority_reminder_lines(patterns_dir: Path) -> list[str]:
     ]
 
 
-def render_index(cards: list[PatternCard]) -> str:
+def _render_bullets(items: list[str]) -> list[str]:
+    return [f"  - {item}" for item in items]
+
+
+def _render_detailed_index(cards: list[PatternCard], *, include_extended_fields: bool) -> str:
     high_priority_cards = [card for card in cards if card.priority == "high"]
     lines = [
         "# Optimization Pattern Index",
@@ -200,12 +206,7 @@ def render_index(cards: list[PatternCard]) -> str:
         lines.append("- None.")
         lines.append("")
 
-    lines.extend(
-        [
-            "## Generated Pattern Summaries",
-            "",
-        ]
-    )
+    lines.extend(["## Generated Pattern Summaries", ""])
     for card in cards:
         lines.append(f"### `{card.identifier}`")
         lines.append("")
@@ -214,33 +215,112 @@ def render_index(cards: list[PatternCard]) -> str:
         if card.use_when:
             lines.append("- Use When:")
             lines.extend(_render_bullets(card.use_when))
+        if include_extended_fields:
+            if card.avoid_when:
+                lines.append("- Avoid When:")
+                lines.extend(_render_bullets(card.avoid_when))
+            if card.signals_code:
+                lines.append("- Signals / Code:")
+                lines.extend(_render_bullets(card.signals_code))
+            if card.signals_profile:
+                lines.append("- Signals / Profile:")
+                lines.extend(_render_bullets(card.signals_profile))
+            if card.signals_ir:
+                lines.append("- Signals / IR:")
+                lines.extend(_render_bullets(card.signals_ir))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def build_index_text(patterns_dir: Path) -> str:
-    return render_index(list_pattern_cards(patterns_dir))
+def _render_tilelang_index(cards: list[PatternCard]) -> str:
+    high_priority_cards = [card for card in cards if card.priority == "high"]
+    lines = [
+        "# Optimization Pattern Index",
+        "",
+        "Use this file to choose optimization directions before reading detailed pattern references.",
+        "",
+        "Read this generated index first. Then read only the most relevant detailed pattern files.",
+        "",
+        "## High Priority Patterns",
+        "",
+    ]
+    if high_priority_cards:
+        for card in high_priority_cards:
+            lines.append(f"### `{card.identifier}`")
+            lines.append("")
+            lines.append(f"- Summary: {card.summary}")
+            lines.append(f"- Source: [{card.source_path.name}](patterns/{card.source_path.name})")
+            lines.append("")
+    else:
+        lines.append("- None.")
+        lines.append("")
+
+    lines.extend(["## All Patterns", ""])
+    if cards:
+        for card in cards:
+            lines.append(f"### `{card.identifier}`")
+            lines.append("")
+            lines.append(f"- Summary: {card.summary}")
+            lines.append(f"- Priority: {card.priority}")
+            lines.append(f"- Source: [{card.source_path.name}](patterns/{card.source_path.name})")
+            lines.append("")
+    else:
+        lines.append("- No patterns yet.")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_index_text(
+    patterns_dir: Path,
+    *,
+    style: PatternIndexStyle = "default",
+) -> str:
+    cards = list_pattern_cards(patterns_dir)
+    if style == "tilelang":
+        return _render_tilelang_index(cards)
+    return _render_detailed_index(cards, include_extended_fields=style == "extended")
+
+
+def write_index(
+    *,
+    patterns_dir: Path,
+    output: Path,
+    style: PatternIndexStyle = "default",
+    check: bool = False,
+) -> int:
+    rendered = build_index_text(patterns_dir, style=style)
+    if check:
+        current = output.read_text(encoding="utf-8")
+        if current != rendered:
+            print(f"Pattern index is out of date: {output}")
+            return 1
+        return 0
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="utf-8")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the optimize pattern index from pattern cards.")
     parser.add_argument("--patterns-dir", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--style",
+        choices=("default", "extended", "tilelang"),
+        default="default",
+    )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
 
-    rendered = build_index_text(Path(args.patterns_dir))
-    output_path = Path(args.output)
-    if args.check:
-        current = output_path.read_text(encoding="utf-8")
-        if current != rendered:
-            print(f"Pattern index is out of date: {output_path}")
-            return 1
-        return 0
-
-    output_path.write_text(rendered, encoding="utf-8")
-    return 0
+    return write_index(
+        patterns_dir=Path(args.patterns_dir),
+        output=Path(args.output),
+        style=args.style,
+        check=bool(args.check),
+    )
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

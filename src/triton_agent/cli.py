@@ -101,7 +101,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
-                "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
+                "PT cleanup policy: never, round, or run-test. Default round; --reset-optimize still deletes reset artifacts.",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",

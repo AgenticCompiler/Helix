@@ -19,6 +19,9 @@ from triton_agent.eval.runners import (
     run_remote_probe_bench,
     run_remote_test,
 )
+from triton_agent.optimize.pt_cleanup import (
+    cleanup_run_test_pt_files,
+)
 from triton_agent.terminal.render import render_result
 from triton_agent.remote.env import resolve_remote_execution
 
@@ -79,7 +82,8 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 remote_workdir,
                 verbose=args.verbose,
             )
-        else:
+        cleaned_pt = cleanup_run_test_pt_files((archived_result,))
+        if ref_result is None and resolved_test_mode == "differential" and not cleaned_pt:
             print(_RUN_TEST_HINT)
     elif ref_result is not None:
         print(
