@@ -1158,7 +1158,7 @@ class GenerationContractTests(unittest.TestCase):
             "skills/common/ascend-npu-analyze-round-performance/SKILL.md",
             "skills/common/ascend-npu-gen-eval-suite/SKILL.md",
             "skills/common/ascend-npu-profile-operator/SKILL.md",
-            "skills/common/ascend-npu-kernel-bench-logs/SKILL.md",
+            "skills/common/ascend-npu-distill-patterns/SKILL.md",
             "skills/triton/triton-npu-optimize/SKILL.md",
             "skills/triton/triton-npu-optimize/references/artifacts.md",
         )

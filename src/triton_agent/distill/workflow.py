@@ -10,29 +10,29 @@ from pathlib import Path
 from threading import Lock
 from typing import TextIO, cast
 
-from triton_agent.diff_skills_update.agent import run_diff_skills_agent
-from triton_agent.diff_skills_update.discovery import discover_operator_pairs
-from triton_agent.diff_skills_update.models import (
+from triton_agent.distill.agent import run_distill_agent
+from triton_agent.distill.discovery import discover_operator_pairs
+from triton_agent.distill.models import (
     DiffAgentOutput,
-    DiffSkillsUpdateConfig,
+    DistillConfig,
     IterationReport,
     OperatorPair,
     PairRunResult,
     SkipRecord,
     Status,
 )
-from triton_agent.diff_skills_update.prompts import (
+from triton_agent.distill.prompts import (
     build_analysis_prompt,
-    build_diff_to_skill_prompt,
+    build_distill_prompt,
     build_simulate_prompt,
 )
-from triton_agent.diff_skills_update.reports import (
+from triton_agent.distill.reports import (
     read_json_file,
     report_path_for_pair,
     write_pair_report,
     write_skip_report,
 )
-from triton_agent.diff_skills_update.skills_workspace import (
+from triton_agent.distill.skills_workspace import (
     ensure_skills_workspace,
     export_changed_patterns,
     promote_converged_knowledge_workspace,
@@ -40,7 +40,8 @@ from triton_agent.diff_skills_update.skills_workspace import (
     resolve_pattern_card,
     snapshot_pattern_cards,
 )
-from triton_agent.diff_skills_update.workspace_organizer import (
+from triton_agent.distill.workspace_organizer import (
+    ANALYZE_COMMIT_PERF_SKILL_NAME,
     DEFAULT_OPERATORS_DIR,
     DEFAULT_PLAN_NAME,
     build_organize_workspaces_prompt,
@@ -55,10 +56,10 @@ from triton_agent.models import AgentResult
 AgentRunner = Callable[..., AgentResult]
 
 
-def run_diff_skills_update(
-    config: DiffSkillsUpdateConfig,
+def run_distill(
+    config: DistillConfig,
     *,
-    agent_runner: AgentRunner = run_diff_skills_agent,
+    agent_runner: AgentRunner = run_distill_agent,
     stream: TextIO | None = None,
 ) -> list[PairRunResult]:
     output_stream = stream or sys.stderr
@@ -126,6 +127,9 @@ def run_diff_skills_update(
             stream_output=config.stream_output,
             verbose=config.verbose,
             language=config.language,
+            skills_root=config.skills_dir,
+            repository_skill_names=(ANALYZE_COMMIT_PERF_SKILL_NAME,),
+            stage_editable_knowledge=False,
             output_label="[git-repo]",
         )
         if plan_result.return_code != 0 or not plan_path.is_file():
@@ -286,7 +290,7 @@ def run_diff_skills_update(
     failed = sum(1 for r in results if r.status == "failed")
     skipped = sum(1 for r in results if r.status == "skipped")
     print(
-        f"\n[diff-skills-update] summary: "
+        f"\n[distill] summary: "
         f"{aligned} aligned, {not_aligned} not-aligned, "
         f"{failed} failed, {skipped} skipped "
         f"(total {len(results)} pairs)",
@@ -298,7 +302,7 @@ def run_diff_skills_update(
 def _run_pair(
     pair: OperatorPair,
     *,
-    config: DiffSkillsUpdateConfig,
+    config: DistillConfig,
     knowledge_dir: Path,
     pair_count_in_dir: int,
     agent_runner: AgentRunner,
@@ -325,21 +329,22 @@ def _run_pair(
     baseline_copy = simulate_dir / pair.baseline_path.name
     shutil.copy2(pair.baseline_path, baseline_copy)
 
-    diff_output = simulate_dir / f"diff-skills-{pair.stem}.json"
-    diff_prompt = build_diff_to_skill_prompt(pair, skills_dir=config.skills_dir, output_json=diff_output, language=config.language)
+    distill_output = simulate_dir / f"distill-{pair.stem}.json"
+    distill_prompt = build_distill_prompt(pair, skills_dir=config.skills_dir, output_json=distill_output, language=config.language)
     with skills_lock:
-        diff_result = agent_runner(
+        distill_result = agent_runner(
             agent_name=config.agent_name,
             workdir=pair.operator_dir,
-            prompt=diff_prompt,
+            prompt=distill_prompt,
             stream_output=config.stream_output,
             verbose=config.verbose,
             language=config.language,
-            output_label=f"[{pair.operator_dir.name}] [diff-skills]",
+            skills_root=config.skills_dir,
+            output_label=f"[{pair.operator_dir.name}] [distill]",
         )
-        if diff_result.return_code == 0:
+        if distill_result.return_code == 0:
             _regenerate_if_possible(knowledge_dir)
-    if diff_result.return_code != 0:
+    if distill_result.return_code != 0:
         result = PairRunResult(
             pair=pair,
             status="failed",
@@ -347,20 +352,20 @@ def _run_pair(
             updated_patterns=[],
             iterations=[],
             report_path=report_path,
-            message="diff-to-skill agent failed",
+            message="distill agent failed",
         )
         write_pair_report(result)
         return result
 
-    diff_output_data = _read_diff_output(diff_output)
+    distill_output_data = _read_distill_output(distill_output)
     matched_patterns = _merge_unique(
-        diff_output_data.matched_patterns,
-        diff_output_data.updated_patterns,
+        distill_output_data.matched_patterns,
+        distill_output_data.updated_patterns,
     )
-    updated_patterns = list(diff_output_data.updated_patterns)
+    updated_patterns = list(distill_output_data.updated_patterns)
 
     # optimize-process: skip simulate-analyze if all optimizations already covered
-    if pair.source_kind == "optimize-process" and diff_output_data.aligned:
+    if pair.source_kind == "optimize-process" and distill_output_data.aligned:
         result = PairRunResult(
             pair=pair,
             status="aligned",
@@ -437,6 +442,7 @@ def _run_pair(
                 stream_output=config.stream_output,
                 verbose=config.verbose,
                 language=config.language,
+                skills_root=config.skills_dir,
                 output_label=f"[{pair.operator_dir.name}] [analyze-iter-{iteration}/{config.max_iterations}]",
             )
             if analysis_result.return_code == 0:
@@ -445,7 +451,7 @@ def _run_pair(
             aligned = bool(analysis_data.get("aligned"))
             if analysis_result.return_code == 0 and aligned and config.promote_converged_skills:
                 promoted_dir = promote_converged_knowledge_workspace(knowledge_dir, language=config.language)
-                print(f"[{pair.operator_dir.name}] promote-converged-skills: {promoted_dir}", file=stream)
+                print(f"[{pair.operator_dir.name}] promote-aligned: {promoted_dir}", file=stream)
         if analysis_result.return_code != 0:
             aligned = False
         analysis_summary = str(analysis_data.get("summary") or "")
@@ -492,7 +498,7 @@ def _run_pair(
     return result
 
 
-def _read_diff_output(path: Path) -> DiffAgentOutput:
+def _read_distill_output(path: Path) -> DiffAgentOutput:
     data = read_json_file(path)
     return DiffAgentOutput(
         matched_patterns=list(_string_list(data.get("matched_patterns"))),
@@ -525,7 +531,7 @@ def _merge_unique(left: list[str], right: list[str]) -> list[str]:
 
 def _write_enriched_manifest(
     *,
-    config: DiffSkillsUpdateConfig,
+    config: DistillConfig,
     knowledge_dir: Path,
     exported: list[str],
     updated_pattern_names: list[str],

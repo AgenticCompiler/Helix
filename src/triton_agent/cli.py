@@ -11,7 +11,7 @@ from triton_agent.terminal.help import style_help_text
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
-from triton_agent.commands.diff_skills_update import handle_diff_skills_update
+from triton_agent.commands.distill import handle_distill
 from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
@@ -62,7 +62,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex -l triton",
-    "triton-agent diff-skills-update -i kernels --agent codex",
+    "triton-agent distill -i kernels",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
@@ -198,7 +198,7 @@ class _CommandSpec:
     has_force_verify: bool = False
     has_log_tools: bool = False
     has_url: bool = False
-    has_diff_skills_update_options: bool = False
+    has_distill_options: bool = False
     has_operator_filter: bool = False
 
 
@@ -482,17 +482,18 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_log_tools=True,
         has_operator_filter=True,
     ),
-    CommandKind.DIFF_SKILLS_UPDATE: _CommandSpec(
-        handler=handle_diff_skills_update,
+    CommandKind.DISTILL: _CommandSpec(
+        handler=handle_distill,
         help_group="Optimization",
-        help_summary="Update optimize skills from baseline/opt diffs and simulate regeneration.",
-        description="Scan operator directories, update optimize skills from opt diffs, and run a simulate loop.",
+        help_summary="Distill optimization evidence into reusable pattern skills.",
+        description="Scan optimization evidence, update optimize knowledge, and run a simulate loop.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_show_output=True,
         has_language=True,
         concurrency_default=1,
-        has_diff_skills_update_options=True,
+        has_distill_options=True,
     ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
         handler=handle_upload_optimize,
@@ -722,7 +723,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "--operator-filter",
                 help="Shell-style glob matched against the selected operator filename basename after built-in exclusions.",
             )
-        if spec.has_diff_skills_update_options:
+        if spec.has_distill_options:
             subparser.add_argument(
                 "--source",
                 choices=("code-diff", "optimize-process", "git-repo"),
@@ -738,10 +739,10 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Editable skills workspace. Defaults to <input>/skills.",
             )
             subparser.add_argument(
-                "--update-skills-dir",
+                "--export-dir",
                 help="Export directory for updated pattern cards. Defaults to <input>/update_skills.",
             )
-            subparser.add_argument("--max-iterations", type=_parse_positive_int_value, default=3)
+            subparser.add_argument("--max-refine-rounds", type=_parse_positive_int_value, default=3)
             subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")
             subparser.add_argument(
                 "--skip-existing",
@@ -749,9 +750,9 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Skip pairs whose existing simulate report is already aligned.",
             )
             subparser.add_argument(
-                "--promote-converged-skills",
+                "--promote-aligned",
                 action="store_true",
-                help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+                help="After a pair reaches aligned status, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
             )
             subparser.add_argument(
                 "--git-base",
@@ -963,7 +964,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
-        "diff_skills_update": "diff-skills-update",
+        "distill": "distill",
         "report_batch": "report-batch",
         "report": "report",
         "clean": "clean",

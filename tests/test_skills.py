@@ -7,6 +7,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.skills.staging import SkillLinkManager
+from triton_agent.skills.catalog import list_catalog_skill_names
 
 
 _BACKEND_SKILL_DIRS = {
@@ -20,6 +21,12 @@ _BACKEND_SKILL_DIRS = {
 
 
 class SkillLinkManagerTests(unittest.TestCase):
+    def test_catalog_contains_distill_skill_and_omits_legacy_bench_logs_skill(self) -> None:
+        names = list_catalog_skill_names()
+
+        self.assertIn("ascend-npu-distill-patterns", names)
+        self.assertNotIn("ascend-npu-kernel-bench-logs", names)
+
     def test_optimize_propagate_nan_guidance_is_workflow_visible(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         optimize_skill = repo_root / "skills" / "triton" / "triton-npu-optimize" / "SKILL.md"

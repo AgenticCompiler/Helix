@@ -8,7 +8,7 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
-DiffSkillsUpdateSource = Literal["code-diff", "optimize-process", "git-repo"]
+DistillSource = Literal["code-diff", "optimize-process", "git-repo"]
 
 
 def _empty_str_list() -> list[str]:
@@ -17,11 +17,11 @@ def _empty_str_list() -> list[str]:
 
 
 @dataclass(frozen=True)
-class DiffSkillsUpdateConfig:
+class DistillConfig:
     input_root: Path
     skills_dir: Path
     update_skills_dir: Path
-    source: DiffSkillsUpdateSource
+    source: DistillSource
     agent_name: str
     max_iterations: int
     concurrency: int

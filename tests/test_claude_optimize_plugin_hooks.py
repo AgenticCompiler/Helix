@@ -9,13 +9,28 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Optional, Protocol, cast
+from typing import Callable, Optional, Protocol, cast
 
 HOOKS_ROOT = Path(__file__).resolve().parents[1] / "hooks" / "claude_plugin"
 
 
 class BootstrapResultLike(Protocol):
     additional_context: str | None
+
+
+class RunGitLike(Protocol):
+    def __call__(self, args: list[str], cwd: Optional[Path] = None) -> str: ...
+
+
+class BootstrapRuntimeStateLike(Protocol):
+    def __call__(
+        self,
+        workspace: Path,
+        *,
+        compiler_source_enabled: bool | None = None,
+        compiler_source_cache_dir: Path | None = None,
+        run_git: RunGitLike | None = None,
+    ) -> BootstrapResultLike: ...
 
 
 def _load_state_bootstrap_module() -> ModuleType:
@@ -33,7 +48,10 @@ def _load_state_bootstrap_module() -> ModuleType:
 
 
 _STATE_BOOTSTRAP = _load_state_bootstrap_module()
-bootstrap_runtime_state = cast(Any, getattr(_STATE_BOOTSTRAP, "bootstrap_runtime_state"))
+bootstrap_runtime_state = cast(
+    BootstrapRuntimeStateLike,
+    getattr(_STATE_BOOTSTRAP, "bootstrap_runtime_state"),
+)
 validate_existing_state = cast(
     Callable[[Path], BootstrapResultLike],
     getattr(_STATE_BOOTSTRAP, "validate_existing_state"),

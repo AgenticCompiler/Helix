@@ -5,13 +5,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.diff_skills_update.skills_workspace import (
+from triton_agent.distill.skills_workspace import (
     export_changed_patterns,
     snapshot_pattern_cards,
 )
 
 
-class DiffSkillsUpdateSkillsWorkspaceTests(unittest.TestCase):
+class DistillSkillsWorkspaceTests(unittest.TestCase):
     def test_export_changed_patterns_copies_only_delta(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

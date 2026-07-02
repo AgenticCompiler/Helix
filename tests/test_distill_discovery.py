@@ -7,10 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.diff_skills_update.discovery import discover_operator_pairs
+from triton_agent.distill.discovery import discover_operator_pairs
 
 
-class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
+class DistillDiscoveryTests(unittest.TestCase):
     def test_skips_operator_without_opt_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
