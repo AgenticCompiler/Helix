@@ -5,7 +5,7 @@ description: Use when an optimize round has compiler source analysis enabled and
 
 # Analyze Compiler Source For Performance
 
-Use the CLI-provided AscendNPU-IR checkout to explain one narrowed compiler-side performance question, then turn that explanation into a concrete next operator change for the current Triton Ascend optimize round.
+Use the CLI/plugin-provided AscendNPU-IR checkout to explain one narrowed compiler-side performance question, then turn that explanation into a concrete next operator change for the current Triton Ascend optimize round.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Use compiler source to explain one performance-related compiler behavior that pr
 - at least one round-local performance artifact:
   - `opt-round-N/perf-analysis.md`
   - `opt-round-N/ir/`
-- the CLI-provided compiler source path and commit
+- the CLI/plugin-provided compiler source path and commit
 - one narrowed compiler-side performance question
 
 ## When To Use
@@ -46,7 +46,7 @@ Use compiler source to explain one performance-related compiler behavior that pr
 
 ## Navigation Rules
 
-- In this skill, `docs`, `lib`, `include`, and `test` always mean paths under the CLI-provided compiler source checkout.
+- In this skill, `docs`, `lib`, `include`, and `test` always mean paths under the CLI/plugin-provided compiler source checkout.
 - Prefer `<compiler-source-dir>/docs/` first for semantic orientation.
 - Prefer `<compiler-source-dir>/bishengir/lib/` for implementation evidence.
 - Treat `<compiler-source-dir>/bishengir/include/` as a navigation and contract aid, not the main evidence source.
@@ -69,7 +69,7 @@ Write `opt-round-N/compiler-analysis.md` with these sections:
 
 ## Reasoning Rules
 
-- Use only the CLI-provided compiler source path and commit.
+- Use only the CLI/plugin-provided compiler source path and commit.
 - Treat the compiler source checkout as read-only.
 - Do not run `git clone`, `git fetch`, or `git pull`.
 - Separate direct facts from inference.
