@@ -726,21 +726,17 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_distill_options:
             subparser.add_argument(
                 "--source",
-                choices=("code-diff", "optimize-process", "git-repo"),
-                default="code-diff",
+                choices=("diff", "optimize", "git"),
+                default="diff",
                 help=(
-                    "Input source: code-diff uses opt_*.py pairs; "
-                    "optimize-process uses optimize workspaces with learned_lessons.md; "
-                    "git-repo extracts operator workspaces from git commit history."
+                    "Input source: diff uses opt_*.py pairs; "
+                    "optimize uses optimize workspaces with learned_lessons.md; "
+                    "git extracts operator workspaces from git commit history."
                 ),
             )
             subparser.add_argument(
-                "--skills-dir",
-                help="Editable skills workspace. Defaults to <input>/skills.",
-            )
-            subparser.add_argument(
-                "--export-dir",
-                help="Export directory for updated pattern cards. Defaults to <input>/update_skills.",
+                "--output-dir",
+                help="Output directory for updated pattern cards. Defaults to <input>/distill-output.",
             )
             subparser.add_argument("--max-refine-rounds", type=_parse_positive_int_value, default=3)
             subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")

@@ -16,7 +16,7 @@ from triton_agent.distill.models import (
 def discover_operator_pairs(
     root: Path,
     *,
-    source: DistillSource = "code-diff",
+    source: DistillSource = "diff",
     stream: TextIO | None = None,
     exclude_dirs: set[Path] | None = None,
 ) -> DiscoveryResult:
@@ -26,7 +26,7 @@ def discover_operator_pairs(
         raise ValueError(f"Input path is not a directory: {root}")
 
     excluded = {path.resolve() for path in exclude_dirs or set()}
-    if source == "optimize-process":
+    if source == "optimize":
         return _discover_optimize_process_pairs(root, excluded=excluded, stream=stream)
     return _discover_diff_pairs(root, excluded=excluded, stream=stream)
 

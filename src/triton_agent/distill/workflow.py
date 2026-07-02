@@ -55,6 +55,7 @@ from triton_agent.distill.git_repo_workspaces import (
 from triton_agent.models import AgentResult
 
 AgentRunner = Callable[..., AgentResult]
+DISTILL_SIMULATOR_DIR_NAME = "distill-simulator"
 
 
 def run_distill(
@@ -72,50 +73,53 @@ def run_distill(
     if discovery_root is None:
         return []
 
-    discovery = discover_operator_pairs(
-        discovery_root,
-        source=config.source,
-        stream=output_stream,
-        exclude_dirs={config.skills_dir, config.update_skills_dir},
-    )
-    knowledge_dir = ensure_editable_knowledge_skill(config.skills_dir, language=config.language)
-    pattern_snapshot = snapshot_pattern_card_texts(knowledge_dir)
-    for skip in discovery.skips:
-        _write_skip_report(skip)
-    if not discovery.pairs:
-        print("No valid operator pairs found.", file=output_stream)
-        return []
-
-    validated_pairs = _validate_operator_pairs(discovery.pairs, stream=output_stream)
-    if not validated_pairs:
-        print(
-            f"All {len(discovery.pairs)} discovered pair(s) failed validation.",
-            file=output_stream,
+    try:
+        discovery = discover_operator_pairs(
+            discovery_root,
+            source=config.source,
+            stream=output_stream,
+            exclude_dirs={config.skills_dir, config.output_dir},
         )
-        return []
-    if len(validated_pairs) < len(discovery.pairs):
-        print(
-            f"Validated {len(validated_pairs)}/{len(discovery.pairs)} operator pairs.",
-            file=output_stream,
-        )
+        knowledge_dir = ensure_editable_knowledge_skill(config.skills_dir, language=config.language)
+        pattern_snapshot = snapshot_pattern_card_texts(knowledge_dir)
+        for skip in discovery.skips:
+            _write_skip_report(skip)
+        if not discovery.pairs:
+            print("No valid operator pairs found.", file=output_stream)
+            return []
 
-    results = _distill_operator_pairs(
-        validated_pairs,
-        config=config,
-        knowledge_dir=knowledge_dir,
-        agent_runner=agent_runner,
-        stream=output_stream,
-    )
-    _export_distilled_patterns(
-        config=config,
-        knowledge_dir=knowledge_dir,
-        pattern_snapshot=pattern_snapshot,
-        results=results,
-        agent_runner=agent_runner,
-        stream=output_stream,
-    )
-    _print_distill_summary(results, stream=output_stream)
-    return results
+        validated_pairs = _validate_operator_pairs(discovery.pairs, stream=output_stream)
+        if not validated_pairs:
+            print(
+                f"All {len(discovery.pairs)} discovered pair(s) failed validation.",
+                file=output_stream,
+            )
+            return []
+        if len(validated_pairs) < len(discovery.pairs):
+            print(
+                f"Validated {len(validated_pairs)}/{len(discovery.pairs)} operator pairs.",
+                file=output_stream,
+            )
+
+        results = _distill_operator_pairs(
+            validated_pairs,
+            config=config,
+            knowledge_dir=knowledge_dir,
+            agent_runner=agent_runner,
+            stream=output_stream,
+        )
+        _export_distilled_patterns(
+            config=config,
+            knowledge_dir=knowledge_dir,
+            pattern_snapshot=pattern_snapshot,
+            results=results,
+            agent_runner=agent_runner,
+            stream=output_stream,
+        )
+        _print_distill_summary(results, stream=output_stream)
+        return results
+    finally:
+        _cleanup_transient_skills_workspace(config, stream=output_stream)
 
 
 def _prepare_discovery_root(
@@ -124,7 +128,7 @@ def _prepare_discovery_root(
     agent_runner: AgentRunner,
     stream: TextIO,
 ) -> Path | None:
-    if config.source == "git-repo":
+    if config.source == "git":
         return _prepare_git_repo_operator_workspaces(
             config,
             agent_runner=agent_runner,
@@ -143,7 +147,7 @@ def _prepare_git_repo_operator_workspaces(
     if git_info is None:
         print(
             "[git-repo] Input is not inside a Git work tree. "
-            "Use --source code-diff for pre-organized operator directories.",
+            "Use --source diff for pre-organized operator directories.",
             file=stream,
         )
         return None
@@ -305,14 +309,14 @@ def _export_distilled_patterns(
         )
     exported = export_changed_pattern_cards(
         knowledge_dir,
-        config.update_skills_dir,
+        config.output_dir,
         language=config.language,
         pattern_snapshot=pattern_snapshot,
         updated_pattern_names=updated_pattern_names,
     )
     if exported:
         print(
-            f"exported updated patterns: {', '.join(exported)} -> {config.update_skills_dir}",
+            f"exported updated patterns: {', '.join(exported)} -> {config.output_dir}",
             file=stream,
         )
     else:
@@ -339,21 +343,21 @@ def _run_post_update_review(
         print("\n[review] No patterns were updated, skipping review.", file=stream)
         return
 
-    review_output_json = config.update_skills_dir / "post_update_review_result.json"
+    review_output_json = config.output_dir / "post_update_review_result.json"
     review_prompt = build_post_update_review_prompt(
         skills_dir=config.skills_dir,
         updated_patterns=updated_pattern_names,
         output_json=review_output_json,
         language=config.language,
     )
-    config.update_skills_dir.mkdir(parents=True, exist_ok=True)
+    config.output_dir.mkdir(parents=True, exist_ok=True)
     print(
         f"\n[review] Running post-update review on {len(updated_pattern_names)} updated pattern(s)...",
         file=stream,
     )
     review_result = agent_runner(
         agent_name=config.agent_name,
-        workdir=config.update_skills_dir,
+        workdir=config.output_dir,
         prompt=review_prompt,
         stream_output=config.stream_output,
         verbose=config.verbose,
@@ -391,12 +395,49 @@ def _print_distill_summary(
 
 def _cleanup_git_repo_plan_dir(input_root: Path, *, stream: TextIO) -> None:
     triton_agent_dir = input_root / ".triton-agent"
+    if triton_agent_dir.is_symlink():
+        print(
+            f"[git-repo] Skip intermediate cleanup for symlink: {triton_agent_dir.as_posix()}",
+            file=stream,
+        )
+        return
     if triton_agent_dir.is_dir():
         shutil.rmtree(triton_agent_dir)
         print(
             f"[git-repo] Cleaned up intermediate {triton_agent_dir.as_posix()}",
             file=stream,
         )
+
+
+def _cleanup_transient_skills_workspace(config: DistillConfig, *, stream: TextIO) -> None:
+    if not config.cleanup_skills_dir:
+        return
+
+    expected = (config.input_root / ".triton-agent" / "distill-skills").resolve()
+    if config.skills_dir.resolve() != expected:
+        print(
+            f"[distill] Skip transient skills cleanup for unexpected path: {config.skills_dir}",
+            file=stream,
+        )
+        return
+
+    if config.skills_dir.is_dir() and not config.skills_dir.is_symlink():
+        shutil.rmtree(config.skills_dir)
+        print(
+            f"[distill] Cleaned transient skills workspace: {config.skills_dir.as_posix()}",
+            file=stream,
+        )
+    elif config.skills_dir.exists():
+        print(
+            f"[distill] Skip transient skills cleanup for non-directory path: {config.skills_dir}",
+            file=stream,
+        )
+        return
+
+    try:
+        expected.parent.rmdir()
+    except OSError:
+        pass
 
 
 def _distill_operator_pair(
@@ -409,7 +450,7 @@ def _distill_operator_pair(
     skills_lock: Lock,
     stream: TextIO,
 ) -> OperatorDistillResult:
-    simulate_dir = pair.operator_dir / "simulate"
+    simulate_dir = pair.operator_dir / DISTILL_SIMULATOR_DIR_NAME
     simulate_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_path_for_pair(pair.stem, simulate_dir, pair_count_in_dir=pair_count_in_dir)
     if config.skip_existing and not config.force:
@@ -464,7 +505,7 @@ def _distill_operator_pair(
     )
     updated_patterns = list(distill_output_data.updated_patterns)
 
-    # optimize-process: skip simulate-analyze if all optimizations already covered
+    # optimize source: skip simulate-analyze if all optimizations already covered
     if pair.source_kind == "optimize-process" and distill_output_data.aligned:
         result = OperatorDistillResult(
             pair=pair,
@@ -661,8 +702,8 @@ def _write_enriched_manifest(
         "updated_pattern_names": updated_pattern_names,
         "operators": operator_records,
     }
-    config.update_skills_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = config.update_skills_dir / "updated_patterns.json"
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = config.output_dir / "updated_patterns.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -670,7 +711,7 @@ def _write_enriched_manifest(
 
 
 def _write_skip_report(record: SkipRecord) -> None:
-    simulate_dir = record.operator_dir / "simulate"
+    simulate_dir = record.operator_dir / DISTILL_SIMULATOR_DIR_NAME
     if record.opt_path is None:
         report_path = simulate_dir / "report.json"
     else:

@@ -304,6 +304,20 @@ class MultiInvocationOptimizeController:
         batch_end = request.final_round
         previous_batch_issues: str | None = None
 
+        if request.interact:
+            worker_request = self._request_with_fresh_batch_prompt(
+                request,
+                issues=None,
+                batch_start=batch_start,
+                batch_end=batch_end,
+            )
+            return self._run_request(
+                worker_request,
+                show_output_label=(
+                    f"batch-{worker_request.current_round}-{worker_request.final_round}-r1"
+                ),
+            )
+
         while batch_start <= min_rounds:
             worker_request = self._request_with_fresh_batch_prompt(
                 request,

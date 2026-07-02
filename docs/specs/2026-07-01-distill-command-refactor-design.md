@@ -34,7 +34,7 @@ boundaries.
 
 The implementation keeps this boundary explicit: `knowledge_workspace.py` owns
 seeding, diffing, exporting, and promoting the editable optimize-knowledge skill;
-`git_repo_workspaces.py` owns only the `--source git-repo` plan/scaffold path.
+`git_repo_workspaces.py` owns only the `--source git` plan/scaffold path.
 `workflow.py::run_distill()` remains the top-level phase coordinator and delegates
 git-repo preparation, pair validation, per-operator distillation, and pattern
 export to focused helpers.
@@ -62,14 +62,14 @@ deleted.
 
 ## Data Flow
 
-For `code-diff`, the command still scans operator directories for `opt_*.py`
+For `diff`, the command still scans operator directories for `opt_*.py`
 paired with the baseline file of the same name without the `opt_` prefix.
 
-For `optimize-process`, the command still reads optimize workspaces using
+For `optimize`, the command still reads optimize workspaces using
 `baseline/state.json`, `opt-note.md`, `learned_lessons.md`, and round summaries
 to identify the baseline and final optimized operator.
 
-For `git-repo`, the workspace-plan path still creates temporary operator
+For `git`, the workspace-plan path still creates temporary operator
 workspaces from a git merge-base plan before the same distillation loop runs.
 
 Each pair writes reports under `simulate/`, including matched patterns, updated

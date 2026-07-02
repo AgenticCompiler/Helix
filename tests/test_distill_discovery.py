@@ -76,7 +76,7 @@ class DistillDiscoveryTests(unittest.TestCase):
             (round_two / "opt_kernel.py").write_text("x = 2\n", encoding="utf-8")
             (round_two / "attempts.md").write_text("round two attempts\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, source="optimize-process")
+            result = discover_operator_pairs(root, source="optimize")
 
             self.assertEqual(len(result.pairs), 1)
             pair = result.pairs[0]
@@ -96,7 +96,7 @@ class DistillDiscoveryTests(unittest.TestCase):
             baseline_dir.mkdir()
             (baseline_dir / "kernel.py").write_text("x = 1\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, source="optimize-process")
+            result = discover_operator_pairs(root, source="optimize")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
@@ -110,7 +110,7 @@ class DistillDiscoveryTests(unittest.TestCase):
             (op_dir / "foo.py").write_text("x = 1\n", encoding="utf-8")
             (op_dir / "opt_foo.py").write_text("x = 2\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, source="optimize-process")
+            result = discover_operator_pairs(root, source="optimize")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
@@ -122,7 +122,7 @@ class DistillDiscoveryTests(unittest.TestCase):
             (root / "baseline").mkdir()
             (root / "opt-round-1").mkdir()
 
-            result = discover_operator_pairs(root, source="optimize-process")
+            result = discover_operator_pairs(root, source="optimize")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)

@@ -77,21 +77,21 @@ class DistillKnowledgeWorkspaceTests(unittest.TestCase):
 
             exported = export_changed_pattern_cards(
                 source,
-                root / "update_skills",
+                root / "distill-output",
                 language="tilelang",
                 pattern_snapshot=snapshot,
                 updated_pattern_names=["tiling"],
             )
 
             self.assertEqual(exported, ["new-pattern.md", "tiling.md"])
-            update_patterns = root / "update_skills" / "tilelang-npu-optimize-knowledge" / "references" / "patterns"
+            update_patterns = root / "distill-output" / "tilelang-npu-optimize-knowledge" / "references" / "patterns"
             self.assertFalse((update_patterns / "autotune.md").exists())
             self.assertEqual(
                 (update_patterns / "tiling.md").read_text(encoding="utf-8"),
                 "# Tiling\n\n## Summary\nnew\n\n## Use When\n\n- New trigger.\n",
             )
-            self.assertFalse((root / "update_skills" / "tilelang-npu-optimize-knowledge" / "scripts").exists())
-            manifest = (root / "update_skills" / "updated_patterns.json").read_text(encoding="utf-8")
+            self.assertFalse((root / "distill-output" / "tilelang-npu-optimize-knowledge" / "scripts").exists())
+            manifest = (root / "distill-output" / "updated_patterns.json").read_text(encoding="utf-8")
             self.assertIn("tiling.md", manifest)
 
 
