@@ -53,7 +53,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_staged_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
 
@@ -82,7 +82,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
 
@@ -99,7 +99,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
@@ -112,7 +112,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             result = _evaluate_plugin(
                 _policy(workspace),
                 "bash",
-                "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
+                "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
                 "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
                 "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
                 "--bench-mode msprof 2>&1",
@@ -159,7 +159,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             workspace.mkdir()
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
@@ -519,7 +519,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 _policy(workspace),
                 "bash",
                 {
-                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
+                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
                     "run-bench --bench-file bench_kernel.py --bench-mode msprof",
                     "cwd": str(workspace),
                 },
@@ -532,7 +532,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(tool_event["summary"], "bash: benchmark")
             self.assertEqual(
                 command_event["command"],
-                "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
+                "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
                 "run-bench --bench-file bench_kernel.py --bench-mode msprof",
             )
 
@@ -546,7 +546,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 _policy(workspace),
                 "bash",
                 {
-                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
+                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
                     "run-bench --bench-file bench_kernel.py --bench-mode msprof",
                     "cwd": str(workspace),
                 },

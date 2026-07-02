@@ -295,8 +295,8 @@ def _render_opencode_agent(
         [
             "  bash:",
             '    "*": deny',
-            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py run-bench*": allow',
-            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py profile-bench*": allow',
+            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py run-bench*": allow',
+            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py profile-bench*": allow',
         ]
     )
     if _supports_ir_analysis(language):

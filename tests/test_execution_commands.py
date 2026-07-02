@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from io import StringIO
+import os
 from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
@@ -164,6 +165,47 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 ref_result.resolve(),
                 archive,
             )
+
+    def test_handle_run_test_prints_hint_when_run_test_cleanup_does_not_delete_archive(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "kernel_result.pt"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            archive.write_text("archive", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch.dict(
+                os.environ,
+                {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                clear=False,
+            ), patch(
+                "triton_agent.commands.execution.run_local_test",
+                return_value=(fake_result, archive),
+            ), patch(
+                "triton_agent.commands.execution.cleanup_run_test_pt_files",
+                return_value=[],
+            ) as cleanup:
+                with redirect_stdout(stdout):
+                    exit_code = handle_run_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            cleanup.assert_called_once_with((archive,))
+            self.assertIn("Hint: use `compare-result`", stdout.getvalue())
 
     def test_handle_run_test_auto_compares_remote_differential_result_via_remote_helper(self) -> None:
         parser = build_parser()

@@ -15,12 +15,12 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/cli.py",
             },
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/cli.py",
             },
             {
                 "type": "command",
@@ -53,7 +53,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         self.assertTrue(summary["capabilities"]["command_events"])
         self.assertEqual(
             summary["file_access"]["repeated_file_reads"],
-            {".codex/skills/ascend-npu-run-eval/scripts/run-command.py": 2},
+            {".codex/skills/ascend-npu-run-eval/scripts/cli.py": 2},
         )
         self.assertEqual(
             summary["commands"]["full_msprof_benchmark_commands"],

@@ -35,7 +35,6 @@ from triton_agent.optimize.prompts import (
     build_optimize_baseline_prompt,
     build_optimize_supervisor_prompt,
 )
-from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
 from triton_agent.trace.core import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
@@ -226,16 +225,6 @@ def execute_multi_invocation_optimize(
         warnings = cleanup_session(artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
-        try:
-            cleaned_pt = cleanup_workspace_pt_files(request.workdir)
-            if request.verbose and cleaned_pt:
-                emit_verbose(
-                    verbose_stream,
-                    "agents",
-                    f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
-                )
-        except Exception:
-            pass
 
 
 class MultiInvocationOptimizeController:
@@ -621,22 +610,10 @@ class MultiInvocationOptimizeController:
             show_output_label=show_output_label,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
-        try:
-            if self._stdout is None and self._stderr is None:
-                result = self._runner.run(request)
-            else:
-                result = self._runner.run(request, stdout=self._stdout, stderr=self._stderr)
-        finally:
-            try:
-                cleaned_pt = cleanup_workspace_pt_files(request.workdir)
-                if request.verbose and cleaned_pt:
-                    emit_verbose(
-                        self._verbose_stream,
-                        "agents",
-                        f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
-                    )
-            except Exception:
-                pass
+        if self._stdout is None and self._stderr is None:
+            result = self._runner.run(request)
+        else:
+            result = self._runner.run(request, stdout=self._stdout, stderr=self._stderr)
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
             label=launch_label,

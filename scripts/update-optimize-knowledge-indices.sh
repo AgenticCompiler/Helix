@@ -6,19 +6,22 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 
 cd "${repo_root}"
 
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
+  --style default
 
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/triton/torch-npu-optimize-knowledge/references/patterns \
-  --output skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md
+  --output skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md \
+  --style default
 
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/triton/triton-npu-cann-ext-api-patterns/references/patterns \
-  --output skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/index.md
+  --output skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/index.md \
+  --style default
 
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_symptom_index.py \
+uv run python -m triton_agent.optimize_knowledge.symptom_index \
   --symptoms-dir skills/triton/triton-npu-optimize-knowledge/references/symptoms \
   --output skills/triton/triton-npu-optimize-knowledge/references/symptom_index.md
 

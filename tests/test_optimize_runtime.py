@@ -1812,7 +1812,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("This invocation owns rounds 3 through 3.", runner.requests[1].prompt)
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
 
-    def test_multi_invocation_controller_failed_worker_run_cleans_pt_files_when_env_var_enabled(
+    def test_multi_invocation_controller_failed_worker_run_preserves_pt_files_with_round_cleanup_policy(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1860,11 +1860,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertFalse(stray_result.exists())
+            self.assertTrue(stray_result.exists())
 
     def test_multi_invocation_controller_checked_batch_carries_failures_to_next_batch(
         self,
@@ -3409,21 +3409,35 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((outside / "logs-real").exists())
             self.assertTrue((outside / "round-real").exists())
 
-    def test_cleanup_workspace_pt_files_preserves_pt_files_by_default(self) -> None:
+    def test_cleanup_workspace_pt_files_deletes_pt_files_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
             round_dir = workdir / "opt-round-1"
+            baseline_dir.mkdir()
             round_dir.mkdir()
             root_pt = workdir / "kernel_result.pt"
+            baseline_pt = baseline_dir / "TEST_RESULT.pt"
             round_pt = round_dir / "test_result.pt"
             root_pt.write_text("root\n", encoding="utf-8")
+            baseline_pt.write_text("baseline\n", encoding="utf-8")
             round_pt.write_text("round\n", encoding="utf-8")
 
-            cleaned = cleanup_workspace_pt_files(workdir)
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", None)
+                cleaned = cleanup_workspace_pt_files(workdir)
 
-            self.assertEqual(cleaned, [])
-            self.assertTrue(root_pt.exists())
-            self.assertTrue(round_pt.exists())
+            self.assertEqual(
+                cleaned,
+                [
+                    "kernel_result.pt",
+                    "baseline/TEST_RESULT.pt",
+                    "opt-round-1/test_result.pt",
+                ],
+            )
+            self.assertFalse(root_pt.exists())
+            self.assertFalse(baseline_pt.exists())
+            self.assertFalse(round_pt.exists())
 
     def test_cleanup_workspace_pt_files_deletes_pt_files_when_env_var_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3439,7 +3453,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             baseline_pt.write_text("baseline\n", encoding="utf-8")
             round_pt.write_text("round\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
                 cleaned = cleanup_workspace_pt_files(workdir)
 
             self.assertEqual(
@@ -3453,6 +3467,23 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse(root_pt.exists())
             self.assertFalse(baseline_pt.exists())
             self.assertFalse(round_pt.exists())
+
+    def test_cleanup_workspace_pt_files_preserves_pt_files_for_run_test_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+            root_pt = workdir / "kernel_result.pt"
+            round_pt = round_dir / "test_result.pt"
+            root_pt.write_text("root\n", encoding="utf-8")
+            round_pt.write_text("round\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"}, clear=False):
+                cleaned = cleanup_workspace_pt_files(workdir)
+
+            self.assertEqual(cleaned, [])
+            self.assertTrue(root_pt.exists())
+            self.assertTrue(round_pt.exists())
 
     def test_reset_optimize_workspace_deletes_result_pt_files_regardless_of_env_var(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
