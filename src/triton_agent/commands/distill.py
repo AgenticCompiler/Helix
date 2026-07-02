@@ -28,15 +28,11 @@ def handle_distill(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
 
 def _config_from_args(args: argparse.Namespace) -> DistillConfig:
     input_root = Path(args.input).expanduser().resolve()
-    skills_dir = (
-        Path(args.skills_dir).expanduser().resolve()
-        if getattr(args, "skills_dir", None)
-        else input_root / "skills"
-    )
-    update_skills_dir = (
-        Path(args.export_dir).expanduser().resolve()
-        if getattr(args, "export_dir", None)
-        else input_root / "update_skills"
+    skills_dir = input_root / ".triton-agent" / "distill-skills"
+    output_dir = (
+        Path(args.output_dir).expanduser().resolve()
+        if getattr(args, "output_dir", None)
+        else input_root / "distill-output"
     )
     concurrency = int(getattr(args, "concurrency", 1))
     if concurrency < 1:
@@ -48,7 +44,7 @@ def _config_from_args(args: argparse.Namespace) -> DistillConfig:
     return DistillConfig(
         input_root=input_root,
         skills_dir=skills_dir,
-        update_skills_dir=update_skills_dir,
+        output_dir=output_dir,
         source=source,
         agent_name=str(getattr(args, "agent", "opencode")),
         language=getattr(args, "lang", "triton"),
@@ -60,5 +56,6 @@ def _config_from_args(args: argparse.Namespace) -> DistillConfig:
         skip_existing=bool(getattr(args, "skip_existing", False)),
         promote_converged_skills=bool(getattr(args, "promote_aligned", False)),
         post_update_review=not bool(getattr(args, "skip_review", False)),
+        cleanup_skills_dir=True,
         base_revision=str(getattr(args, "git_base", None) or ""),
     )

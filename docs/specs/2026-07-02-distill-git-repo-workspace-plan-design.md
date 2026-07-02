@@ -2,7 +2,7 @@
 
 ## User-Visible Semantics
 
-`triton-agent distill --source git-repo` still analyzes a Git branch, writes
+`triton-agent distill --source git` still analyzes a Git branch, writes
 `.triton-agent/workspace-plan.json`, scaffolds operator workspaces, and then runs
 the normal distill loop.
 
@@ -20,9 +20,13 @@ The git-repo workspace-plan agent call should stage the distill skills workspace
 so the agent can read `ascend-npu-plan-git-operator-workspaces`. The CLI remains
 responsible for computing the merge-base and running the scaffold script.
 
+Intermediate `.triton-agent` cleanup must only remove a real directory owned by
+the input workspace. If `.triton-agent` is a symbolic link, cleanup should skip
+it and leave the link target untouched.
+
 ## Testing
 
 Tests should verify that the generated workspace-plan prompt routes the agent to
 the staged skill and no longer embeds the full workflow, includes the active
-operator language, and that the git-repo agent call passes `skills_root` for
-skill staging.
+operator language, that the git-repo agent call passes `skills_root` for skill
+staging, and that intermediate cleanup skips `.triton-agent` symbolic links.

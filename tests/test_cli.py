@@ -6088,6 +6088,12 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("repair or establish `baseline/` before `opt-round-1`", prompt)
         self.assertIn("Do not rely on a separate baseline-preflight invocation", prompt)
+        self.assertIn(
+            "You must run the staged `ascend-npu-optimize-state` skill's `submit-round` subcommand after each completed round.",
+            prompt,
+        )
+        self.assertIn("The CLI will validate the completed batch after the invocation exits.", prompt)
+        self.assertNotIn("Interactive mode will not run CLI round checks", prompt)
         self.assertNotIn("The baseline has already been validated before this worker batch.", prompt)
 
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:

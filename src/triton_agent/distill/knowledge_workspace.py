@@ -100,7 +100,7 @@ def find_changed_pattern_cards(
 
 def export_changed_pattern_cards(
     source_knowledge_dir: Path,
-    update_skills_dir: Path,
+    output_dir: Path,
     *,
     language: str = "triton",
     pattern_snapshot: dict[str, str],
@@ -114,7 +114,7 @@ def export_changed_pattern_cards(
     if not changed_paths:
         return []
 
-    dest_knowledge = update_skills_dir / optimize_knowledge_skill_name(language)
+    dest_knowledge = output_dir / optimize_knowledge_skill_name(language)
     dest_patterns = dest_knowledge / "references" / "patterns"
     dest_patterns.mkdir(parents=True, exist_ok=True)
 
@@ -131,8 +131,8 @@ def export_changed_pattern_cards(
         "exported_patterns": exported,
         "updated_pattern_names": list(updated_pattern_names or []),
     }
-    update_skills_dir.mkdir(parents=True, exist_ok=True)
-    (update_skills_dir / "updated_patterns.json").write_text(
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "updated_patterns.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )

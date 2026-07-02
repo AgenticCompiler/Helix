@@ -13,6 +13,7 @@ from triton_agent.distill.git_repo_workspaces import GIT_REPO_PLAN_SKILL_NAME
 from triton_agent.distill.models import DiscoveryResult
 from triton_agent.distill.models import DistillConfig
 from triton_agent.distill.git_repo_workspaces import build_workspace_plan_prompt
+from triton_agent.distill.workflow import _cleanup_git_repo_plan_dir
 from triton_agent.distill.workflow import run_distill
 from triton_agent.models import AgentResult
 
@@ -115,8 +116,8 @@ class DistillWorkflowTests(unittest.TestCase):
             config = DistillConfig(
                 input_root=root,
                 skills_dir=skills_dir,
-                update_skills_dir=root / "update_skills",
-                source="code-diff",
+                output_dir=root / "distill-output",
+                source="diff",
                 agent_name="codex",
                 max_iterations=2,
                 concurrency=1,
@@ -144,9 +145,10 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertEqual(len(results[0].iterations), 2)
             self.assertEqual(results[0].matched_patterns, ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(results[0].updated_patterns, ["tiling", "loop-invariant-hoisting"])
-            self.assertTrue((op_dir / "simulate" / "foo.py").exists())
-            self.assertTrue((op_dir / "simulate" / "generated_foo.py").exists())
-            report = json.loads((op_dir / "simulate" / "report.json").read_text(encoding="utf-8"))
+            self.assertFalse((op_dir / "simulate").exists())
+            self.assertTrue((op_dir / "distill-simulator" / "foo.py").exists())
+            self.assertTrue((op_dir / "distill-simulator" / "generated_foo.py").exists())
+            report = json.loads((op_dir / "distill-simulator" / "report.json").read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "aligned")
             self.assertEqual(report["updated_patterns"], ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(report["iterations"][0]["updated_patterns"], ["loop-invariant-hoisting"])
@@ -181,8 +183,8 @@ class DistillWorkflowTests(unittest.TestCase):
             config = DistillConfig(
                 input_root=root,
                 skills_dir=skills_dir,
-                update_skills_dir=root / "update_skills",
-                source="git-repo",
+                output_dir=root / "distill-output",
+                source="git",
                 agent_name="opencode",
                 max_iterations=1,
                 concurrency=1,
@@ -228,6 +230,108 @@ class DistillWorkflowTests(unittest.TestCase):
 
             self.assertEqual(results, [])
             self.assertEqual(len(calls), 1)
+
+    def test_git_repo_plan_cleanup_skips_symlinked_triton_agent_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "workspace"
+            root.mkdir()
+            target = Path(tmp) / "external-triton-agent"
+            target.mkdir()
+            marker = target / "workspace-plan.json"
+            marker.write_text("{}", encoding="utf-8")
+            link = root / ".triton-agent"
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are not supported here: {exc}")
+
+            stream = StringIO()
+
+            _cleanup_git_repo_plan_dir(root, stream=stream)
+
+            self.assertTrue(link.is_symlink())
+            self.assertTrue(marker.is_file())
+            self.assertIn("Skip", stream.getvalue())
+
+    def test_run_distill_cleans_default_transient_skills_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            op_dir = root / "op"
+            op_dir.mkdir()
+            (op_dir / "foo.py").write_text("x = 1\n", encoding="utf-8")
+            (op_dir / "opt_foo.py").write_text("x = 2\n", encoding="utf-8")
+            skills_dir = root / ".triton-agent" / "distill-skills"
+            output_dir = root / "distill-output"
+
+            def ensure_skills(path: Path, *, language: str = "triton") -> Path:
+                self.assertEqual(path, skills_dir)
+                knowledge_dir = path / "triton-npu-optimize-knowledge"
+                (knowledge_dir / "references" / "patterns").mkdir(parents=True)
+                return knowledge_dir
+
+            def agent_runner(**kwargs: object) -> AgentResult:
+                prompt = str(kwargs["prompt"])
+                output_label = str(kwargs["output_label"])
+                workdir = Path(kwargs["workdir"])  # type: ignore[arg-type]
+                if output_label == "[op] [distill]":
+                    _json_path_from_prompt(prompt).write_text(
+                        json.dumps(
+                            {
+                                "matched_patterns": [],
+                                "updated_patterns": [],
+                                "summary": "no reusable update",
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                elif "[simulate-iter-" in output_label:
+                    (workdir / "generated_foo.py").write_text("x = 2\n", encoding="utf-8")
+                    _json_path_from_prompt(prompt).write_text(
+                        json.dumps({"summary": "generated"}),
+                        encoding="utf-8",
+                    )
+                elif "[analyze-iter-" in output_label:
+                    _json_path_from_prompt(prompt).write_text(
+                        json.dumps(
+                            {
+                                "aligned": True,
+                                "summary": "candidate aligned",
+                                "updated_patterns": [],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            config = DistillConfig(
+                input_root=root,
+                skills_dir=skills_dir,
+                output_dir=output_dir,
+                source="diff",
+                agent_name="codex",
+                max_iterations=1,
+                concurrency=1,
+                stream_output=False,
+                verbose=False,
+                force=False,
+                skip_existing=False,
+                promote_converged_skills=False,
+                cleanup_skills_dir=True,
+            )
+
+            with (
+                patch(
+                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                    side_effect=ensure_skills,
+                ),
+                patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+            ):
+                results = run_distill(config, agent_runner=agent_runner)
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].status, "aligned")
+            self.assertFalse(skills_dir.exists())
+            self.assertTrue((output_dir / "updated_patterns.json").is_file())
 
 
 def _json_path_from_prompt(prompt: str) -> Path:

@@ -8,7 +8,7 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
-DistillSource = Literal["code-diff", "optimize-process", "git-repo"]
+DistillSource = Literal["diff", "optimize", "git"]
 
 
 def _empty_str_list() -> list[str]:
@@ -20,7 +20,7 @@ def _empty_str_list() -> list[str]:
 class DistillConfig:
     input_root: Path
     skills_dir: Path
-    update_skills_dir: Path
+    output_dir: Path
     source: DistillSource
     agent_name: str
     max_iterations: int
@@ -31,6 +31,7 @@ class DistillConfig:
     skip_existing: bool
     promote_converged_skills: bool
     post_update_review: bool = True
+    cleanup_skills_dir: bool = False
     language: Literal["triton", "tilelang"] = "triton"
     base_revision: str = ""  # empty → auto-detect from origin/HEAD
 

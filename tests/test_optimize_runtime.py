@@ -3498,7 +3498,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertFalse(result_pt.exists())
 
-    def test_run_optimize_request_keeps_interactive_only_for_worker(self) -> None:
+    def test_run_optimize_request_interactive_runs_only_worker_without_post_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -3536,38 +3536,28 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ) -> AgentResult:
                     del stdout, stderr
                     self.requests.append(request)
-                    if _optimize_invocation_kind(request) == "worker":
-                        self_outer._write_round(
-                            workdir,
-                            "opt-round-1",
-                            parent_round="round-0",
-                        )
-                    else:
-                        assert request.supervisor_report_path is not None
-                        request.supervisor_report_path.write_text(
-                            "# Optimize Supervisor Report\n\n"
-                            "Status: pass\n"
-                            "Blocking issues: none\n"
-                            "Latest round: opt-round-1\n",
-                            encoding="utf-8",
-                        )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            self_outer = self
             runner = FakeRunner()
 
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
-            self.assertEqual(len(runner.requests), 2)
-            worker_request, supervisor_request = runner.requests
+            self.assertEqual(len(runner.requests), 1)
+            worker_request = runner.requests[0]
             self.assertEqual(_optimize_invocation_kind(worker_request), "worker")
             self.assertTrue(worker_request.interact)
             self.assertFalse(worker_request.no_agent_session)
-            self.assertEqual(_optimize_invocation_kind(supervisor_request), "supervisor")
-            self.assertFalse(supervisor_request.interact)
-            self.assertFalse(supervisor_request.no_agent_session)
+            self.assertIn(
+                "You must run the staged `ascend-npu-optimize-state` skill's `submit-round` subcommand after each completed round.",
+                worker_request.prompt,
+            )
+            self.assertIn(
+                "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M`",
+                worker_request.prompt,
+            )
+            self.assertNotIn("Interactive mode will not run CLI round checks", worker_request.prompt)
 
     def test_run_optimize_request_interactive_skips_baseline_phase_and_updates_worker_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3610,13 +3600,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     del stdout, stderr
                     self.requests.append(request)
                     self_outer._write_baseline(workdir)
-                    for round_number in range(1, 31):
-                        self_outer._write_round(
-                            workdir,
-                            f"opt-round-{round_number}",
-                            parent_round=f"round-{round_number - 1}",
-                            perf_text="latency-a: 1.0\n",
-                        )
+                    round_dir = workdir / "opt-round-1"
+                    round_dir.mkdir()
+                    (round_dir / "attempts.md").write_text("started\n", encoding="utf-8")
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             self_outer = self
@@ -3633,6 +3619,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("This invocation owns rounds 1 through 30.", worker_request.prompt)
             self.assertIn("repair or establish `baseline/` before `opt-round-1`", worker_request.prompt)
             self.assertIn("Do not rely on a separate baseline-preflight invocation", worker_request.prompt)
+            self.assertIn(
+                "You must run the staged `ascend-npu-optimize-state` skill's `submit-round` subcommand after each completed round.",
+                worker_request.prompt,
+            )
+            self.assertNotIn("Interactive mode will not run CLI round checks", worker_request.prompt)
             self.assertNotIn("The baseline has already been validated before this worker batch.", worker_request.prompt)
 
     def test_run_optimize_request_supervisor_prompt_excludes_user_instructions(self) -> None:
