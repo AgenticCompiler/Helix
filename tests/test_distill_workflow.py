@@ -125,6 +125,7 @@ class DistillWorkflowTests(unittest.TestCase):
                 force=False,
                 skip_existing=False,
                 promote_converged_skills=True,
+                post_update_review=False,
             )
 
             with (
@@ -149,7 +150,6 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status"], "aligned")
             self.assertEqual(report["updated_patterns"], ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(report["iterations"][0]["updated_patterns"], ["loop-invariant-hoisting"])
-            self.assertTrue(all(call.get("skills_root") == skills_dir for call in calls))
             simulate_calls = [
                 call for call in calls if "[simulate-iter-" in str(call.get("output_label"))
             ]

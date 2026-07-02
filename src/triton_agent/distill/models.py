@@ -30,6 +30,7 @@ class DistillConfig:
     force: bool
     skip_existing: bool
     promote_converged_skills: bool
+    post_update_review: bool = True
     language: Literal["triton", "tilelang"] = "triton"
     base_revision: str = ""  # empty → auto-detect from origin/HEAD
 

@@ -59,5 +59,6 @@ def _config_from_args(args: argparse.Namespace) -> DistillConfig:
         force=bool(getattr(args, "force", False)),
         skip_existing=bool(getattr(args, "skip_existing", False)),
         promote_converged_skills=bool(getattr(args, "promote_aligned", False)),
+        post_update_review=not bool(getattr(args, "skip_review", False)),
         base_revision=str(getattr(args, "git_base", None) or ""),
     )

@@ -755,6 +755,11 @@ def build_parser() -> argparse.ArgumentParser:
                 help="After a pair reaches aligned status, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
             )
             subparser.add_argument(
+                "--skip-review",
+                action="store_true",
+                help="Skip the post-update pattern review phase after distillation completes.",
+            )
+            subparser.add_argument(
                 "--git-base",
                 default=None,
                 help="Base branch used to compute the fork point (merge-base). Auto-detected from origin/HEAD when omitted.",
