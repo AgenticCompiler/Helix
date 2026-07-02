@@ -8,13 +8,33 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.diff_skills_update.agent import _prefixed_stream
-from triton_agent.diff_skills_update.models import DiffSkillsUpdateConfig
-from triton_agent.diff_skills_update.workflow import run_diff_skills_update
+from triton_agent.distill.agent import _prefixed_stream
+from triton_agent.distill.git_repo_workspaces import GIT_REPO_PLAN_SKILL_NAME
+from triton_agent.distill.models import DiscoveryResult
+from triton_agent.distill.models import DistillConfig
+from triton_agent.distill.git_repo_workspaces import build_workspace_plan_prompt
+from triton_agent.distill.workflow import run_distill
 from triton_agent.models import AgentResult
 
 
-class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
+class DistillWorkflowTests(unittest.TestCase):
+    def test_git_repo_plan_prompt_delegates_workflow_to_common_skill(self) -> None:
+        prompt = build_workspace_plan_prompt(
+            repo_root=Path("/repo"),
+            language="tilelang",
+            base_revision="origin/main",
+            fork_revision="abc123",
+            plan_path=Path("/repo/.triton-agent/workspace-plan.json"),
+        )
+
+        self.assertEqual(GIT_REPO_PLAN_SKILL_NAME, "ascend-npu-plan-git-operator-workspaces")
+        self.assertIn("Use the staged ascend-npu-plan-git-operator-workspaces skill", prompt)
+        self.assertIn("Operator language:\n  tilelang", prompt)
+        self.assertIn("Fork point", prompt)
+        self.assertIn("/repo/.triton-agent/workspace-plan.json", prompt)
+        self.assertNotIn("### Step 2: For EACH changed file", prompt)
+        self.assertNotIn("## What NOT to do", prompt)
+
     def test_prefixed_stream_marks_each_agent_output_line(self) -> None:
         stream = StringIO()
         prefixed = _prefixed_stream(stream, "[op] [simulate-iter-1/3]")
@@ -45,8 +65,10 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                 prompt = str(kwargs["prompt"])
                 workdir = Path(kwargs["workdir"])  # type: ignore[arg-type]
                 calls.append(kwargs)
-                if "updating Triton Ascend NPU optimization knowledge" in prompt:
-                    self.assertEqual(kwargs["output_label"], "[op] [diff-skills]")
+                output_label = str(kwargs["output_label"])
+                if output_label == "[op] [distill]":
+                    self.assertEqual(kwargs["output_label"], "[op] [distill]")
+                    self.assertIn("ascend-npu-distill-patterns", prompt)
                     _json_path_from_prompt(prompt).write_text(
                         json.dumps(
                             {
@@ -57,8 +79,9 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                         ),
                         encoding="utf-8",
                     )
-                elif "You are simulating an optimizer worker" in prompt:
+                elif "[simulate-iter-" in output_label:
                     self.assertIn("[op] [simulate-iter-", str(kwargs["output_label"]))
+                    self.assertIn("ascend-npu-distill-patterns", prompt)
                     self.assertNotIn("opt_foo.py", prompt)
                     self.assertNotIn("Unified diff", prompt)
                     self.assertIn("tiling", prompt)
@@ -72,8 +95,9 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                         json.dumps({"summary": "generated", "applied_patterns": ["tiling"]}),
                         encoding="utf-8",
                     )
-                elif "You are auditing a simulated optimization result" in prompt:
+                elif "[analyze-iter-" in output_label:
                     self.assertIn("[op] [analyze-iter-", str(kwargs["output_label"]))
+                    self.assertIn("ascend-npu-distill-patterns", prompt)
                     analysis_count += 1
                     _json_path_from_prompt(prompt).write_text(
                         json.dumps(
@@ -88,7 +112,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                     )
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            config = DiffSkillsUpdateConfig(
+            config = DistillConfig(
                 input_root=root,
                 skills_dir=skills_dir,
                 update_skills_dir=root / "update_skills",
@@ -105,14 +129,14 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.diff_skills_update.workflow.ensure_skills_workspace",
+                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
                     return_value=knowledge_dir,
                 ),
-                patch("triton_agent.diff_skills_update.workflow.regenerate_pattern_index"),
-                patch("triton_agent.diff_skills_update.workflow.promote_converged_knowledge_workspace") as promote,
+                patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+                patch("triton_agent.distill.workflow.promote_editable_knowledge_skill") as promote,
             ):
                 promote.return_value = knowledge_dir
-                results = run_diff_skills_update(config, agent_runner=agent_runner)
+                results = run_distill(config, agent_runner=agent_runner)
 
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0].status, "aligned")
@@ -125,9 +149,85 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status"], "aligned")
             self.assertEqual(report["updated_patterns"], ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(report["iterations"][0]["updated_patterns"], ["loop-invariant-hoisting"])
-            simulate_calls = [call for call in calls if call.get("skills_root") == skills_dir]
+            self.assertTrue(all(call.get("skills_root") == skills_dir for call in calls))
+            simulate_calls = [
+                call for call in calls if "[simulate-iter-" in str(call.get("output_label"))
+            ]
             self.assertEqual(len(simulate_calls), 2)
             promote.assert_called_once_with(knowledge_dir, language="triton")
+
+    def test_git_repo_plan_agent_receives_staged_skill_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skills_dir = root / "skills"
+            knowledge_dir = skills_dir / "triton-npu-optimize-knowledge"
+            knowledge_dir.mkdir(parents=True)
+            calls: list[dict[str, object]] = []
+
+            def agent_runner(**kwargs: object) -> AgentResult:
+                calls.append(kwargs)
+                self.assertEqual(kwargs["output_label"], "[git-repo]")
+                self.assertEqual(kwargs["skills_root"], skills_dir)
+                self.assertIn(
+                    "Use the staged ascend-npu-plan-git-operator-workspaces skill",
+                    str(kwargs["prompt"]),
+                )
+                (root / ".triton-agent" / "workspace-plan.json").write_text(
+                    json.dumps({"schema_version": 1, "operators": []}) + "\n",
+                    encoding="utf-8",
+                )
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            config = DistillConfig(
+                input_root=root,
+                skills_dir=skills_dir,
+                update_skills_dir=root / "update_skills",
+                source="git-repo",
+                agent_name="opencode",
+                max_iterations=1,
+                concurrency=1,
+                stream_output=False,
+                verbose=False,
+                force=False,
+                skip_existing=False,
+                promote_converged_skills=False,
+            )
+
+            with (
+                patch(
+                    "triton_agent.distill.workflow.detect_git_worktree",
+                    return_value=(root, "headsha"),
+                ),
+                patch(
+                    "triton_agent.distill.workflow.detect_default_base_branch",
+                    return_value="origin/main",
+                ),
+                patch(
+                    "triton_agent.distill.workflow.compute_fork_point",
+                    return_value="abc123",
+                ),
+                patch("triton_agent.distill.workflow.scaffold_operator_workspaces", return_value=0),
+                patch(
+                    "triton_agent.distill.workflow.operator_workspaces_created",
+                    return_value=True,
+                ),
+                patch(
+                    "triton_agent.distill.workflow.discover_operator_pairs",
+                    return_value=DiscoveryResult(pairs=(), skips=()),
+                ),
+                patch(
+                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                    return_value=knowledge_dir,
+                ),
+                patch(
+                    "triton_agent.distill.workflow.snapshot_pattern_card_texts",
+                    return_value={},
+                ),
+            ):
+                results = run_distill(config, agent_runner=agent_runner)
+
+            self.assertEqual(results, [])
+            self.assertEqual(len(calls), 1)
 
 
 def _json_path_from_prompt(prompt: str) -> Path:

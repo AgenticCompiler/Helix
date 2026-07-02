@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Set, Union
 JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "JsonValue"]]
 
 DEFAULT_BASE_REVISION = "origin/main"
-DEFAULT_OUTPUT = ".triton-agent/commit-perf-context.json"
+DEFAULT_OUTPUT = ".triton-agent/git-operator-context.json"
 DEFAULT_MAX_CONTEXT_CHARS = 80_000
 COMMIT_RECORD_END = "==COMMIT_END=="
 
@@ -88,7 +88,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect Git commit context for performance analysis.")
+    parser = argparse.ArgumentParser(
+        description="Collect Git commit context for operator workspace planning."
+    )
     parser.add_argument("--repo", default=".", help="Git repository path (default: current directory).")
     parser.add_argument("--base", default=DEFAULT_BASE_REVISION, help="Base revision for <base>..HEAD.")
     parser.add_argument(

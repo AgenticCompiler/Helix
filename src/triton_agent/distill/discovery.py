@@ -5,8 +5,8 @@ import re
 from pathlib import Path
 from typing import TextIO, cast
 
-from triton_agent.diff_skills_update.models import (
-    DiffSkillsUpdateSource,
+from triton_agent.distill.models import (
+    DistillSource,
     DiscoveryResult,
     OperatorPair,
     SkipRecord,
@@ -16,7 +16,7 @@ from triton_agent.diff_skills_update.models import (
 def discover_operator_pairs(
     root: Path,
     *,
-    source: DiffSkillsUpdateSource = "code-diff",
+    source: DistillSource = "code-diff",
     stream: TextIO | None = None,
     exclude_dirs: set[Path] | None = None,
 ) -> DiscoveryResult:

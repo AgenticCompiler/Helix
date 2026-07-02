@@ -68,9 +68,9 @@ _COMMON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         physical_path="skills/common/ascend-npu-report",
     ),
     SkillCatalogEntry(
-        logical_name="ascend-npu-kernel-bench-logs",
+        logical_name="ascend-npu-distill-patterns",
         source_group="common",
-        physical_path="skills/common/ascend-npu-kernel-bench-logs",
+        physical_path="skills/common/ascend-npu-distill-patterns",
     ),
     SkillCatalogEntry(
         logical_name="ascend-npu-profile-operator",
@@ -83,9 +83,9 @@ _COMMON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         physical_path="skills/common/ascend-npu-analyze-round-performance",
     ),
     SkillCatalogEntry(
-        logical_name="ascend-npu-analyze-commit-perf",
+        logical_name="ascend-npu-plan-git-operator-workspaces",
         source_group="common",
-        physical_path="skills/common/ascend-npu-analyze-commit-perf",
+        physical_path="skills/common/ascend-npu-plan-git-operator-workspaces",
     ),
 )
 

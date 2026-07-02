@@ -77,8 +77,11 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+{language}-npu-repair-guide",
         ),
     ),
-    CommandKind.DIFF_SKILLS_UPDATE: StageRule(
-        directives=("+{language}-npu-optimize-knowledge",),
+    CommandKind.DISTILL: StageRule(
+        directives=(
+            "+ascend-npu-distill-patterns",
+            "+{language}-npu-optimize-knowledge",
+        ),
     ),
 }
 

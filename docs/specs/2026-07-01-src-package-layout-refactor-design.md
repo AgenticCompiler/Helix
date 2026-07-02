@@ -227,7 +227,7 @@ Create the `skills/` package and update imports across:
 - `optimize/`
 - `report/`
 - `log_check/`
-- `diff_skills_update/`
+- `distill/`
 - `scripts/`
 - tests
 

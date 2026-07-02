@@ -95,7 +95,7 @@ class CliParserTests(unittest.TestCase):
             (["optimize-batch", "-i", "kernels", "-c", "3"], 3),
             (["report", "-i", "kernels", "-c", "2"], 2),
             (["verify", "-i", "kernels", "-c", "2"], 2),
-            (["diff-skills-update", "-i", "operators", "-c", "2"], 2),
+            (["distill", "-i", "operators", "-c", "2"], 2),
         ):
             with self.subTest(argv=argv):
                 args = parser.parse_args(argv)

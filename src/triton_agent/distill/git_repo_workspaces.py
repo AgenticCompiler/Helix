@@ -7,10 +7,11 @@ from typing import TextIO
 
 from triton_agent.skills.catalog import resolve_skill_source_dir
 
-DEFAULT_OPERATORS_DIR = "operators"
-DEFAULT_PLAN_NAME = "workspace-plan.json"
+DEFAULT_OPERATOR_WORKSPACES_DIR = "operators"
+DEFAULT_WORKSPACE_PLAN_NAME = "workspace-plan.json"
+GIT_REPO_PLAN_SKILL_NAME = "ascend-npu-plan-git-operator-workspaces"
 
-_TRITON_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
+_OPERATOR_SOURCE_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
 
 
 # ---------------------------------------------------------------------------
@@ -18,19 +19,22 @@ _TRITON_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
 # ---------------------------------------------------------------------------
 
 
-def build_organize_workspaces_prompt(
+def build_workspace_plan_prompt(
     *,
     repo_root: Path,
     base_revision: str,
     fork_revision: str,
     plan_path: Path,
+    language: str = "triton",
 ) -> str:
-    _ext_filter = " ".join(f'"*{ext}"' for ext in _TRITON_EXTENSIONS)
-    return f"""Analyze Git commits and produce a **workspace plan JSON** that maps every
-modified Triton kernel to its launch function and source file.
+    _ext_filter = " ".join(f'"*{ext}"' for ext in _OPERATOR_SOURCE_EXTENSIONS)
+    return f"""Use the staged {GIT_REPO_PLAN_SKILL_NAME} skill to analyze Git commits and produce a workspace plan JSON.
 
 Repository root:
   {repo_root.as_posix()}
+
+Operator language:
+  {language}
 
 Base branch:
   {base_revision}
@@ -45,104 +49,14 @@ The fork point has been pre-computed by the harness.  Use `{fork_revision}`
 directly as the baseline revision in all diffs below — do NOT run
 `git merge-base` yourself.
 
-## What you must produce
-
-Write a single JSON file at `{plan_path.as_posix()}` with this exact schema:
-
-```json
-{{
-  "schema_version": 1,
-  "repo": "{repo_root.as_posix()}",
-  "base_revision": "{base_revision}",
-  "operators": [
-    {{
-      "launch_function": "<host-side wrapper name>",
-      "source_path": "<repo-relative path, e.g. python/triton/kernels/matmul.py>",
-      "kernels": ["<kernel_fn_1>", "<kernel_fn_2>"],
-      "notes": "<one-line rationale>"
-    }}
-  ]
-}}
-```
-
-The **"launch_function"** is the host-side Python function that sets up grid /
-arguments and calls the kernel (e.g. `matmul_kernel[grid](...)`). This is the
-function users invoke — it is the workspace name.
-
-The **"source_path"** is the path to the source `.py` file relative to the
-repo root. It is the same path that `git show <rev>:<source_path>` accepts.
-
-The **"kernels"** list names every `@triton.jit`-decorated kernel that this
-launch function calls.
-
-## Workflow
-
-### Step 1: List changed Triton source files
+Changed source filter:
 ```bash
 git diff --name-only {fork_revision}..HEAD -- {_ext_filter}
 ```
-This already excludes C/C++/CUDA backend files, docs, tests, CI configs.
 
-### Step 2: For EACH changed file, inspect the diff AND the full source
-For every file from step 1:
-
-a) Read the diff to see **which functions changed**:
-   ```bash
-   git diff {fork_revision}..HEAD -- <source_path>
-   ```
-   The diff hunk headers (lines starting with `@@`) show the function context.
-   Only consider a function **modified** when its BODY lines changed — ignore
-   changes that only touch imports, comments, docstrings, or whitespace.
-
-b) Read the full file at HEAD to understand the call structure:
-   ```bash
-   git show HEAD:<source_path>
-   ```
-   Do NOT print file content to stdout — read it silently.
-
-c) Identify the kernel functions (decorated with `@triton.jit`) in the file.
-
-d) For each kernel whose **body was modified** in the diff, find its
-   **launch function**. A launch function is the host-side `def` that calls
-   the kernel via `kernel_name[grid](...)`. Trace upward if the caller is a
-   private helper — the launch function is the first public entry point.
-
-e) **Critical — cross-check with the diff.** Before finalizing an operator
-   entry, verify that the diff actually touches the identified launch function
-   or its kernels. If the diff only touched unrelated functions in the same
-   file, do NOT include that launch function as an operator.
-
-f) Produce one operators[] entry per launch function. If two modified kernels
-   share the same launch function, list both kernels in one entry.
-
-### Step 3: Deduplicate and validate
-- If the same launch function appears from different source paths, keep one
-  entry and note the conflict in "notes".
-- Verify each source_path resolves to a real file at HEAD:
-  ```bash
-  git cat-file -e HEAD:<source_path> && echo ok || echo missing
-  ```
-- Skip any entry where the source_path does not exist at HEAD.
-- **Skip any entry where no kernel body changed** — the scaffold script will
-  also discard identical baseline/opt pairs as a safety net, but you should
-  filter them out here first.
-
-### Step 4: Write the JSON
-Write `{plan_path.as_posix()}`. It must be valid JSON. The "operators" list
-must be non-empty. If no operator had a meaningful change, write an empty
-operators list (the workflow will report this clearly).
-
-## What NOT to do
-
-- Do NOT extract or write any `.py` files. A follow-up script handles that.
-- Do NOT edit any source files in the repository.
-- Do NOT include files with no Triton kernels (utility modules, __init__.py).
-- Do NOT include entries for functions whose diff is import-only or
-  formatting-only.
-- Do NOT include every kernel in a changed file — only those whose body the
-  diff actually touched.
-- Do NOT guess. If the diff does not clearly show a function body change, skip.
-- Do NOT print full file contents to stdout.
+Follow the skill workflow and `references/output-contract.md`. Write only the
+workspace plan JSON to `{plan_path.as_posix()}`; do not extract or write operator
+source files because the CLI scaffold script handles that after this step.
 """
 
 
@@ -151,7 +65,7 @@ operators list (the workflow will report this clearly).
 # ---------------------------------------------------------------------------
 
 
-def workspace_organizer_succeeded(output_dir: Path) -> bool:
+def operator_workspaces_created(output_dir: Path) -> bool:
     """Check whether the agent created at least one valid operator workspace."""
     if not output_dir.is_dir():
         return False
@@ -169,7 +83,7 @@ def workspace_organizer_succeeded(output_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def try_detect_git_repo(path: Path) -> tuple[Path, str] | None:
+def detect_git_worktree(path: Path) -> tuple[Path, str] | None:
     """Try to detect a Git repository from *path*.
 
     Returns ``(repo_root, head_sha)`` on success, or ``None`` when *path* is
@@ -185,7 +99,7 @@ def try_detect_git_repo(path: Path) -> tuple[Path, str] | None:
     return repo_root, result.stdout.strip()
 
 
-def compute_merge_base(
+def compute_fork_point(
     *, repo_root: Path, base_branch: str
 ) -> str | None:
     """Compute the fork point where the current branch diverged from *base_branch*.
@@ -198,7 +112,7 @@ def compute_merge_base(
     return result.stdout.strip()
 
 
-def detect_default_base(*, repo_root: Path) -> str:
+def detect_default_base_branch(*, repo_root: Path) -> str:
     """Auto-detect the default base branch from the remote's HEAD ref.
 
     Returns a qualified ref like ``"origin/main"`` or ``"origin/master"``.
@@ -244,7 +158,7 @@ def _resolve_git_worktree(path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def run_scaffold_operators(
+def scaffold_operator_workspaces(
     *,
     plan_path: Path,
     output_root: Path,
@@ -257,7 +171,7 @@ def run_scaffold_operators(
     Returns 0 on success (at least one operator created), non-zero on failure.
     """
     scaffold_script = (
-        resolve_skill_source_dir("ascend-npu-analyze-commit-perf")
+        resolve_skill_source_dir(GIT_REPO_PLAN_SKILL_NAME)
         / "scripts"
         / "scaffold_operators.py"
     )
