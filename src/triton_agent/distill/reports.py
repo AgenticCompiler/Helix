@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from triton_agent.distill.models import PairRunResult, SkipRecord
+from triton_agent.distill.models import OperatorDistillResult, SkipRecord
 
 
 def report_path_for_pair(pair_stem: str, simulate_dir: Path, *, pair_count_in_dir: int) -> Path:
@@ -22,7 +22,7 @@ def read_json_file(path: Path) -> dict[str, object]:
     return cast(dict[str, object], data)
 
 
-def write_pair_report(result: PairRunResult) -> None:
+def write_pair_report(result: OperatorDistillResult) -> None:
     data: dict[str, Any] = {
         "status": result.status,
         "operator_dir": str(result.pair.operator_dir),

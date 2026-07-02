@@ -16,8 +16,8 @@ from triton_agent.distill.models import (
     DiffAgentOutput,
     DistillConfig,
     IterationReport,
+    OperatorDistillResult,
     OperatorPair,
-    PairRunResult,
     SkipRecord,
     Status,
 )
@@ -61,123 +61,16 @@ def run_distill(
     *,
     agent_runner: AgentRunner = run_distill_agent,
     stream: TextIO | None = None,
-) -> list[PairRunResult]:
+) -> list[OperatorDistillResult]:
     output_stream = stream or sys.stderr
+    discovery_root = _prepare_discovery_root(
+        config,
+        agent_runner=agent_runner,
+        stream=output_stream,
+    )
+    if discovery_root is None:
+        return []
 
-    # ── Phase 1 (git-repo): Agent → workspace-plan.json → scaffold ─────
-    discovery_root = config.input_root
-    if config.source == "git-repo":
-        git_info = detect_git_worktree(config.input_root)
-        if git_info is None:
-            print(
-                "[git-repo] Input is not inside a Git work tree. "
-                "Use --source code-diff for pre-organized operator directories.",
-                file=output_stream,
-            )
-            return []
-        repo_root, _head_sha = git_info
-
-        # Resolve the base branch: use explicit --base, or auto-detect from remote
-        base_branch = config.base_revision or detect_default_base_branch(repo_root=repo_root)
-        if config.base_revision:
-            print(
-                f"[git-repo] Using base branch: {base_branch}",
-                file=output_stream,
-            )
-        else:
-            print(
-                f"[git-repo] Auto-detected base branch: {base_branch}",
-                file=output_stream,
-            )
-
-        # Deterministically compute the fork point before calling the agent
-        fork_revision = compute_fork_point(
-            repo_root=repo_root, base_branch=base_branch
-        )
-        if fork_revision is None:
-            print(
-                f"[git-repo] Failed to compute merge-base "
-                f"({base_branch}..HEAD). "
-                f"Ensure the base branch ref exists (e.g. `git fetch` first).",
-                file=output_stream,
-            )
-            return []
-        print(
-            f"[git-repo] Fork point (merge-base {base_branch}..HEAD): "
-            f"{fork_revision[:12]}...",
-            file=output_stream,
-        )
-
-        plan_path = config.input_root / ".triton-agent" / DEFAULT_WORKSPACE_PLAN_NAME
-        plan_path.parent.mkdir(parents=True, exist_ok=True)
-        organize_prompt = build_workspace_plan_prompt(
-            repo_root=repo_root,
-            language=config.language,
-            base_revision=base_branch,
-            fork_revision=fork_revision,
-            plan_path=plan_path,
-        )
-        print(
-            "[git-repo] Running agent to produce workspace plan...",
-            file=output_stream,
-        )
-        plan_result = agent_runner(
-            agent_name=config.agent_name,
-            workdir=config.input_root,
-            prompt=organize_prompt,
-            stream_output=config.stream_output,
-            verbose=config.verbose,
-            language=config.language,
-            skills_root=config.skills_dir,
-            repository_skill_names=(GIT_REPO_PLAN_SKILL_NAME,),
-            stage_editable_knowledge=False,
-            output_label="[git-repo]",
-        )
-        if plan_result.return_code != 0 or not plan_path.is_file():
-            print(
-                "[git-repo] Agent failed to produce workspace plan.",
-                file=output_stream,
-            )
-            return []
-        print(
-            f"[git-repo] Plan written to {plan_path.as_posix()}",
-            file=output_stream,
-        )
-
-        organized_dir = config.input_root / DEFAULT_OPERATOR_WORKSPACES_DIR
-        print(
-            "[git-repo] Running scaffold script to create operator workspaces...",
-            file=output_stream,
-        )
-        scaffold_rc = scaffold_operator_workspaces(
-            plan_path=plan_path,
-            output_root=organized_dir,
-            base_revision=base_branch,
-            fork_revision=fork_revision,
-            stream=output_stream,
-        )
-        if scaffold_rc != 0 or not operator_workspaces_created(organized_dir):
-            print(
-                "[git-repo] Scaffold script failed to create operator workspaces.",
-                file=output_stream,
-            )
-            return []
-        discovery_root = organized_dir
-        print(
-            f"[git-repo] Workspaces created in {organized_dir.as_posix()}",
-            file=output_stream,
-        )
-
-        # Clean up intermediate .triton-agent/ directory — no longer needed
-        triton_agent_dir = config.input_root / ".triton-agent"
-        if triton_agent_dir.is_dir():
-            shutil.rmtree(triton_agent_dir)
-            print(
-                f"[git-repo] Cleaned up intermediate {triton_agent_dir.as_posix()}",
-                file=output_stream,
-            )
-
-    # ── Phase 2: Operator Pair Discovery ────────────────────────────────
     discovery = discover_operator_pairs(
         discovery_root,
         source=config.source,
@@ -192,22 +85,7 @@ def run_distill(
         print("No valid operator pairs found.", file=output_stream)
         return []
 
-    # ── Phase 3: Validate operator pairs ───────────────────────────────
-    validated_pairs: list[OperatorPair] = []
-    for pair in discovery.pairs:
-        if not pair.baseline_path.is_file():
-            print(
-                f"skip {pair.operator_dir}: baseline file not found: {pair.baseline_path}",
-                file=output_stream,
-            )
-            continue
-        if not pair.expected_path.is_file():
-            print(
-                f"skip {pair.operator_dir}: expected file not found: {pair.expected_path}",
-                file=output_stream,
-            )
-            continue
-        validated_pairs.append(pair)
+    validated_pairs = _validate_operator_pairs(discovery.pairs, stream=output_stream)
     if not validated_pairs:
         print(
             f"All {len(discovery.pairs)} discovered pair(s) failed validation.",
@@ -220,44 +98,196 @@ def run_distill(
             file=output_stream,
         )
 
-    # ── Phase 4: Simulate→Analyze per operator ─────────────────────────
+    results = _distill_operator_pairs(
+        validated_pairs,
+        config=config,
+        knowledge_dir=knowledge_dir,
+        agent_runner=agent_runner,
+        stream=output_stream,
+    )
+    _export_distilled_patterns(
+        config=config,
+        knowledge_dir=knowledge_dir,
+        pattern_snapshot=pattern_snapshot,
+        results=results,
+        stream=output_stream,
+    )
+    _print_distill_summary(results, stream=output_stream)
+    return results
+
+
+def _prepare_discovery_root(
+    config: DistillConfig,
+    *,
+    agent_runner: AgentRunner,
+    stream: TextIO,
+) -> Path | None:
+    if config.source == "git-repo":
+        return _prepare_git_repo_operator_workspaces(
+            config,
+            agent_runner=agent_runner,
+            stream=stream,
+        )
+    return config.input_root
+
+
+def _prepare_git_repo_operator_workspaces(
+    config: DistillConfig,
+    *,
+    agent_runner: AgentRunner,
+    stream: TextIO,
+) -> Path | None:
+    git_info = detect_git_worktree(config.input_root)
+    if git_info is None:
+        print(
+            "[git-repo] Input is not inside a Git work tree. "
+            "Use --source code-diff for pre-organized operator directories.",
+            file=stream,
+        )
+        return None
+    repo_root, _head_sha = git_info
+
+    base_branch = config.base_revision or detect_default_base_branch(repo_root=repo_root)
+    if config.base_revision:
+        print(f"[git-repo] Using base branch: {base_branch}", file=stream)
+    else:
+        print(f"[git-repo] Auto-detected base branch: {base_branch}", file=stream)
+
+    fork_revision = compute_fork_point(repo_root=repo_root, base_branch=base_branch)
+    if fork_revision is None:
+        print(
+            f"[git-repo] Failed to compute merge-base "
+            f"({base_branch}..HEAD). "
+            f"Ensure the base branch ref exists (e.g. `git fetch` first).",
+            file=stream,
+        )
+        return None
+    print(
+        f"[git-repo] Fork point (merge-base {base_branch}..HEAD): "
+        f"{fork_revision[:12]}...",
+        file=stream,
+    )
+
+    plan_path = config.input_root / ".triton-agent" / DEFAULT_WORKSPACE_PLAN_NAME
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    organize_prompt = build_workspace_plan_prompt(
+        repo_root=repo_root,
+        language=config.language,
+        base_revision=base_branch,
+        fork_revision=fork_revision,
+        plan_path=plan_path,
+    )
+    print("[git-repo] Running agent to produce workspace plan...", file=stream)
+    plan_result = agent_runner(
+        agent_name=config.agent_name,
+        workdir=config.input_root,
+        prompt=organize_prompt,
+        stream_output=config.stream_output,
+        verbose=config.verbose,
+        language=config.language,
+        skills_root=config.skills_dir,
+        repository_skill_names=(GIT_REPO_PLAN_SKILL_NAME,),
+        stage_editable_knowledge=False,
+        output_label="[git-repo]",
+    )
+    if plan_result.return_code != 0 or not plan_path.is_file():
+        print("[git-repo] Agent failed to produce workspace plan.", file=stream)
+        return None
+    print(f"[git-repo] Plan written to {plan_path.as_posix()}", file=stream)
+
+    organized_dir = config.input_root / DEFAULT_OPERATOR_WORKSPACES_DIR
+    print("[git-repo] Running scaffold script to create operator workspaces...", file=stream)
+    scaffold_rc = scaffold_operator_workspaces(
+        plan_path=plan_path,
+        output_root=organized_dir,
+        base_revision=base_branch,
+        fork_revision=fork_revision,
+        stream=stream,
+    )
+    if scaffold_rc != 0 or not operator_workspaces_created(organized_dir):
+        print("[git-repo] Scaffold script failed to create operator workspaces.", file=stream)
+        return None
+    print(f"[git-repo] Workspaces created in {organized_dir.as_posix()}", file=stream)
+
+    _cleanup_git_repo_plan_dir(config.input_root, stream=stream)
+    return organized_dir
+
+
+def _validate_operator_pairs(
+    pairs: tuple[OperatorPair, ...],
+    *,
+    stream: TextIO,
+) -> list[OperatorPair]:
+    validated_pairs: list[OperatorPair] = []
+    for pair in pairs:
+        if not pair.baseline_path.is_file():
+            print(
+                f"skip {pair.operator_dir}: baseline file not found: {pair.baseline_path}",
+                file=stream,
+            )
+            continue
+        if not pair.expected_path.is_file():
+            print(
+                f"skip {pair.operator_dir}: expected file not found: {pair.expected_path}",
+                file=stream,
+            )
+            continue
+        validated_pairs.append(pair)
+    return validated_pairs
+
+
+def _distill_operator_pairs(
+    validated_pairs: list[OperatorPair],
+    *,
+    config: DistillConfig,
+    knowledge_dir: Path,
+    agent_runner: AgentRunner,
+    stream: TextIO,
+) -> list[OperatorDistillResult]:
     pair_counts = Counter(pair.operator_dir for pair in validated_pairs)
     skills_lock = Lock()
-
     if config.concurrency <= 1:
-        results = [
-            _run_pair(
+        return [
+            _distill_operator_pair(
                 pair,
                 config=config,
                 knowledge_dir=knowledge_dir,
                 pair_count_in_dir=pair_counts[pair.operator_dir],
                 agent_runner=agent_runner,
                 skills_lock=skills_lock,
-                stream=output_stream,
+                stream=stream,
             )
             for pair in validated_pairs
         ]
-    else:
-        results: list[PairRunResult] = []
-        with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
-            futures = {
-                executor.submit(
-                    _run_pair,
-                    pair,
-                    config=config,
-                    knowledge_dir=knowledge_dir,
-                    pair_count_in_dir=pair_counts[pair.operator_dir],
-                    agent_runner=agent_runner,
-                    skills_lock=skills_lock,
-                    stream=output_stream,
-                ): pair
-                for pair in validated_pairs
-            }
-            for future in as_completed(futures):
-                results.append(future.result())
 
-    # ── Phase 5: Export updated skills summary ─────────────────────────
+    results: list[OperatorDistillResult] = []
+    with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+        futures = {
+            executor.submit(
+                _distill_operator_pair,
+                pair,
+                config=config,
+                knowledge_dir=knowledge_dir,
+                pair_count_in_dir=pair_counts[pair.operator_dir],
+                agent_runner=agent_runner,
+                skills_lock=skills_lock,
+                stream=stream,
+            ): pair
+            for pair in validated_pairs
+        }
+        for future in as_completed(futures):
+            results.append(future.result())
+    return results
 
+
+def _export_distilled_patterns(
+    *,
+    config: DistillConfig,
+    knowledge_dir: Path,
+    pattern_snapshot: dict[str, str],
+    results: list[OperatorDistillResult],
+    stream: TextIO,
+) -> None:
     updated_pattern_names = _merge_unique(
         [],
         [name for result in results for name in result.updated_patterns],
@@ -272,10 +302,10 @@ def run_distill(
     if exported:
         print(
             f"exported updated patterns: {', '.join(exported)} -> {config.update_skills_dir}",
-            file=output_stream,
+            file=stream,
         )
     else:
-        print("no pattern cards were changed.", file=output_stream)
+        print("no pattern cards were changed.", file=stream)
 
     _write_enriched_manifest(
         config=config,
@@ -285,7 +315,12 @@ def run_distill(
         results=results,
     )
 
-    # ── Final skills summary ─────────────────────────────────────────
+
+def _print_distill_summary(
+    results: list[OperatorDistillResult],
+    *,
+    stream: TextIO,
+) -> None:
     aligned = sum(1 for r in results if r.status == "aligned")
     not_aligned = sum(1 for r in results if r.status == "not_aligned")
     failed = sum(1 for r in results if r.status == "failed")
@@ -295,12 +330,21 @@ def run_distill(
         f"{aligned} aligned, {not_aligned} not-aligned, "
         f"{failed} failed, {skipped} skipped "
         f"(total {len(results)} pairs)",
-        file=output_stream,
+        file=stream,
     )
-    return results
 
 
-def _run_pair(
+def _cleanup_git_repo_plan_dir(input_root: Path, *, stream: TextIO) -> None:
+    triton_agent_dir = input_root / ".triton-agent"
+    if triton_agent_dir.is_dir():
+        shutil.rmtree(triton_agent_dir)
+        print(
+            f"[git-repo] Cleaned up intermediate {triton_agent_dir.as_posix()}",
+            file=stream,
+        )
+
+
+def _distill_operator_pair(
     pair: OperatorPair,
     *,
     config: DistillConfig,
@@ -309,7 +353,7 @@ def _run_pair(
     agent_runner: AgentRunner,
     skills_lock: Lock,
     stream: TextIO,
-) -> PairRunResult:
+) -> OperatorDistillResult:
     simulate_dir = pair.operator_dir / "simulate"
     simulate_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_path_for_pair(pair.stem, simulate_dir, pair_count_in_dir=pair_count_in_dir)
@@ -317,7 +361,7 @@ def _run_pair(
         existing = read_json_file(report_path)
         if existing.get("status") == "aligned":
             print(f"skip {pair.operator_dir}: existing aligned report {report_path}", file=stream)
-            return PairRunResult(
+            return OperatorDistillResult(
                 pair=pair,
                 status="skipped",
                 matched_patterns=list(_string_list(existing.get("matched_patterns"))),
@@ -346,7 +390,7 @@ def _run_pair(
         if distill_result.return_code == 0:
             _regenerate_if_possible(knowledge_dir)
     if distill_result.return_code != 0:
-        result = PairRunResult(
+        result = OperatorDistillResult(
             pair=pair,
             status="failed",
             matched_patterns=[],
@@ -367,7 +411,7 @@ def _run_pair(
 
     # optimize-process: skip simulate-analyze if all optimizations already covered
     if pair.source_kind == "optimize-process" and distill_output_data.aligned:
-        result = PairRunResult(
+        result = OperatorDistillResult(
             pair=pair,
             status="aligned",
             matched_patterns=matched_patterns,
@@ -489,7 +533,7 @@ def _run_pair(
         message = "candidate not aligned"
         _delete_unaligned_candidate(candidate_path)
 
-    result = PairRunResult(
+    result = OperatorDistillResult(
         pair=pair,
         status=status,
         matched_patterns=matched_patterns,
@@ -539,7 +583,7 @@ def _write_enriched_manifest(
     knowledge_dir: Path,
     exported: list[str],
     updated_pattern_names: list[str],
-    results: list[PairRunResult],
+    results: list[OperatorDistillResult],
 ) -> None:
     """Write updated_patterns.json with per-operator exported pattern mapping."""
     operator_records: list[dict[str, object]] = []

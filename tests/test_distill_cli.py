@@ -8,10 +8,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
 from triton_agent.commands.distill import _config_from_args
+from triton_agent.distill.models import OperatorDistillResult
 from triton_agent.models import CommandKind
 
 
 class DistillCliTests(unittest.TestCase):
+    def test_distill_result_type_names_operator_distillation(self) -> None:
+        self.assertEqual(OperatorDistillResult.__name__, "OperatorDistillResult")
+
     def test_distill_maps_to_command_kind(self) -> None:
         parser = build_parser()
 

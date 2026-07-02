@@ -9,7 +9,7 @@ from triton_agent.skills.catalog import resolve_skill_source_dir
 
 DEFAULT_OPERATOR_WORKSPACES_DIR = "operators"
 DEFAULT_WORKSPACE_PLAN_NAME = "workspace-plan.json"
-GIT_REPO_PLAN_SKILL_NAME = "ascend-npu-analyze-commit-perf"
+GIT_REPO_PLAN_SKILL_NAME = "ascend-npu-plan-git-operator-workspaces"
 
 _OPERATOR_SOURCE_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
 
@@ -171,7 +171,7 @@ def scaffold_operator_workspaces(
     Returns 0 on success (at least one operator created), non-zero on failure.
     """
     scaffold_script = (
-        resolve_skill_source_dir("ascend-npu-analyze-commit-perf")
+        resolve_skill_source_dir(GIT_REPO_PLAN_SKILL_NAME)
         / "scripts"
         / "scaffold_operators.py"
     )

@@ -13,12 +13,12 @@ run-time facts: repository root, active operator language, base revision,
 precomputed fork revision, changed-file extension filter, and output path.
 Durable instructions about how to identify changed operators and how to write
 `workspace-plan.json` belong in the
-existing `ascend-npu-analyze-commit-perf` common skill, which already owns the
-plan contract and `scaffold_operators.py`.
+`ascend-npu-plan-git-operator-workspaces` common skill, which owns the plan
+contract and `scaffold_operators.py`.
 
-The git-repo workspace-plan agent call should stage the distill skills workspace so
-the agent can read `ascend-npu-analyze-commit-perf`. The CLI remains responsible
-for computing the merge-base and running the scaffold script.
+The git-repo workspace-plan agent call should stage the distill skills workspace
+so the agent can read `ascend-npu-plan-git-operator-workspaces`. The CLI remains
+responsible for computing the merge-base and running the scaffold script.
 
 ## Testing
 

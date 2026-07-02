@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.distill.agent import _prefixed_stream
+from triton_agent.distill.git_repo_workspaces import GIT_REPO_PLAN_SKILL_NAME
 from triton_agent.distill.models import DiscoveryResult
 from triton_agent.distill.models import DistillConfig
 from triton_agent.distill.git_repo_workspaces import build_workspace_plan_prompt
@@ -26,7 +27,8 @@ class DistillWorkflowTests(unittest.TestCase):
             plan_path=Path("/repo/.triton-agent/workspace-plan.json"),
         )
 
-        self.assertIn("Use the staged ascend-npu-analyze-commit-perf skill", prompt)
+        self.assertEqual(GIT_REPO_PLAN_SKILL_NAME, "ascend-npu-plan-git-operator-workspaces")
+        self.assertIn("Use the staged ascend-npu-plan-git-operator-workspaces skill", prompt)
         self.assertIn("Operator language:\n  tilelang", prompt)
         self.assertIn("Fork point", prompt)
         self.assertIn("/repo/.triton-agent/workspace-plan.json", prompt)
@@ -167,7 +169,7 @@ class DistillWorkflowTests(unittest.TestCase):
                 self.assertEqual(kwargs["output_label"], "[git-repo]")
                 self.assertEqual(kwargs["skills_root"], skills_dir)
                 self.assertIn(
-                    "Use the staged ascend-npu-analyze-commit-perf skill",
+                    "Use the staged ascend-npu-plan-git-operator-workspaces skill",
                     str(kwargs["prompt"]),
                 )
                 (root / ".triton-agent" / "workspace-plan.json").write_text(

@@ -27,6 +27,28 @@ class SkillLinkManagerTests(unittest.TestCase):
         self.assertIn("ascend-npu-distill-patterns", names)
         self.assertNotIn("ascend-npu-kernel-bench-logs", names)
 
+    def test_catalog_uses_git_operator_workspace_plan_skill_name(self) -> None:
+        names = list_catalog_skill_names()
+
+        self.assertIn("ascend-npu-plan-git-operator-workspaces", names)
+        self.assertNotIn("ascend-npu-analyze-commit-perf", names)
+
+    def test_git_operator_workspace_plan_skill_is_language_neutral(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        skill_text = (
+            repo_root
+            / "skills"
+            / "common"
+            / "ascend-npu-plan-git-operator-workspaces"
+            / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("name: ascend-npu-plan-git-operator-workspaces", skill_text)
+        self.assertNotIn("ascend-npu-analyze-commit-perf", skill_text)
+        self.assertNotIn("commit-perf", skill_text)
+        self.assertNotIn("For Triton, look for `@triton.jit`", skill_text)
+        self.assertNotIn("kernel_name[grid](...)", skill_text)
+
     def test_optimize_propagate_nan_guidance_is_workflow_visible(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         optimize_skill = repo_root / "skills" / "triton" / "triton-npu-optimize" / "SKILL.md"

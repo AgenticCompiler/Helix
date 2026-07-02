@@ -35,6 +35,9 @@ boundaries.
 The implementation keeps this boundary explicit: `knowledge_workspace.py` owns
 seeding, diffing, exporting, and promoting the editable optimize-knowledge skill;
 `git_repo_workspaces.py` owns only the `--source git-repo` plan/scaffold path.
+`workflow.py::run_distill()` remains the top-level phase coordinator and delegates
+git-repo preparation, pair validation, per-operator distillation, and pattern
+export to focused helpers.
 
 `ascend-npu-distill-patterns` becomes the staged workflow skill for the distill
 command. It incorporates the reusable parts of
@@ -47,6 +50,10 @@ The command resolves the editable knowledge skill from `--lang`: Triton uses
 `triton-npu-optimize-knowledge`, and TileLang uses
 `tilelang-npu-optimize-knowledge`. The common distillation workflow must not
 assume Triton syntax when the active language is different.
+
+The per-operator result type is named for the domain result it represents:
+`OperatorDistillResult`. The worker helper that handles one baseline/expected
+operator pair is `_distill_operator_pair`.
 
 NPUKernelBench-specific progress tables, field inventories, narrative ledgers,
 and manual synthesis bookkeeping are intentionally not carried forward. The old

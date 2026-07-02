@@ -82,7 +82,7 @@ class IterationReport:
 
 
 @dataclass
-class PairRunResult:
+class OperatorDistillResult:
     pair: OperatorPair
     status: Status
     matched_patterns: list[str]

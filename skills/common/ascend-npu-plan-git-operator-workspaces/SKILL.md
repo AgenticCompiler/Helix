@@ -1,9 +1,9 @@
 ---
-name: ascend-npu-analyze-commit-perf
-description: Analyze Git commits on a local Ascend NPU operator branch and organize changed operators into workspace directories for downstream optimization.
+name: ascend-npu-plan-git-operator-workspaces
+description: Use when a Git branch must be analyzed to plan Ascend NPU operator workspaces for downstream distillation or optimization across Triton, TileLang, or similar operator languages.
 ---
 
-# Git Commit Operator Organization
+# Git Operator Workspace Planning
 
 ## Goal
 
@@ -42,7 +42,7 @@ again. Otherwise collect context from the requested base revision:
 ```bash
 python3 ./scripts/collect_commit_context.py \
   --base <base-revision> \
-  --output .triton-agent/commit-perf-context.json
+  --output .triton-agent/git-operator-context.json
 ```
 
 If `commit_count` is zero, stop immediately and explain that `<base>..HEAD` is empty.
@@ -52,8 +52,8 @@ Common causes: `HEAD` equals the base revision, or the wrong branch is checked o
 
 ```bash
 python3 ./scripts/group_commit_context_by_file.py \
-  --input .triton-agent/commit-perf-context.json \
-  --output .triton-agent/commit-perf-file-groups.json
+  --input .triton-agent/git-operator-context.json \
+  --output .triton-agent/git-operator-file-groups.json
 ```
 
 ### Stage 3: Produce Workspace Plan
@@ -71,15 +71,17 @@ Analyze the file groups to identify changed operators:
    git show HEAD:<source_path>
    ```
    Read file content silently; do not print full source to stdout.
-3. Identify kernel functions in the file. For Triton, look for `@triton.jit`
-   kernels and the host launch functions that call them. For TileLang, look for
-   TileLang kernel definitions and their public Python entry points.
+3. Identify kernel definitions and public entry points using the active operator
+   language from the caller prompt. Examples: Triton code may use `@triton.jit`
+   kernels plus host launch expressions such as `kernel[grid](...)`; TileLang
+   code may use `@tilelang.jit`, `T.prim_func`, builder functions, or public
+   Python wrappers that compile or launch TileLang kernels.
 4. Only treat a kernel as changed when its body changed. Ignore import-only,
    comment-only, docstring-only, formatting-only, and unrelated helper changes.
-5. For each changed kernel body, find the host-side launch function that users
-   call. This is the `def` that calls the kernel via `kernel_name[grid](...)`.
-   If a private helper launches the kernel, trace upward to the first public
-   entry point.
+5. For each changed kernel body, find the host-side entry point that users call.
+   This may be a Triton launch wrapper, a TileLang compile/invoke wrapper, or
+   another language-specific launch or call site. If a private helper launches
+   the kernel, trace upward to the first public entry point.
 6. Cross-check each candidate against the diff. If the diff does not touch the
    launch function or one of its kernels, skip it.
 7. Emit one `operators[]` entry per launch function. If multiple changed kernels
