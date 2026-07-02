@@ -7,11 +7,11 @@ from typing import TextIO
 
 from triton_agent.skills.catalog import resolve_skill_source_dir
 
-DEFAULT_OPERATORS_DIR = "operators"
-DEFAULT_PLAN_NAME = "workspace-plan.json"
-ANALYZE_COMMIT_PERF_SKILL_NAME = "ascend-npu-analyze-commit-perf"
+DEFAULT_OPERATOR_WORKSPACES_DIR = "operators"
+DEFAULT_WORKSPACE_PLAN_NAME = "workspace-plan.json"
+GIT_REPO_PLAN_SKILL_NAME = "ascend-npu-analyze-commit-perf"
 
-_TRITON_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
+_OPERATOR_SOURCE_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
 
 
 # ---------------------------------------------------------------------------
@@ -19,18 +19,22 @@ _TRITON_EXTENSIONS = (".py", ".triton", ".ttir", ".mlir")
 # ---------------------------------------------------------------------------
 
 
-def build_organize_workspaces_prompt(
+def build_workspace_plan_prompt(
     *,
     repo_root: Path,
     base_revision: str,
     fork_revision: str,
     plan_path: Path,
+    language: str = "triton",
 ) -> str:
-    _ext_filter = " ".join(f'"*{ext}"' for ext in _TRITON_EXTENSIONS)
-    return f"""Use the staged {ANALYZE_COMMIT_PERF_SKILL_NAME} skill to analyze Git commits and produce a workspace plan JSON.
+    _ext_filter = " ".join(f'"*{ext}"' for ext in _OPERATOR_SOURCE_EXTENSIONS)
+    return f"""Use the staged {GIT_REPO_PLAN_SKILL_NAME} skill to analyze Git commits and produce a workspace plan JSON.
 
 Repository root:
   {repo_root.as_posix()}
+
+Operator language:
+  {language}
 
 Base branch:
   {base_revision}
@@ -61,7 +65,7 @@ source files because the CLI scaffold script handles that after this step.
 # ---------------------------------------------------------------------------
 
 
-def workspace_organizer_succeeded(output_dir: Path) -> bool:
+def operator_workspaces_created(output_dir: Path) -> bool:
     """Check whether the agent created at least one valid operator workspace."""
     if not output_dir.is_dir():
         return False
@@ -79,7 +83,7 @@ def workspace_organizer_succeeded(output_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def try_detect_git_repo(path: Path) -> tuple[Path, str] | None:
+def detect_git_worktree(path: Path) -> tuple[Path, str] | None:
     """Try to detect a Git repository from *path*.
 
     Returns ``(repo_root, head_sha)`` on success, or ``None`` when *path* is
@@ -95,7 +99,7 @@ def try_detect_git_repo(path: Path) -> tuple[Path, str] | None:
     return repo_root, result.stdout.strip()
 
 
-def compute_merge_base(
+def compute_fork_point(
     *, repo_root: Path, base_branch: str
 ) -> str | None:
     """Compute the fork point where the current branch diverged from *base_branch*.
@@ -108,7 +112,7 @@ def compute_merge_base(
     return result.stdout.strip()
 
 
-def detect_default_base(*, repo_root: Path) -> str:
+def detect_default_base_branch(*, repo_root: Path) -> str:
     """Auto-detect the default base branch from the remote's HEAD ref.
 
     Returns a qualified ref like ``"origin/main"`` or ``"origin/master"``.
@@ -154,7 +158,7 @@ def _resolve_git_worktree(path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def run_scaffold_operators(
+def scaffold_operator_workspaces(
     *,
     plan_path: Path,
     output_root: Path,

@@ -92,7 +92,7 @@ These skills move under `skills/common/` and are renamed from `triton-npu-*` to 
 
 `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` remain allowed to reference the Triton optimize skill by logical skill name when they need shared optimize workflow helpers. The key constraint is that their script logic must not encode the physical group names `common/` or `triton/`.
 
-`triton-npu-analyze-commit-perf` is currently not part of any `CommandKind` staging rule, but it is a real repository skill and is referenced directly by `src/triton_agent/distill/workspace_organizer.py`. It must still be cataloged, renamed, and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
+`triton-npu-analyze-commit-perf` is currently not part of any `CommandKind` staging rule, but it is a real repository skill and is referenced directly by `src/triton_agent/distill/git_repo_workspaces.py`. It must still be cataloged, renamed, and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
 
 ### Triton Skills
 
@@ -412,7 +412,7 @@ At minimum, the following file groups should be expected to change together:
   - `tests/test_pi_runner.py`
   - `tests/test_traecli_runner.py`
 - skill staging, loading, and contract behavior:
-  - `tests/test_distill_skills_workspace.py`
+  - `tests/test_distill_knowledge_workspace.py`
   - `tests/test_distill_workflow.py`
   - `tests/test_run_skill_loader.py`
   - `tests/test_skill_command_script.py`

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, TextIO, cast
 
 from triton_agent.backends.factory import create_runner
-from triton_agent.distill.skills_workspace import knowledge_skill_name
+from triton_agent.distill.knowledge_workspace import optimize_knowledge_skill_name
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.paths import skills_root as repository_skills_root
 from triton_agent.skills.staging import SkillLinkManager, SkillLinkSet, staged_skill_dir
@@ -125,7 +125,7 @@ def _stage_editable_knowledge(
     editable_skills_dir: Path,
     language: str,
 ) -> SkillLinkSet:
-    knowledge_name = knowledge_skill_name(language)
+    knowledge_name = optimize_knowledge_skill_name(language)
     source = editable_skills_dir / knowledge_name
     if not source.is_dir():
         raise RuntimeError(f"Editable knowledge skill does not exist: {source}")

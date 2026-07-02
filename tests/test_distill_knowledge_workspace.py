@@ -5,17 +5,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.distill.skills_workspace import (
-    export_changed_patterns,
-    snapshot_pattern_cards,
+from triton_agent.distill.knowledge_workspace import (
+    export_changed_pattern_cards,
+    optimize_knowledge_skill_name,
+    snapshot_pattern_card_texts,
 )
 
 
-class DistillSkillsWorkspaceTests(unittest.TestCase):
-    def test_export_changed_patterns_copies_only_delta(self) -> None:
+class DistillKnowledgeWorkspaceTests(unittest.TestCase):
+    def test_optimize_knowledge_skill_name_uses_active_language(self) -> None:
+        self.assertEqual(optimize_knowledge_skill_name("triton"), "triton-npu-optimize-knowledge")
+        self.assertEqual(optimize_knowledge_skill_name("tilelang"), "tilelang-npu-optimize-knowledge")
+
+    def test_export_changed_pattern_cards_copies_only_delta(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "skills" / "triton" / "triton-npu-optimize-knowledge"
+            source = root / "skills" / "tilelang" / "tilelang-npu-optimize-knowledge"
             patterns = source / "references" / "patterns"
             scripts = source / "scripts"
             patterns.mkdir(parents=True)
@@ -31,20 +36,21 @@ class DistillSkillsWorkspaceTests(unittest.TestCase):
                 "Path(args.output).write_text('# Index\\n', encoding='utf-8')\n",
                 encoding="utf-8",
             )
-            snapshot = snapshot_pattern_cards(source)
+            snapshot = snapshot_pattern_card_texts(source)
 
             (patterns / "tiling.md").write_text("# Tiling\n\n## Summary\nnew\n", encoding="utf-8")
             (patterns / "new-pattern.md").write_text("# New\n\n## Summary\nadded\n", encoding="utf-8")
 
-            exported = export_changed_patterns(
+            exported = export_changed_pattern_cards(
                 source,
                 root / "update_skills",
+                language="tilelang",
                 pattern_snapshot=snapshot,
                 updated_pattern_names=["tiling"],
             )
 
             self.assertEqual(exported, ["new-pattern.md", "tiling.md"])
-            update_patterns = root / "update_skills" / "triton-npu-optimize-knowledge" / "references" / "patterns"
+            update_patterns = root / "update_skills" / "tilelang-npu-optimize-knowledge" / "references" / "patterns"
             self.assertFalse((update_patterns / "autotune.md").exists())
             self.assertEqual(
                 (update_patterns / "tiling.md").read_text(encoding="utf-8"),

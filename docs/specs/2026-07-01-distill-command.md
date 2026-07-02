@@ -5,6 +5,8 @@
 `triton-agent distill -i <operators-root>` supports two explicit
 input sources selected by `--source`.
 The default code-agent backend is `opencode`.
+The active operator language comes from `--lang` / `--language`, defaulting to
+`triton`; supported values include `triton` and `tilelang`.
 
 In the default `--source code-diff`, the command scans one level of operator
 directories under the input root. Each operator directory may contain one or more
@@ -45,16 +47,18 @@ reached.
 - Per-pair report: `<operator-dir>/simulate/report.json`.
 - Generated candidate: `<operator-dir>/simulate/generated_<stem>.py`.
 
-When the skills workspace does not exist, it is seeded from the bundled
-`skills/triton/triton-npu-optimize-knowledge` skill. The command only edits the
-workspace copy, never the bundled skill directory. Skills updates may revise
-existing pattern cards or add new generic pattern cards when the diff exposes a
-mechanism that is not covered yet.
+When the editable knowledge workspace does not exist, it is seeded from the
+bundled `<language>-npu-optimize-knowledge` skill. For example, `--lang triton`
+uses `triton-npu-optimize-knowledge`, while `--lang tilelang` uses
+`tilelang-npu-optimize-knowledge`. The command only edits the workspace copy,
+never the bundled skill directory. Skills updates may revise existing pattern
+cards or add new generic pattern cards when the diff exposes a mechanism that is
+not covered yet.
 
-If `--promote-aligned` is set, each pair that reaches `aligned` promotes
-the editable `triton-npu-optimize-knowledge` workspace back over the bundled
-`skills/triton-npu-optimize-knowledge` directory and rebuilds `pattern_index.md`
-there. This option is off by default.
+If `--promote-aligned` is set, each pair that reaches `aligned` promotes the
+editable `<language>-npu-optimize-knowledge` workspace back over the matching
+bundled skill directory and rebuilds `pattern_index.md` there. This option is off
+by default.
 
 ## Report Contract
 

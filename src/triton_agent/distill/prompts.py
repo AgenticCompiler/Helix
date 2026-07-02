@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from triton_agent.distill.agent import DISTILL_SKILL_NAME
+from triton_agent.distill.knowledge_workspace import optimize_knowledge_skill_name
 from triton_agent.distill.models import OperatorPair
 
 
@@ -15,12 +16,14 @@ def build_distill_prompt(
     output_json: Path,
     language: str = "triton",
 ) -> str:
+    knowledge_skill = optimize_knowledge_skill_name(language)
     return f"""Use the staged {DISTILL_SKILL_NAME} skill to distill optimization evidence into reusable {language} Ascend NPU pattern knowledge.
 
 Baseline file: {pair.baseline_path}
 Optimized answer file: {pair.expected_path}
+Operator language: {language}
 Editable skills directory: {skills_dir}
-Editable knowledge skill: {skills_dir}/{language}-npu-optimize-knowledge
+Editable knowledge skill: {skills_dir}/{knowledge_skill}
 Input kind: {pair.source_kind}
 {_process_context_text(pair)}
 

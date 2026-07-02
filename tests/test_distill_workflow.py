@@ -11,21 +11,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.distill.agent import _prefixed_stream
 from triton_agent.distill.models import DiscoveryResult
 from triton_agent.distill.models import DistillConfig
-from triton_agent.distill.workspace_organizer import build_organize_workspaces_prompt
+from triton_agent.distill.git_repo_workspaces import build_workspace_plan_prompt
 from triton_agent.distill.workflow import run_distill
 from triton_agent.models import AgentResult
 
 
 class DistillWorkflowTests(unittest.TestCase):
-    def test_git_repo_organizer_prompt_delegates_workflow_to_common_skill(self) -> None:
-        prompt = build_organize_workspaces_prompt(
+    def test_git_repo_plan_prompt_delegates_workflow_to_common_skill(self) -> None:
+        prompt = build_workspace_plan_prompt(
             repo_root=Path("/repo"),
+            language="tilelang",
             base_revision="origin/main",
             fork_revision="abc123",
             plan_path=Path("/repo/.triton-agent/workspace-plan.json"),
         )
 
         self.assertIn("Use the staged ascend-npu-analyze-commit-perf skill", prompt)
+        self.assertIn("Operator language:\n  tilelang", prompt)
         self.assertIn("Fork point", prompt)
         self.assertIn("/repo/.triton-agent/workspace-plan.json", prompt)
         self.assertNotIn("### Step 2: For EACH changed file", prompt)
@@ -125,11 +127,11 @@ class DistillWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.distill.workflow.ensure_skills_workspace",
+                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
                     return_value=knowledge_dir,
                 ),
-                patch("triton_agent.distill.workflow.regenerate_pattern_index"),
-                patch("triton_agent.distill.workflow.promote_converged_knowledge_workspace") as promote,
+                patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+                patch("triton_agent.distill.workflow.promote_editable_knowledge_skill") as promote,
             ):
                 promote.return_value = knowledge_dir
                 results = run_distill(config, agent_runner=agent_runner)
@@ -152,7 +154,7 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertEqual(len(simulate_calls), 2)
             promote.assert_called_once_with(knowledge_dir, language="triton")
 
-    def test_git_repo_organizer_agent_receives_staged_skill_root(self) -> None:
+    def test_git_repo_plan_agent_receives_staged_skill_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skills_dir = root / "skills"
@@ -191,20 +193,20 @@ class DistillWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.distill.workflow.try_detect_git_repo",
+                    "triton_agent.distill.workflow.detect_git_worktree",
                     return_value=(root, "headsha"),
                 ),
                 patch(
-                    "triton_agent.distill.workflow.detect_default_base",
+                    "triton_agent.distill.workflow.detect_default_base_branch",
                     return_value="origin/main",
                 ),
                 patch(
-                    "triton_agent.distill.workflow.compute_merge_base",
+                    "triton_agent.distill.workflow.compute_fork_point",
                     return_value="abc123",
                 ),
-                patch("triton_agent.distill.workflow.run_scaffold_operators", return_value=0),
+                patch("triton_agent.distill.workflow.scaffold_operator_workspaces", return_value=0),
                 patch(
-                    "triton_agent.distill.workflow.workspace_organizer_succeeded",
+                    "triton_agent.distill.workflow.operator_workspaces_created",
                     return_value=True,
                 ),
                 patch(
@@ -212,11 +214,11 @@ class DistillWorkflowTests(unittest.TestCase):
                     return_value=DiscoveryResult(pairs=(), skips=()),
                 ),
                 patch(
-                    "triton_agent.distill.workflow.ensure_skills_workspace",
+                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
                     return_value=knowledge_dir,
                 ),
                 patch(
-                    "triton_agent.distill.workflow.snapshot_pattern_cards",
+                    "triton_agent.distill.workflow.snapshot_pattern_card_texts",
                     return_value={},
                 ),
             ):

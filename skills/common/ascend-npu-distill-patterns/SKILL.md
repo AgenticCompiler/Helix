@@ -8,10 +8,24 @@ description: Distill completed Ascend NPU optimization evidence into reusable op
 ## Goal
 
 Convert optimization evidence into durable, generic pattern-card guidance for
-`<Language>-npu-optimize-knowledge`. Use this skill when a command asks you to
-compare a baseline operator with an optimized answer, read a completed optimize
-workspace, update pattern cards, simulate applying those cards, or analyze why a
-simulated candidate did not match the expected optimization.
+the active language's `<language>-npu-optimize-knowledge` skill. Use this skill
+when a command asks you to compare a baseline operator with an optimized answer,
+read a completed optimize workspace, update pattern cards, simulate applying
+those cards, or analyze why a simulated candidate did not match the expected
+optimization.
+
+## Language Scope
+
+The command prompt names the active operator language and editable knowledge
+skill. Use that skill as the source of truth, for example
+`triton-npu-optimize-knowledge` for Triton or `tilelang-npu-optimize-knowledge`
+for TileLang.
+
+Keep cards reusable within the active language. Do not assume Triton syntax,
+`@triton.jit`, or Triton IR when the active language is TileLang. When evidence
+shows a cross-language Ascend NPU idea, write the mechanism in language-neutral
+terms first, then keep API names, code examples, and verification details tied to
+the active language's knowledge skill.
 
 ## Distillation Workflow
 
@@ -48,9 +62,10 @@ simulated candidate did not match the expected optimization.
   clearly named anti-signal section.
 - Put validation rules under `## What To Verify After Applying`.
 - Preserve existing valid guidance unless new evidence clearly supersedes it.
-- Keep final prose kernel-agnostic and self-contained. Avoid round IDs, artifact
-  path narration, and benchmark-specific labels except inside short examples
-  where they are necessary to explain the mechanism.
+- Keep final prose operator-agnostic and self-contained within the active
+  language. Avoid round IDs, artifact path narration, and benchmark-specific
+  labels except inside short examples where they are necessary to explain the
+  mechanism.
 
 ## Simulation Rules
 

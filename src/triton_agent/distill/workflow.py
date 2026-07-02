@@ -32,24 +32,24 @@ from triton_agent.distill.reports import (
     write_pair_report,
     write_skip_report,
 )
-from triton_agent.distill.skills_workspace import (
-    ensure_skills_workspace,
-    export_changed_patterns,
-    promote_converged_knowledge_workspace,
-    regenerate_pattern_index,
-    resolve_pattern_card,
-    snapshot_pattern_cards,
+from triton_agent.distill.knowledge_workspace import (
+    ensure_editable_knowledge_skill,
+    export_changed_pattern_cards,
+    find_pattern_card,
+    promote_editable_knowledge_skill,
+    rebuild_pattern_index,
+    snapshot_pattern_card_texts,
 )
-from triton_agent.distill.workspace_organizer import (
-    ANALYZE_COMMIT_PERF_SKILL_NAME,
-    DEFAULT_OPERATORS_DIR,
-    DEFAULT_PLAN_NAME,
-    build_organize_workspaces_prompt,
-    compute_merge_base,
-    detect_default_base,
-    run_scaffold_operators,
-    try_detect_git_repo,
-    workspace_organizer_succeeded,
+from triton_agent.distill.git_repo_workspaces import (
+    DEFAULT_OPERATOR_WORKSPACES_DIR,
+    DEFAULT_WORKSPACE_PLAN_NAME,
+    GIT_REPO_PLAN_SKILL_NAME,
+    build_workspace_plan_prompt,
+    compute_fork_point,
+    detect_default_base_branch,
+    detect_git_worktree,
+    operator_workspaces_created,
+    scaffold_operator_workspaces,
 )
 from triton_agent.models import AgentResult
 
@@ -67,7 +67,7 @@ def run_distill(
     # ── Phase 1 (git-repo): Agent → workspace-plan.json → scaffold ─────
     discovery_root = config.input_root
     if config.source == "git-repo":
-        git_info = try_detect_git_repo(config.input_root)
+        git_info = detect_git_worktree(config.input_root)
         if git_info is None:
             print(
                 "[git-repo] Input is not inside a Git work tree. "
@@ -78,7 +78,7 @@ def run_distill(
         repo_root, _head_sha = git_info
 
         # Resolve the base branch: use explicit --base, or auto-detect from remote
-        base_branch = config.base_revision or detect_default_base(repo_root=repo_root)
+        base_branch = config.base_revision or detect_default_base_branch(repo_root=repo_root)
         if config.base_revision:
             print(
                 f"[git-repo] Using base branch: {base_branch}",
@@ -91,7 +91,7 @@ def run_distill(
             )
 
         # Deterministically compute the fork point before calling the agent
-        fork_revision = compute_merge_base(
+        fork_revision = compute_fork_point(
             repo_root=repo_root, base_branch=base_branch
         )
         if fork_revision is None:
@@ -108,10 +108,11 @@ def run_distill(
             file=output_stream,
         )
 
-        plan_path = config.input_root / ".triton-agent" / DEFAULT_PLAN_NAME
+        plan_path = config.input_root / ".triton-agent" / DEFAULT_WORKSPACE_PLAN_NAME
         plan_path.parent.mkdir(parents=True, exist_ok=True)
-        organize_prompt = build_organize_workspaces_prompt(
+        organize_prompt = build_workspace_plan_prompt(
             repo_root=repo_root,
+            language=config.language,
             base_revision=base_branch,
             fork_revision=fork_revision,
             plan_path=plan_path,
@@ -128,7 +129,7 @@ def run_distill(
             verbose=config.verbose,
             language=config.language,
             skills_root=config.skills_dir,
-            repository_skill_names=(ANALYZE_COMMIT_PERF_SKILL_NAME,),
+            repository_skill_names=(GIT_REPO_PLAN_SKILL_NAME,),
             stage_editable_knowledge=False,
             output_label="[git-repo]",
         )
@@ -143,19 +144,19 @@ def run_distill(
             file=output_stream,
         )
 
-        organized_dir = config.input_root / DEFAULT_OPERATORS_DIR
+        organized_dir = config.input_root / DEFAULT_OPERATOR_WORKSPACES_DIR
         print(
             "[git-repo] Running scaffold script to create operator workspaces...",
             file=output_stream,
         )
-        scaffold_rc = run_scaffold_operators(
+        scaffold_rc = scaffold_operator_workspaces(
             plan_path=plan_path,
             output_root=organized_dir,
             base_revision=base_branch,
             fork_revision=fork_revision,
             stream=output_stream,
         )
-        if scaffold_rc != 0 or not workspace_organizer_succeeded(organized_dir):
+        if scaffold_rc != 0 or not operator_workspaces_created(organized_dir):
             print(
                 "[git-repo] Scaffold script failed to create operator workspaces.",
                 file=output_stream,
@@ -183,8 +184,8 @@ def run_distill(
         stream=output_stream,
         exclude_dirs={config.skills_dir, config.update_skills_dir},
     )
-    knowledge_dir = ensure_skills_workspace(config.skills_dir, language=config.language)
-    pattern_snapshot = snapshot_pattern_cards(knowledge_dir)
+    knowledge_dir = ensure_editable_knowledge_skill(config.skills_dir, language=config.language)
+    pattern_snapshot = snapshot_pattern_card_texts(knowledge_dir)
     for skip in discovery.skips:
         _write_skip_report(skip)
     if not discovery.pairs:
@@ -261,7 +262,7 @@ def run_distill(
         [],
         [name for result in results for name in result.updated_patterns],
     )
-    exported = export_changed_patterns(
+    exported = export_changed_pattern_cards(
         knowledge_dir,
         config.update_skills_dir,
         language=config.language,
@@ -450,7 +451,10 @@ def _run_pair(
             analysis_data = read_json_file(analysis_output)
             aligned = bool(analysis_data.get("aligned"))
             if analysis_result.return_code == 0 and aligned and config.promote_converged_skills:
-                promoted_dir = promote_converged_knowledge_workspace(knowledge_dir, language=config.language)
+                promoted_dir = promote_editable_knowledge_skill(
+                    knowledge_dir,
+                    language=config.language,
+                )
                 print(f"[{pair.operator_dir.name}] promote-aligned: {promoted_dir}", file=stream)
         if analysis_result.return_code != 0:
             aligned = False
@@ -542,7 +546,7 @@ def _write_enriched_manifest(
     for result in results:
         operator_exported: list[str] = []
         for name in result.updated_patterns:
-            resolved = resolve_pattern_card(knowledge_dir, name)
+            resolved = find_pattern_card(knowledge_dir, name)
             if resolved is not None and resolved.name in exported:
                 if resolved.name not in operator_exported:
                     operator_exported.append(resolved.name)
@@ -577,7 +581,7 @@ def _write_skip_report(record: SkipRecord) -> None:
 
 
 def _regenerate_if_possible(knowledge_dir: Path) -> None:
-    regenerate_pattern_index(knowledge_dir)
+    rebuild_pattern_index(knowledge_dir)
 
 
 def _delete_unaligned_candidate(candidate_path: Path) -> None:

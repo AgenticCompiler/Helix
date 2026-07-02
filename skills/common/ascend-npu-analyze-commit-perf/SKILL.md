@@ -27,7 +27,9 @@ Read these before writing:
 
 - [references/output-contract.md](references/output-contract.md)
 
-When available, use the corresponding `<Language>-npu-optimize-knowledge` skill as the generic optimization pattern and symptom library, where `<Language>` is `triton` or `tilelang`.
+When available, use the corresponding `<language>-npu-optimize-knowledge` skill
+as the generic optimization pattern and symptom library. The caller prompt may
+name the active operator language, such as `triton` or `tilelang`.
 
 ## Workflow
 
@@ -58,7 +60,7 @@ python3 ./scripts/group_commit_context_by_file.py \
 
 Analyze the file groups to identify changed operators:
 
-1. List changed Triton source files. Prefer the caller's extension filter when
+1. List changed operator source files. Prefer the caller's extension filter when
    provided, for example:
    ```bash
    git diff --name-only <fork-revision>..HEAD -- "*.py" "*.triton" "*.ttir" "*.mlir"
@@ -69,7 +71,9 @@ Analyze the file groups to identify changed operators:
    git show HEAD:<source_path>
    ```
    Read file content silently; do not print full source to stdout.
-3. Identify `@triton.jit` kernel functions in the file.
+3. Identify kernel functions in the file. For Triton, look for `@triton.jit`
+   kernels and the host launch functions that call them. For TileLang, look for
+   TileLang kernel definitions and their public Python entry points.
 4. Only treat a kernel as changed when its body changed. Ignore import-only,
    comment-only, docstring-only, formatting-only, and unrelated helper changes.
 5. For each changed kernel body, find the host-side launch function that users

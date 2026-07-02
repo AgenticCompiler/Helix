@@ -22,6 +22,8 @@ class DistillCliTests(unittest.TestCase):
                 "operators",
                 "--agent",
                 "opencode",
+                "--lang",
+                "tilelang",
                 "--skills-dir",
                 "custom-skills",
                 "--source",
@@ -43,6 +45,7 @@ class DistillCliTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.DISTILL)
         self.assertEqual(args.input, "operators")
         self.assertEqual(args.agent, "opencode")
+        self.assertEqual(args.lang, "tilelang")
         self.assertEqual(args.skills_dir, "custom-skills")
         self.assertEqual(args.export_dir, "distilled-skills")
         self.assertEqual(args.source, "optimize-process")
@@ -63,6 +66,15 @@ class DistillCliTests(unittest.TestCase):
         self.assertEqual(config.update_skills_dir, (Path("operators").resolve() / "update_skills"))
         self.assertEqual(config.source, "code-diff")
         self.assertEqual(config.agent_name, "opencode")
+        self.assertEqual(config.language, "triton")
+
+    def test_distill_config_accepts_tilelang_language(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["distill", "-i", "operators", "--lang", "tilelang"])
+
+        config = _config_from_args(args)
+
+        self.assertEqual(config.language, "tilelang")
 
     def test_old_distill_option_names_are_removed(self) -> None:
         parser = build_parser()
