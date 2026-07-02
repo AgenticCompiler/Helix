@@ -59,6 +59,9 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         readme_text = assets.text_files["README.md"]
         self.assertIn("name: triton-agent-optimize", agent_text)
         self.assertIn("Use `triton-npu-optimize` as the primary workflow skill.", agent_text)
+        self.assertIn("## Fixed Optimize Modes", agent_text)
+        self.assertIn("test-mode: `differential`", agent_text)
+        self.assertIn("bench-mode: `torch-npu-profiler`", agent_text)
         self.assertIn("## Critical Workflow Rules", agent_text)
         self.assertIn(
             "Use `ascend-npu-optimize-state` `start-round` immediately before beginning a new `opt-round-N/`.",
