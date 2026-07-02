@@ -17,6 +17,10 @@ def optimize_knowledge_skill_name(language: str) -> str:
     return f"{language}-npu-optimize-knowledge"
 
 
+def editable_knowledge_dir(skills_dir: Path, *, language: str = "triton") -> Path:
+    return skills_dir / optimize_knowledge_skill_name(language)
+
+
 def ensure_editable_knowledge_skill(skills_dir: Path, *, language: str = "triton") -> Path:
     knowledge_name = optimize_knowledge_skill_name(language)
     skills_dir.mkdir(parents=True, exist_ok=True)
@@ -140,13 +144,13 @@ def find_pattern_card(knowledge_dir: Path, name: str) -> Path | None:
     if not patterns_dir.is_dir():
         return None
     slug = _slugify(name)
-    candidates = (
-        patterns_dir / f"{name}.md",
-        patterns_dir / f"{slug}.md",
-    )
-    for candidate in candidates:
+    if len(name) <= 100:
+        candidate = patterns_dir / f"{name}.md"
         if candidate.is_file():
             return candidate
+    candidate = patterns_dir / f"{slug}.md"
+    if candidate.is_file():
+        return candidate
     for path in patterns_dir.glob("*.md"):
         if path.stem == slug:
             return path
@@ -161,4 +165,5 @@ def _slugify(name: str) -> str:
     value = name.lower().strip()
     value = re.sub(r"[^\w\s-]", "", value)
     value = re.sub(r"[\s_]+", "-", value)
-    return value.strip("-")
+    slug = value.strip("-")
+    return slug[:100] if len(slug) > 100 else slug

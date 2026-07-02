@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 
 from triton_agent.distill.agent import DISTILL_SKILL_NAME
-from triton_agent.distill.knowledge_workspace import optimize_knowledge_skill_name
+from triton_agent.distill.knowledge_workspace import (
+    editable_knowledge_dir,
+    optimize_knowledge_skill_name,
+)
 from triton_agent.distill.models import OperatorPair
 
 
@@ -17,6 +20,12 @@ def build_distill_prompt(
     language: str = "triton",
 ) -> str:
     knowledge_skill = optimize_knowledge_skill_name(language)
+    optimize_process_hint = ""
+    if pair.source_kind == "optimize-process":
+        optimize_process_hint = (
+            "\nInput kind is optimize-process. Follow optimize-process steps in "
+            "the staged skill's Distillation Workflow section.\n"
+        )
     return f"""Use the staged {DISTILL_SKILL_NAME} skill to distill optimization evidence into reusable {language} Ascend NPU pattern knowledge.
 
 Baseline file: {pair.baseline_path}
@@ -26,8 +35,9 @@ Editable skills directory: {skills_dir}
 Editable knowledge skill: {skills_dir}/{knowledge_skill}
 Input kind: {pair.source_kind}
 {_process_context_text(pair)}
-
-Follow the skill's distillation workflow. Keep card guidance generic and reusable.
+{optimize_process_hint}
+Read the staged skill's Distillation Workflow and Pattern Card Contract sections.
+Keep card guidance generic and reusable.
 Do not copy operator-specific names unless a concise example needs them. Regenerate
 the pattern index after editing or adding pattern cards when the local skill
 provides an index builder.
@@ -95,7 +105,8 @@ Compare the generated candidate with the expected optimized answer. Judge whethe
 the candidate captures the same optimization mechanism and important code
 changes. If it does not, update relevant generic pattern cards or add a new
 generic pattern card in the editable skills directory so the next simulate
-iteration has better guidance.
+iteration has better guidance. Follow the staged skill's Pattern Card Contract
+when editing cards.
 
 Write JSON to {output_json} with this shape:
 {{
@@ -104,6 +115,32 @@ Write JSON to {output_json} with this shape:
   "updated_patterns": ["pattern-card-name-or-title-that-was-added-or-edited"],
   "skill_updates": ["changed pattern card or guidance"]
 }}
+"""
+
+
+def build_post_update_review_prompt(
+    *,
+    skills_dir: Path,
+    updated_patterns: list[str],
+    output_json: Path,
+    language: str = "triton",
+) -> str:
+    patterns_list = "\n".join(f"- {name}" for name in sorted(updated_patterns))
+    knowledge_dir = editable_knowledge_dir(skills_dir, language=language)
+    patterns_dir = knowledge_dir / "references" / "patterns"
+    index_path = knowledge_dir / "references" / "pattern_index.md"
+    return f"""Use the staged {DISTILL_SKILL_NAME} skill's Post-Update Review section.
+
+Editable skills directory: {skills_dir}
+Editable knowledge skill: {knowledge_dir}
+Pattern cards directory: {patterns_dir}
+Pattern index: {index_path}
+
+Updated pattern cards in this batch:
+{patterns_list}
+
+Write JSON to {output_json} using the output contract in the skill's
+Post-Update Review section.
 """
 
 

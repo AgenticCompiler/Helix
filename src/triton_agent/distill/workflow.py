@@ -24,6 +24,7 @@ from triton_agent.distill.models import (
 from triton_agent.distill.prompts import (
     build_analysis_prompt,
     build_distill_prompt,
+    build_post_update_review_prompt,
     build_simulate_prompt,
 )
 from triton_agent.distill.reports import (
@@ -110,6 +111,7 @@ def run_distill(
         knowledge_dir=knowledge_dir,
         pattern_snapshot=pattern_snapshot,
         results=results,
+        agent_runner=agent_runner,
         stream=output_stream,
     )
     _print_distill_summary(results, stream=output_stream)
@@ -286,12 +288,21 @@ def _export_distilled_patterns(
     knowledge_dir: Path,
     pattern_snapshot: dict[str, str],
     results: list[OperatorDistillResult],
+    agent_runner: AgentRunner,
     stream: TextIO,
 ) -> None:
     updated_pattern_names = _merge_unique(
         [],
         [name for result in results for name in result.updated_patterns],
     )
+    if config.post_update_review:
+        _run_post_update_review(
+            config=config,
+            knowledge_dir=knowledge_dir,
+            updated_pattern_names=updated_pattern_names,
+            agent_runner=agent_runner,
+            stream=stream,
+        )
     exported = export_changed_pattern_cards(
         knowledge_dir,
         config.update_skills_dir,
@@ -314,6 +325,50 @@ def _export_distilled_patterns(
         updated_pattern_names=updated_pattern_names,
         results=results,
     )
+
+
+def _run_post_update_review(
+    *,
+    config: DistillConfig,
+    knowledge_dir: Path,
+    updated_pattern_names: list[str],
+    agent_runner: AgentRunner,
+    stream: TextIO,
+) -> None:
+    if not updated_pattern_names:
+        print("\n[review] No patterns were updated, skipping review.", file=stream)
+        return
+
+    review_output_json = config.update_skills_dir / "post_update_review_result.json"
+    review_prompt = build_post_update_review_prompt(
+        skills_dir=config.skills_dir,
+        updated_patterns=updated_pattern_names,
+        output_json=review_output_json,
+        language=config.language,
+    )
+    config.update_skills_dir.mkdir(parents=True, exist_ok=True)
+    print(
+        f"\n[review] Running post-update review on {len(updated_pattern_names)} updated pattern(s)...",
+        file=stream,
+    )
+    review_result = agent_runner(
+        agent_name=config.agent_name,
+        workdir=config.update_skills_dir,
+        prompt=review_prompt,
+        stream_output=config.stream_output,
+        verbose=config.verbose,
+        language=config.language,
+        skills_root=config.skills_dir,
+        output_label="[review]",
+    )
+    if review_result.return_code == 0:
+        rebuild_pattern_index(knowledge_dir)
+        print("[review] Review completed.", file=stream)
+    else:
+        print(
+            f"[review] Review agent returned code {review_result.return_code}, continuing...",
+            file=stream,
+        )
 
 
 def _print_distill_summary(

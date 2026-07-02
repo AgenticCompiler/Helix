@@ -35,11 +35,18 @@ the active language's knowledge skill.
 2. For optimize-process inputs, read `opt-note.md` before round files. Use
    `learned_lessons.md`, `opt-round-*/summary.md`, `opt-round-*/attempts.md`,
    `round-state.json`, and optional `perf-analysis.md` as evidence hints, not as
-   substitutes for reading the code diff.
+   substitutes for reading the code diff. For each `opt-round-*/`, compare the
+   kernel snapshot to the previous round. Extract only performance-impactful
+   mechanisms; drop a change if any filter fails:
+   - Round speedup vs the previous round (or baseline for round 1) is below 1.05x.
+   - `opt-note.md` or the round summary does not describe it as a meaningful win.
+   - The change did not survive to the final optimized code.
+   - The change is cosmetic, debug-only, or benchmark showed no gain.
+   If no card updates are needed, set `"aligned": true` in the JSON output.
 3. Match optimization mechanisms semantically against the editable knowledge
    skill's `references/pattern_index.md` and candidate cards under
    `references/patterns/`. Do not rely on filename citations or keyword matches
-   alone.
+   alone. Treat logs and round notes as evidence hints; confirm from the code diff.
 4. If an existing card honestly covers the mechanism, update that card only when
    the evidence exposes missing preconditions, anti-signals, repair steps, or
    verification guidance.
@@ -66,6 +73,13 @@ the active language's knowledge skill.
   language. Avoid round IDs, artifact path narration, and benchmark-specific
   labels except inside short examples where they are necessary to explain the
   mechanism.
+- Every card must be ≤ 500 lines. Compress in place; never split one card into
+  multiple files.
+- Do not put operator names, function/variable names, round IDs, benchmark
+  numbers, or exact shapes in `## Summary` or `## Use When`.
+- Only document kernel performance optimizations — not process, workflow, or
+  debugging rules.
+- Do not set `priority: high` on new or updated cards.
 
 ## Simulation Rules
 
@@ -89,11 +103,37 @@ irrelevant local structure differs.
 If the candidate misses the mechanism, update the editable knowledge skill with
 the missing reusable guidance. Explain the gap in terms of semantic
 preconditions, code-shape change, observed mismatch, and verification checks for
-the next iteration.
+the next iteration. Follow **Pattern Card Contract** when editing cards.
 
 If the candidate overgeneralized a pattern, refine the existing card with
 `Avoid When`, anti-signals, or verification rules instead of only adding a new
 positive example.
+
+## Post-Update Review
+
+Run when the command asks for a post-update review. Review all updated cards
+holistically before export or promotion.
+
+1. **Index first** — read `references/pattern_index.md`; group by domain, flag
+   duplicates, non-performance cards, and overly specialized index entries. Do
+   not read every full card upfront.
+2. **Consolidate selectively** — read full cards only for merge candidates,
+   removal candidates, or index red flags. Merge same-mechanism duplicates;
+   delete process/methodology cards, overly specialized cards, and near-duplicates.
+3. **Fix cross-references** — `## Related Patterns` must be bidirectional; patch
+   unchanged cards with missing back-links only; do not heavily rewrite stable cards.
+4. **Report** — write JSON describing groups, merges, removals, quality fixes, and
+   a brief summary. Edit cards on disk; the JSON describes work already done.
+
+Output shape:
+
+```json
+{
+  "groups": [{"name": "...", "cards": [], "merged": [], "removed": [], "kept_separate": []}],
+  "quality_issues": [{"card": "...", "severity": "error|warning", "category": "...", "detail": "...", "fixed": true}],
+  "summary": "..."
+}
+```
 
 ## Boundaries
 

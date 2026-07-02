@@ -80,6 +80,18 @@ class DistillCliTests(unittest.TestCase):
 
         self.assertEqual(config.language, "tilelang")
 
+    def test_distill_post_update_review_defaults_on(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["distill", "-i", "operators"])
+        config = _config_from_args(args)
+        self.assertTrue(config.post_update_review)
+
+    def test_distill_skip_review_disables_post_update_review(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["distill", "-i", "operators", "--skip-review"])
+        config = _config_from_args(args)
+        self.assertFalse(config.post_update_review)
+
     def test_old_distill_option_names_are_removed(self) -> None:
         parser = build_parser()
 

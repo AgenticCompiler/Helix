@@ -53,7 +53,7 @@ class DistillKnowledgeWorkspaceTests(unittest.TestCase):
     def test_export_changed_pattern_cards_copies_only_delta(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "skills" / "tilelang" / "tilelang-npu-optimize-knowledge"
+            source = root / "skills" / "tilelang-npu-optimize-knowledge"
             patterns = source / "references" / "patterns"
             patterns.mkdir(parents=True)
             (patterns / "tiling.md").write_text(
