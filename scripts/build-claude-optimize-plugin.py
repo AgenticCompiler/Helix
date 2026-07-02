@@ -123,6 +123,7 @@ def _render_claude_optimize_agent(*, skill_names: tuple[str, ...]) -> str:
             f"- Use `{state_skill_name}` `set-current-round-state` if the active round's strategy or evidence depth changes mid-round.",
             f"- Use `{state_skill_name}` `submit-round` after each complete round before stopping or opening the next round.",
             "- Keep exactly one optimize round active at a time.",
+            "- When SessionStart provides compiler source path and commit, treat that checkout as read-only evidence and use compiler source only as the deepest escalation.",
             "",
         ]
     )
@@ -134,7 +135,8 @@ def _render_plugin_readme() -> str:
         "# Triton Agent Optimize Plugin\n\n"
         "This plugin packages the Claude optimize workflow for Triton Agent.\n\n"
         "It only supports the optimize workflow and includes one optimize agent, "
-        "plugin-managed workflow state automation, and the minimum optimize skill set.\n"
+        "plugin-managed workflow state automation, first-session compiler source "
+        "provisioning, and the minimum optimize skill set.\n"
     )
 
 

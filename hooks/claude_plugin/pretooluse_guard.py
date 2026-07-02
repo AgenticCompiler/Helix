@@ -12,7 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from state_bootstrap import missing_state_denial_reason, resolve_workspace, should_manage_payload
+from state_bootstrap import (
+    compiler_source_read_root,
+    missing_state_denial_reason,
+    resolve_workspace,
+    should_manage_payload,
+)
 
 
 def _bootstrap_support_import() -> None:
@@ -68,9 +73,13 @@ def main() -> int:
 
 def _policy(workspace: Path) -> dict[str, Any]:
     root = workspace.resolve()
+    allow_read_roots = [str(root)]
+    compiler_source = compiler_source_read_root()
+    if compiler_source is not None:
+        allow_read_roots.append(str(compiler_source.resolve()))
     return {
         "workspace_root": str(root),
-        "allow_read_roots": [str(root)],
+        "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
             str(root / ".triton-agent"),
             str(root / ".triton-agent" / "**"),

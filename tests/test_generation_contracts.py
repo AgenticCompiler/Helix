@@ -884,7 +884,7 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("Treat the compiler source checkout as read-only", content)
         self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
-        self.assertIn("CLI-provided compiler source path and commit", content)
+        self.assertIn("CLI/plugin-provided compiler source path and commit", content)
         self.assertNotIn("compiler error", content.lower())
 
     def test_compiler_source_navigation_references_exist_and_capture_expected_sections(self) -> None:

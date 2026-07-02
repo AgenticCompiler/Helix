@@ -103,6 +103,9 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertTrue(
                 (built_dir / "hooks" / "hook_runtime" / "optimize" / "workflow_state.py").exists()
             )
+            self.assertTrue(
+                (built_dir / "hooks" / "hook_runtime" / "optimize" / "compiler_source.py").exists()
+            )
             self.assertFalse((built_dir / "python_support").exists())
             self.assertTrue((built_dir / "skills" / "ascend-npu-optimize-state").is_dir())
 
