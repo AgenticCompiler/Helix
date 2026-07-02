@@ -18,6 +18,8 @@ from triton_agent.skills.selection import resolve_staged_skills
 
 _PLUGIN_NAME = "triton-agent-optimize"
 _PLUGIN_VERSION = "0.1.0"
+_PLUGIN_TEST_MODE = "differential"
+_PLUGIN_BENCH_MODE = "torch-npu-profiler"
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,13 @@ def _render_claude_optimize_agent(*, skill_names: tuple[str, ...]) -> str:
             f"Use `{primary_skill_name}` as the primary workflow skill.",
             "Treat the bundled optimize skills as the workflow source of truth, and let them pull in sibling skills when needed.",
             "The plugin manages the temporary `.triton-agent/` runtime directory for this agent. Do not create, edit, or depend on it manually.",
+            "",
+            "## Fixed Optimize Modes",
+            "",
+            f"- Use test-mode: `{_PLUGIN_TEST_MODE}`.",
+            f"- Use bench-mode: `{_PLUGIN_BENCH_MODE}`.",
+            "- Apply these modes when generating or reusing harnesses, running correctness and benchmark validation, and writing `baseline/state.json`.",
+            "- If a resumable baseline already exists, it must record matching modes before reuse.",
             "",
             "## Critical Workflow Rules",
             "",
