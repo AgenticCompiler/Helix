@@ -32,7 +32,7 @@ class CommandKind(str, Enum):
     REPORT = "report"
     REPORT_BATCH = "report-batch"
     CLEAN = "clean"
-    DIFF_SKILLS_UPDATE = "diff-skills-update"
+    DISTILL = "distill"
 
 
 def command_to_skill(command_kind: CommandKind, language: str = "triton") -> str:

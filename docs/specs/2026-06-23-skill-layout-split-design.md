@@ -84,15 +84,15 @@ These skills move under `skills/common/` and are renamed from `triton-npu-*` to 
 | `triton-npu-run-eval` | `ascend-npu-run-eval` | `skills/common/ascend-npu-run-eval/` |
 | `triton-npu-run-eval-mcp` | `ascend-npu-run-eval-mcp` | `skills/common/ascend-npu-run-eval-mcp/` |
 | `triton-npu-report` | `ascend-npu-report` | `skills/common/ascend-npu-report/` |
-| `triton-npu-kernel-bench-logs` | `ascend-npu-kernel-bench-logs` | `skills/common/ascend-npu-kernel-bench-logs/` |
+| `triton-npu-kernel-bench-logs` | superseded by `ascend-npu-distill-patterns` | `skills/common/ascend-npu-distill-patterns/` |
 | `triton-npu-profile-operator` | `ascend-npu-profile-operator` | `skills/common/ascend-npu-profile-operator/` |
 | `triton-npu-analyze-ir` | `ascend-npu-analyze-ir` | `skills/common/ascend-npu-analyze-ir/` |
 | `triton-npu-analyze-round-performance` | `ascend-npu-analyze-round-performance` | `skills/common/ascend-npu-analyze-round-performance/` |
-| `triton-npu-analyze-commit-perf` | `ascend-npu-analyze-commit-perf` | `skills/common/ascend-npu-analyze-commit-perf/` |
+| `triton-npu-analyze-commit-perf` | `ascend-npu-plan-git-operator-workspaces` | `skills/common/ascend-npu-plan-git-operator-workspaces/` |
 
 `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` remain allowed to reference the Triton optimize skill by logical skill name when they need shared optimize workflow helpers. The key constraint is that their script logic must not encode the physical group names `common/` or `triton/`.
 
-`triton-npu-analyze-commit-perf` is currently not part of any `CommandKind` staging rule, but it is a real repository skill and is referenced directly by `src/triton_agent/diff_skills_update/workspace_organizer.py`. It must still be cataloged, renamed, and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
+`triton-npu-analyze-commit-perf` is superseded by `ascend-npu-plan-git-operator-workspaces`. It is not part of any `CommandKind` staging rule, but it is a real repository skill referenced directly by `src/triton_agent/distill/git_repo_workspaces.py`. It must still be cataloged and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
 
 ### Triton Skills
 
@@ -229,7 +229,7 @@ sources["ascend-npu-run-eval"] = "ascend-npu-run-eval-mcp"
 
 while preserving the same "logical staged name, alternate source directory" semantics.
 
-`ascend-npu-analyze-commit-perf` remains outside `CommandKind` stage rules in this iteration because no current user command stages it into agent workspaces. Its source lookup continues to be owned by the diff-skills-update workflow, but that lookup must still move to the grouped-source catalog contract.
+`ascend-npu-plan-git-operator-workspaces` remains outside `CommandKind` stage rules in this iteration because no current user command stages it into agent workspaces. Its source lookup continues to be owned by the distill workflow, but that lookup must still move to the grouped-source catalog contract.
 
 ### Runtime Skill Loading
 
@@ -412,8 +412,8 @@ At minimum, the following file groups should be expected to change together:
   - `tests/test_pi_runner.py`
   - `tests/test_traecli_runner.py`
 - skill staging, loading, and contract behavior:
-  - `tests/test_diff_skills_update_skills_workspace.py`
-  - `tests/test_diff_skills_update_workflow.py`
+  - `tests/test_distill_knowledge_workspace.py`
+  - `tests/test_distill_workflow.py`
   - `tests/test_run_skill_loader.py`
   - `tests/test_skill_command_script.py`
   - `tests/test_skill_staging.py`

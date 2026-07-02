@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "JsonValue"]]
 
-DEFAULT_INPUT = ".triton-agent/commit-perf-context.json"
-DEFAULT_OUTPUT = ".triton-agent/commit-perf-file-groups.json"
+DEFAULT_INPUT = ".triton-agent/git-operator-context.json"
+DEFAULT_OUTPUT = ".triton-agent/git-operator-file-groups.json"
 
 CODE_EXTENSIONS = {
     ".py",
@@ -58,7 +58,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Group commit context JSON by changed code file for incremental analysis.",
+        description="Group commit context JSON by changed operator source file.",
     )
     parser.add_argument("--repo", default=".", help="Git repository path (default: current directory).")
     parser.add_argument(

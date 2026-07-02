@@ -10,12 +10,12 @@ from pathlib import Path
 from triton_agent.skills.catalog import resolve_skill_source_dir
 
 
-def knowledge_skill_name(language: str) -> str:
+def optimize_knowledge_skill_name(language: str) -> str:
     return f"{language}-npu-optimize-knowledge"
 
 
-def ensure_skills_workspace(skills_dir: Path, *, language: str = "triton") -> Path:
-    knowledge_name = knowledge_skill_name(language)
+def ensure_editable_knowledge_skill(skills_dir: Path, *, language: str = "triton") -> Path:
+    knowledge_name = optimize_knowledge_skill_name(language)
     skills_dir.mkdir(parents=True, exist_ok=True)
     knowledge_dir = skills_dir / knowledge_name
     if knowledge_dir.exists():
@@ -30,7 +30,7 @@ def ensure_skills_workspace(skills_dir: Path, *, language: str = "triton") -> Pa
     return knowledge_dir
 
 
-def regenerate_pattern_index(knowledge_dir: Path) -> None:
+def rebuild_pattern_index(knowledge_dir: Path) -> None:
     script = knowledge_dir / "scripts" / "build_pattern_index.py"
     patterns_dir = knowledge_dir / "references" / "patterns"
     output = knowledge_dir / "references" / "pattern_index.md"
@@ -50,15 +50,19 @@ def regenerate_pattern_index(knowledge_dir: Path) -> None:
     )
 
 
-def promote_converged_knowledge_workspace(source_knowledge_dir: Path, *, language: str = "triton") -> Path:
+def promote_editable_knowledge_skill(
+    source_knowledge_dir: Path,
+    *,
+    language: str = "triton",
+) -> Path:
     if not source_knowledge_dir.is_dir():
         raise ValueError(f"Converged knowledge skill does not exist: {source_knowledge_dir}")
-    destination = resolve_skill_source_dir(knowledge_skill_name(language))
+    destination = resolve_skill_source_dir(optimize_knowledge_skill_name(language))
     if source_knowledge_dir.resolve() != destination.resolve():
         destination.parent.mkdir(parents=True, exist_ok=True)
         _remove_existing_path(destination)
         shutil.copytree(source_knowledge_dir, destination, symlinks=False)
-    regenerate_pattern_index(destination)
+    rebuild_pattern_index(destination)
     return destination
 
 
@@ -70,7 +74,7 @@ def _remove_existing_path(path: Path) -> None:
         path.unlink()
 
 
-def snapshot_pattern_cards(knowledge_dir: Path) -> dict[str, str]:
+def snapshot_pattern_card_texts(knowledge_dir: Path) -> dict[str, str]:
     patterns_dir = knowledge_dir / "references" / "patterns"
     if not patterns_dir.is_dir():
         return {}
@@ -80,7 +84,7 @@ def snapshot_pattern_cards(knowledge_dir: Path) -> dict[str, str]:
     }
 
 
-def collect_changed_pattern_cards(
+def find_changed_pattern_cards(
     knowledge_dir: Path,
     pattern_snapshot: dict[str, str],
 ) -> list[Path]:
@@ -95,7 +99,7 @@ def collect_changed_pattern_cards(
     return changed
 
 
-def export_changed_patterns(
+def export_changed_pattern_cards(
     source_knowledge_dir: Path,
     update_skills_dir: Path,
     *,
@@ -103,15 +107,15 @@ def export_changed_patterns(
     pattern_snapshot: dict[str, str],
     updated_pattern_names: list[str] | None = None,
 ) -> list[str]:
-    changed_paths = collect_changed_pattern_cards(source_knowledge_dir, pattern_snapshot)
+    changed_paths = find_changed_pattern_cards(source_knowledge_dir, pattern_snapshot)
     for name in updated_pattern_names or []:
-        resolved = resolve_pattern_card(source_knowledge_dir, name)
+        resolved = find_pattern_card(source_knowledge_dir, name)
         if resolved is not None and resolved not in changed_paths:
             changed_paths.append(resolved)
     if not changed_paths:
         return []
 
-    dest_knowledge = update_skills_dir / knowledge_skill_name(language)
+    dest_knowledge = update_skills_dir / optimize_knowledge_skill_name(language)
     dest_patterns = dest_knowledge / "references" / "patterns"
     dest_patterns.mkdir(parents=True, exist_ok=True)
     _ensure_index_scripts(source_knowledge_dir, dest_knowledge)
@@ -122,7 +126,7 @@ def export_changed_patterns(
         exported.append(path.name)
 
     try:
-        regenerate_pattern_index(dest_knowledge)
+        rebuild_pattern_index(dest_knowledge)
     except Exception as exc:
         print(f"Warning: export pattern index regeneration failed: {exc}", file=sys.stderr)
     manifest = {
@@ -137,7 +141,7 @@ def export_changed_patterns(
     return exported
 
 
-def resolve_pattern_card(knowledge_dir: Path, name: str) -> Path | None:
+def find_pattern_card(knowledge_dir: Path, name: str) -> Path | None:
     patterns_dir = knowledge_dir / "references" / "patterns"
     if not patterns_dir.is_dir():
         return None

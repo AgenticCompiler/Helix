@@ -9,13 +9,15 @@ operator workspace directories for downstream optimization.
 
 ```json
 {
+  "schema_version": 1,
   "repo": "/absolute/path/to/repo",
   "base_revision": "origin/main",
   "operators": [
     {
       "launch_function": "add_kernel",
       "source_path": "op_impl/add.py",
-      "kernels": ["add_kernel_impl", "add_kernel_impl_v2"]
+      "kernels": ["add_kernel_impl", "add_kernel_impl_v2"],
+      "notes": "kernel body changed"
     }
   ]
 }
@@ -23,6 +25,7 @@ operator workspace directories for downstream optimization.
 
 ## Fields
 
+- **schema_version** (number, required): Contract version. Use `1`.
 - **repo** (string, required): Absolute path to the Git repository root.
 - **base_revision** (string, required): The base revision (branch or commit) to compare against.
 - **operators** (list, required): One entry per changed operator.
@@ -33,3 +36,4 @@ Each operator entry:
 - **source_path** (string, required): Repository-relative path to the source file.
 - **kernels** (list of strings): Kernel function names called by the launch function.
   Used for transitive dependency extraction during scaffolding.
+- **notes** (string, optional): One-line rationale or conflict note.
