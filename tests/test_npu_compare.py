@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -94,8 +95,73 @@ class NpuCompareTests(unittest.TestCase):
         self.assertEqual(result.diagnostics["failure_stage"], "max_error_cap")
         self.assertEqual(result.diagnostics["output_path"], "output")
         self.assertEqual(result.diagnostics["output_dtype"], "float32")
+        self.assertEqual(result.diagnostics["accuracy_mode"], "npu-contract")
         self.assertIn("thresholds", result.diagnostics)
         self.assertIn("case-a", result.message)
+
+    def test_compare_case_result_dtype_close_uses_env_tolerance_overrides(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        with patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                "TRITON_AGENT_RUN_TEST_ATOL": "0",
+                "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+            },
+            clear=False,
+        ):
+            result = module.compare_case_result(
+                case_id="case-dtype-close-env",
+                actual=torch.tensor([1.005], dtype=torch.float32),
+                golden=torch.tensor([1.0], dtype=torch.float32),
+                inputs=(torch.tensor([1.0], dtype=torch.float32),),
+                compute=True,
+            )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.diagnostics["accuracy_mode"], "dtype-close")
+        self.assertEqual(result.diagnostics["atol"], 0.0)
+        self.assertEqual(result.diagnostics["rtol"], 0.01)
+
+    def test_compare_case_result_dtype_close_reports_assert_close_failure(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        result = module.compare_case_result(
+            case_id="case-dtype-close-fail",
+            actual=torch.tensor([1.1], dtype=torch.float32),
+            golden=torch.tensor([1.0], dtype=torch.float32),
+            inputs=(torch.tensor([1.0], dtype=torch.float32),),
+            compute=True,
+            accuracy_mode="dtype-close",
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.diagnostics["accuracy_mode"], "dtype-close")
+        self.assertEqual(result.diagnostics["failure_stage"], "assert_close")
+        self.assertEqual(result.diagnostics["tensor_shape"], (1,))
+        self.assertEqual(result.diagnostics["atol"], 1e-5)
+        self.assertEqual(result.diagnostics["rtol"], 1e-4)
+        self.assertIn("assert_close_message", result.diagnostics)
+
+    def test_compare_case_result_dtype_close_keeps_dtype_strict(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        result = module.compare_case_result(
+            case_id="case-dtype-close-dtype",
+            actual=torch.tensor([1.0], dtype=torch.float64),
+            golden=torch.tensor([1.0], dtype=torch.float32),
+            inputs=(torch.tensor([1.0], dtype=torch.float32),),
+            compute=True,
+            accuracy_mode="dtype-close",
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.diagnostics["accuracy_mode"], "dtype-close")
+        self.assertEqual(result.diagnostics["failure_stage"], "dtype_mismatch")
 
     def test_compare_case_result_handles_bool_output_with_strict_equality(self) -> None:
         module = load_npu_compare_module()
@@ -170,6 +236,38 @@ class NpuCompareTests(unittest.TestCase):
 
         self.assertFalse(result.passed)
         self.assertIn("legacy payload format", result.message)
+        self.assertEqual(result.diagnostics["accuracy_mode"], "npu-contract")
+
+    def test_compare_result_payloads_accepts_dtype_close_mode(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        oracle = {
+            "compute": True,
+            "cases": [
+                {
+                    "id": "case-a",
+                    "inputs": (torch.tensor([1.0], dtype=torch.float32),),
+                    "result": torch.tensor([1.0], dtype=torch.float32),
+                }
+            ],
+        }
+        actual = {
+            "compute": True,
+            "cases": [
+                {
+                    "id": "case-a",
+                    "inputs": (torch.tensor([1.0], dtype=torch.float32),),
+                    "result": torch.tensor([1.00005], dtype=torch.float32),
+                }
+            ],
+        }
+
+        result = module.compare_result_payloads(oracle, actual, accuracy_mode="dtype-close")
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.diagnostics["accuracy_mode"], "dtype-close")
+        self.assertEqual(result.case_results[0].diagnostics["accuracy_mode"], "dtype-close")
 
 
 if __name__ == "__main__":

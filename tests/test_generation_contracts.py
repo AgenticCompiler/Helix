@@ -258,6 +258,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "profile-bench.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "compare-result.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "compare-perf.md").exists())
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "common"
+                / "ascend-npu-run-eval"
+                / "references"
+                / "compare-result.md"
+            ).exists()
+        )
 
         self.assertIn("run-test-baseline", run_test)
         self.assertIn("run-test-optimize", run_test)

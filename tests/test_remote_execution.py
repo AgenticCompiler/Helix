@@ -645,6 +645,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         new,
                         "alice@example.com",
                         None,
+                        accuracy_mode="dtype-close",
                     )
 
         compare_script = copy_to_remote.call_args_list[0].args[1]
@@ -666,6 +667,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "oracle result.pt",
                 "--new-result",
                 "new result.pt",
+                "--accuracy-mode",
+                "dtype-close",
             ],
         )
 

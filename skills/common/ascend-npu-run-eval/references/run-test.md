@@ -21,7 +21,8 @@ Rules:
 - `run-test-optimize` must be used to validate the correctness of an optimized operator.
 - `run-test-baseline` preserves archived `.pt` result payloads so later optimize validation can reuse them.
 - In optimize differential mode, `run-test-optimize` requires `--ref-operator-file`.
-- Differential result comparison always uses the shared NPU accuracy comparison contract. There is no compare-level option.
+- The comparison policy is controlled by the execution environment; invoke the run-test command normally.
+- There is no compare-level option.
 
 Remote examples:
 
