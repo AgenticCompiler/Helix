@@ -92,6 +92,18 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "When set to true, print NPU device diagnostics before run-test and run-bench execution.",
             ),
             (
+                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE",
+                "Run-test comparison mode: npu-contract or dtype-close (default: npu-contract).",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_ATOL",
+                "Optional dtype-close absolute tolerance override. Only used when accuracy mode is dtype-close.",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_RTOL",
+                "Optional dtype-close relative tolerance override. Only used when accuracy mode is dtype-close.",
+            ),
+            (
                 remote_target_env_name(),
                 "Injected remote target for agent child processes; remote-aware run helpers use it as a fallback when "
                 "`--remote` is omitted.",
