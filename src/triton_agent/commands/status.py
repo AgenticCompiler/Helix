@@ -23,6 +23,7 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         return render_optimize_status_results(
             results,
             output_format=str(getattr(args, "format", "text")),
+            view=str(getattr(args, "view", "best")),
         )
     workspace_candidates = sorted(
         path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
@@ -31,5 +32,8 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
     results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
-    return render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
-
+    return render_optimize_status_results(
+        results,
+        output_format=str(getattr(args, "format", "text")),
+        view=str(getattr(args, "view", "best")),
+    )

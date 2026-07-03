@@ -1902,6 +1902,22 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["status", "-i", "kernels", "--format", "markdown"])
         self.assertEqual(args.format, "markdown")
 
+    def test_status_accepts_json_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--format", "json"])
+        self.assertEqual(args.format, "json")
+
+    def test_status_accepts_view_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--view", "trend"])
+        self.assertEqual(args.command_kind, CommandKind.STATUS)
+        self.assertEqual(args.view, "trend")
+
+    def test_status_defaults_to_best_view(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels"])
+        self.assertEqual(args.view, "best")
+
     def test_optimize_status_no_longer_parses(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
@@ -2453,6 +2469,154 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[OK] matmul", rendered)
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("Warning: found multiple baseline perf files", rendered)
+
+    def test_main_status_renders_best_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--format", "json"])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual([item["name"] for item in payload["operators"]], ["fresh", "matmul"])
+            self.assertEqual(payload["operators"][0]["state"], "no-session")
+            self.assertEqual(payload["operators"][1]["state"], "ok")
+            self.assertEqual(payload["operators"][1]["best_round"], "round-1")
+            self.assertAlmostEqual(payload["operators"][1]["geomean_speedup"], 1.25)
+
+    def test_main_status_renders_trend_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            alpha = root / "alpha"
+            alpha.mkdir()
+            (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (alpha / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            alpha_round = alpha / "opt-round-2"
+            alpha_round.mkdir()
+            (alpha_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            beta = root / "beta"
+            beta.mkdir()
+            (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (beta / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            beta_round_one = beta / "opt-round-1"
+            beta_round_three = beta / "opt-round-3"
+            beta_round_one.mkdir()
+            beta_round_three.mkdir()
+            (beta_round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (beta_round_three / "opt_kernel_perf.txt").write_text(
+                "latency-a: 4\nlatency-b: 8\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "markdown"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("| Name | round-1 | round-2 | round-3 |", rendered)
+            self.assertIn("| alpha | - | 2.00x | - |", rendered)
+            self.assertIn("| beta | 1.25x | - | 2.50x |", rendered)
+            self.assertNotIn("fresh", rendered)
+
+    def test_main_status_renders_trend_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            alpha = root / "alpha"
+            alpha.mkdir()
+            (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (alpha / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            alpha_round = alpha / "opt-round-2"
+            alpha_round.mkdir()
+            (alpha_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            beta = root / "beta"
+            beta.mkdir()
+            (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (beta / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            beta_round_one = beta / "opt-round-1"
+            beta_round_three = beta / "opt-round-3"
+            beta_round_one.mkdir()
+            beta_round_three.mkdir()
+            (beta_round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (beta_round_three / "opt_kernel_perf.txt").write_text(
+                "latency-a: 4\nlatency-b: 8\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "json"])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(
+                payload["operators"],
+                [
+                    {
+                        "name": "alpha",
+                        "round_speedups": {
+                            "round-1": None,
+                            "round-2": 2.0,
+                            "round-3": None,
+                        },
+                    },
+                    {
+                        "name": "beta",
+                        "round_speedups": {
+                            "round-1": 1.25,
+                            "round-2": None,
+                            "round-3": 2.5,
+                        },
+                    },
+                ],
+            )
 
     def test_main_status_renders_markdown_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
