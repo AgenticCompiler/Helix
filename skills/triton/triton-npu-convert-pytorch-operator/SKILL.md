@@ -56,8 +56,8 @@ Correctness validation is **not advisory** — it is the final gate before conve
 
 You MUST use the validation commands prescribed by the `ascend-npu-run-eval` skill:
 
-- **Differential mode**: `run-command.py run-test-optimize` with `--baseline-operator-file <original>`
-- **Standalone mode**: `run-command.py run-test-baseline`
+- **Differential mode**: `cli.py run-test-optimize` with `--baseline-operator-file <original>`
+- **Standalone mode**: `cli.py run-test-baseline`
 
 These commands handle result archiving, `TRITON_ALWAYS_COMPILE`, NPU synchronization, and comparison — all of which you cannot replicate reliably with ad-hoc scripting.
 
@@ -69,7 +69,7 @@ The following self-validation patterns are **strictly forbidden**. Violating any
 |-----------|---------|-----|
 | Ad-hoc `python3 -c "import torch; ..."` comparison scripts | `python3 -c "import torch; ref=torch.load(...); torch.allclose(...)"` | Bypasses the standard `compare_result.py` and its audited tolerance levels |
 | Using `torch.allclose` / `torch.testing.assert_close` with custom tolerances | `torch.allclose(a, b, rtol=1e-5, atol=1e-8)` | Tolerances different from the NPU accuracy contract thresholds may mask real errors or produce false positives |
-| Running a differential test file directly with `python3` instead of through `run-command.py` | `python3 differential_test_xxx.py --operator-file xxx` | Bypasses result archiving, `TRITON_ALWAYS_COMPILE`, synchronization, and comparison logic |
+| Running a differential test file directly with `python3` instead of through `cli.py` | `python3 differential_test_xxx.py --operator-file xxx` | Bypasses result archiving, `TRITON_ALWAYS_COMPILE`, synchronization, and comparison logic |
 | Generating and comparing custom `.pt` files on your own | `torch.save(ref, "REFERENCE_RESULT.pt")` then manual compare | Creates files that may interfere with the CLI validation loop and use inconsistent formats |
 | Self-declaring "PASS" based on your own comparison logic | "PASS: Minor 1-ULP differences only (expected for cross-implementation)" | Only `run-test-optimize` / `run-test-baseline` output determines pass/fail |
 
@@ -118,7 +118,7 @@ def triton_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
@@ -142,7 +142,7 @@ def get_init_inputs():
 In this kind of conversion:
 
 - `def triton_add(...)` is the PyTorch-facing wrapper that calls the Triton kernel
-- `class ModelNew` is the converted public architecture
+- `class Model` is the converted public architecture
 - the trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
 - the original source operator remains the correctness oracle for differential validation
 
@@ -213,7 +213,7 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n, BLOCK_SIZE: tl.constexpr):
     output = x + y  # compute inside kernel
     tl.store(output_ptr + idx, output)
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, y):
         output = torch.empty_like(x)  # Allowed: buffer alloc
         add_kernel[(1,)](x, y, output, x.numel(), BLOCK_SIZE=128)  # Allowed: kernel launch
@@ -239,5 +239,5 @@ class ModelNew(nn.Module):
 - Do not write your own comparison script (e.g., `python3 -c "import torch; ..."`) to compare result `.pt` files or operator outputs.
 - Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `ascend-npu-run-eval` skill.
 - Do not self-declare the conversion as "PASS" based on your own tolerance analysis — only the printed output of `run-test-optimize` or `run-test-baseline` determines success.
-- Do not run differential test files directly with `python3` — always use `run-command.py run-test-optimize` or `run-command.py run-test-baseline`.
+- Do not run differential test files directly with `python3` — always use `cli.py run-test-optimize` or `cli.py run-test-baseline`.
 - Do not save custom `.pt` files (e.g., `REFERENCE_RESULT.pt`, `COMPARE_RESULT.pt`) for manual comparison — this may interfere with the CLI validation loop's result caching.

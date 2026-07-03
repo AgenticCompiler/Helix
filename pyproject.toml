@@ -39,7 +39,12 @@ target-version = "py39"
 exclude = ["workspace"]
 
 [tool.ruff.lint]
-per-file-ignores = {"tests/*.py" = ["E402"]}
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["E402"]
+"skills/tilelang/tilelang-npu-cann-ext-api-patterns/scripts/tl_sync_lint.py" = ["E741"]
+"skills/tilelang/tilelang-npu-cann-ext-api-patterns/scripts/tl_sync_mem.py" = ["F401"]
+"skills/tilelang/tilelang-npu-cann-ext-api-patterns/scripts/tl_sync_prime.py" = ["E741"]
 
 [tool.pyright]
 pythonVersion = "3.9"
@@ -49,6 +54,6 @@ exclude = [
     "workspace",
     "src/triton_agent.egg-info",
 ]
-extraPaths = ["src"]
+extraPaths = ["src", "skills/common/ascend-npu-run-eval/scripts"]
 typeCheckingMode = "basic"
 strict = ["src"]

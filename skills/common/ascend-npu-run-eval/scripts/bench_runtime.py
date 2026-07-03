@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
+from env_registry import (
+    TORCH_DEVICE_BACKEND_AUTOLOAD,
+    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    TRITON_ALWAYS_COMPILE,
+)
 from perf_artifacts import (
     PerfCaseRecord,
     PerfMetrics,
@@ -29,7 +34,6 @@ from profile_csv_parser import (
     find_optional_profile_csv,
     parse_kernel_details_csv,
     parse_op_statistic_csv,
-    parse_operator_details_csv,
     resolve_perf_metrics,
 )
 from result_payload import ResultPayload, make_result
@@ -39,11 +43,15 @@ from result_payload import ResultPayload, make_result
 # Constants & data model
 # ---------------------------------------------------------------------------
 
+LoadedBenchCases = tuple[list["BenchCase"], KernelResolution]
+RuntimeBenchResult = tuple[ResultPayload, Path]
+ProfileCaseOutcome = tuple[PerfMetrics | None, str | None]
+ResolvedProfileOutputRoot = tuple[str | None, str]
+PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
-_MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
-_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
-_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
+_MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler kernel view"
 
 
 @dataclass(frozen=True)
@@ -145,7 +153,7 @@ def _normalize_positive_int(value: object, field_name: str, case_id: str) -> int
 def load_bench_cases(
     bench_file: Path,
     operator_file: Path,
-) -> tuple[list[BenchCase], KernelResolution]:
+) -> LoadedBenchCases:
     bench_path = bench_file.resolve()
     operator_path = operator_file.resolve()
     _bootstrap_torch_npu()
@@ -186,10 +194,15 @@ def execute_bench_case(
     bench_file: Path,
     operator_file: Path,
     case_id: str | None = None,
+    *,
+    iterations: int = 1,
 ) -> ResultPayload:
+    import torch
     cases, _resolution = load_bench_cases(bench_file, operator_file)
     case = select_bench_case(cases, case_id)
-    case.fn()
+    for _ in range(iterations):
+        case.fn()
+        _synchronize(torch)
     return make_result(return_code=0, stdout="", stderr="")
 
 
@@ -200,7 +213,7 @@ def profile_bench_case(
     *,
     preserved_run_dir: Path | None = None,
     verbose: bool = False,
-    preloaded: tuple[list[BenchCase], KernelResolution] | None = None,
+    preloaded: LoadedBenchCases | None = None,
 ) -> PerfCaseRecord:
     cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
     case = select_bench_case(cases, case_id)
@@ -233,11 +246,12 @@ def profile_all_bench_cases(
     *,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path]:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    preloaded: LoadedBenchCases | None = None,
+) -> RuntimeBenchResult:
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
-        cases, resolution = load_bench_cases(bench_file, operator_file)
+        cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
         had_failures = False
         stderr_chunks: list[str] = []
@@ -275,9 +289,9 @@ def profile_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
@@ -345,9 +359,9 @@ def time_all_bench_cases(
     *,
     bench_mode: str = "perf-counter",
     output: str | None = None,
-) -> tuple[ResultPayload, Path]:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+) -> RuntimeBenchResult:
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
         cases, resolution = load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -382,9 +396,9 @@ def time_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +412,7 @@ def _profile_case_with_profiler(
     profile_root: Path,
     *,
     verbose: bool = False,
-) -> tuple[PerfMetrics | None, str | None]:
+) -> ProfileCaseOutcome:
     try:
         import torch
         torch_npu = cast(Any, importlib.import_module("torch_npu"))
@@ -429,8 +443,8 @@ def _profile_case_with_profiler(
                 case.fn()
                 _synchronize(torch)
 
-            skip_first = 1 + case.warmup
-            total_steps = skip_first + case.repeats
+            skip_first = 1
+            total_steps = skip_first + case.warmup + case.repeats
 
             with profiler_api.profile(
                 activities=[
@@ -510,26 +524,6 @@ def _read_profiler_metrics(
     *,
     verbose: bool = False,
 ) -> PerfMetrics:
-    operator_details_path = find_optional_profile_csv(profile_root, "operator_details.csv")
-    operator_details_rows = None
-    if operator_details_path is not None:
-        if verbose:
-            print(f"[metrics] found operator_details.csv at {operator_details_path}", file=sys.stderr)
-        operator_details_rows = parse_operator_details_csv(
-            operator_details_path,
-            active_count=active_count,
-            kernel_names=kernel_names,
-            verbose=verbose,
-        )
-        if operator_details_rows.total_time_us > 0:
-            return resolve_perf_metrics(operator_details_rows.ops, kernel_names, verbose=verbose)
-        if verbose:
-            print(
-                f"[metrics] operator_details.csv total_time_us={operator_details_rows.total_time_us}, "
-                f"falling back to kernel_details.csv",
-                file=sys.stderr,
-            )
-
     kernel_details_path = find_optional_profile_csv(profile_root, "kernel_details.csv")
     kernel_details_rows = None
     if kernel_details_path is not None:
@@ -541,7 +535,12 @@ def _read_profiler_metrics(
             verbose=verbose,
         )
         if kernel_details_rows.total_time_us > 0:
-            return resolve_perf_metrics(kernel_details_rows.ops, kernel_names, verbose=verbose)
+            return resolve_perf_metrics(
+                kernel_details_rows.ops,
+                kernel_names,
+                total_op_avg_time_us=kernel_details_rows.total_op_avg_time_us,
+                verbose=verbose,
+            )
         if verbose:
             print(
                 f"[metrics] kernel_details.csv total_time_us={kernel_details_rows.total_time_us}, "
@@ -553,24 +552,30 @@ def _read_profiler_metrics(
     if op_statistic_path is not None:
         if verbose:
             print(f"[metrics] found op_statistic.csv at {op_statistic_path}", file=sys.stderr)
-        return resolve_perf_metrics(
-            parse_op_statistic_csv(op_statistic_path, verbose=verbose).ops,
-            kernel_names,
+        op_statistic_rows = parse_op_statistic_csv(
+            op_statistic_path,
+            active_count=active_count,
             verbose=verbose,
         )
-
-    if operator_details_rows is not None:
-        if verbose:
-            print("[metrics] operator_details.csv total_time_us=0, no other CSV found", file=sys.stderr)
-        return resolve_perf_metrics(operator_details_rows.ops, kernel_names, verbose=verbose)
+        return resolve_perf_metrics(
+            op_statistic_rows.ops,
+            kernel_names,
+            total_op_avg_time_us=op_statistic_rows.total_op_avg_time_us,
+            verbose=verbose,
+        )
 
     if kernel_details_rows is not None:
         if verbose:
             print("[metrics] kernel_details.csv total_time_us=0, no other CSV found", file=sys.stderr)
-        return resolve_perf_metrics(kernel_details_rows.ops, kernel_names, verbose=verbose)
+        return resolve_perf_metrics(
+            kernel_details_rows.ops,
+            kernel_names,
+            total_op_avg_time_us=kernel_details_rows.total_op_avg_time_us,
+            verbose=verbose,
+        )
 
     raise FileNotFoundError(
-        f"No operator_details.csv, kernel_details.csv, or op_statistic.csv found under {profile_root}"
+        f"No kernel_details.csv or op_statistic.csv found under {profile_root}"
     )
 
 
@@ -614,11 +619,11 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
     return parent / f"PROF_{_sanitize_case_id(case_id)}_{int(time.time() * 1000)}"
 
 
-def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
-    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
+def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
+    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
+    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
 
 
 def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
@@ -643,7 +648,7 @@ def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
 def _create_local_bench_profile_dir(
     case_id: str,
     preserved_run_dir: Path | None,
-) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+) -> PreservedRunDir:
     if preserved_run_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-bench-{_sanitize_case_id(case_id)}-")
         return Path(temp_dir.name), temp_dir
@@ -673,8 +678,8 @@ def _bootstrap_torch_npu() -> None:
     # can race with torch_npu initialization and later leave Triton with no
     # active NPU driver. torch is mandatory for this runtime, so its import
     # failure should still surface immediately.
-    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
-    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    previous = os.environ.get(TORCH_DEVICE_BACKEND_AUTOLOAD)
+    os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = "0"
     try:
         importlib.import_module("torch")
         try:
@@ -683,9 +688,9 @@ def _bootstrap_torch_npu() -> None:
             pass
     finally:
         if previous is None:
-            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+            os.environ.pop(TORCH_DEVICE_BACKEND_AUTOLOAD, None)
         else:
-            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
+            os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = previous
 
 
 def _cleanup_local_bench_extra_info(workdir: Path) -> None:
@@ -722,6 +727,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_one = subparsers.add_parser("run-one")
     _add_common_case_arguments(run_one)
+    run_one.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Number of times to invoke the case (default 1). msprof mode passes warmup + repeats.",
+    )
 
     profile_one = subparsers.add_parser("profile-one")
     _add_common_case_arguments(profile_one)
@@ -767,10 +778,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "run-one":
+            if args.iterations < 1:
+                raise SystemExit("--iterations must be >= 1")
             result = execute_bench_case(
                 bench_file,
                 operator_file,
                 args.case_id,
+                iterations=args.iterations,
             )
             return _emit_result(result)
 
