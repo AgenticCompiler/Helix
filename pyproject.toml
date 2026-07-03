@@ -54,6 +54,6 @@ exclude = [
     "workspace",
     "src/triton_agent.egg-info",
 ]
-extraPaths = ["src"]
+extraPaths = ["src", "skills/common/ascend-npu-run-eval/scripts"]
 typeCheckingMode = "basic"
 strict = ["src"]

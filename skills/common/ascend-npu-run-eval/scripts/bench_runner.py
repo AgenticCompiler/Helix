@@ -71,9 +71,6 @@ ResolvedProfileOutputRoot = tuple[str | None, str]
 PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
 CaseWorkspaceRoots = tuple[Path, Path]
 CaseWorkspace = tuple[Path, Callable[[], None]]
-
-_LOCAL_BENCH_OUTPUT_DIR_ENV = TRITON_AGENT_BENCH_OUTPUT_DIR
-_BENCH_COPY_FILES_ENV = TRITON_AGENT_BENCH_COPY_FILES
 _bench_runtime_module_cache = None
 _bench_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
@@ -92,7 +89,7 @@ class _MsprofCaseOutcome:
 
 
 def _collect_env_copy_files(search_dir: Path) -> list[Path]:
-    patterns_str = os.environ.get(_BENCH_COPY_FILES_ENV, "")
+    patterns_str = os.environ.get(TRITON_AGENT_BENCH_COPY_FILES, "")
     if not patterns_str.strip():
         return []
     patterns = [p.strip() for p in patterns_str.split(",") if p.strip()]
@@ -1219,10 +1216,10 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
 
 
 def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
-    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
+    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
 
 
 def _create_local_msprof_output_dir(
@@ -1703,7 +1700,9 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = _resolve_local_bench_profile_output_root()
     if configured_profile_root:
-        extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
+        extra_env[TRITON_AGENT_BENCH_OUTPUT_DIR] = str(
+            Path(configured_profile_root).expanduser().resolve()
+        )
     extra_env[TRITON_ALWAYS_COMPILE] = "1"
     command = [
         local_python_executable(),

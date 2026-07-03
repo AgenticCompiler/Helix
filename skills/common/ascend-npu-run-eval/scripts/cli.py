@@ -14,10 +14,8 @@ from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
-_BLOCKS_PARALLEL_ENV = TRITON_ALL_BLOCKS_PARALLEL
 _BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
 _BLOCKS_PARALLEL_SAFE_VALUE = "0"
-_OPTIMIZE_DELETE_PT_FILES_ENV = TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES
 _PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
 _LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})
 _LEGACY_NEVER_CLEANUP_VALUES = frozenset({"0", "false", "no", "off"})
@@ -33,7 +31,7 @@ def _profile_bench_hint(profile_dir: Path) -> str:
 
 
 def _pt_cleanup_mode() -> PtCleanupMode:
-    raw_value = os.environ.get(_OPTIMIZE_DELETE_PT_FILES_ENV)
+    raw_value = os.environ.get(TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES)
     if raw_value is None:
         return "round"
     value = raw_value.strip().lower()
@@ -89,15 +87,15 @@ def _guard_operator_execution_env(command: str) -> Iterator[None]:
     }:
         yield
         return
-    previous = os.environ.get(_BLOCKS_PARALLEL_ENV)
+    previous = os.environ.get(TRITON_ALL_BLOCKS_PARALLEL)
     if previous != _BLOCKS_PARALLEL_UNSAFE_VALUE:
         yield
         return
-    os.environ[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    os.environ[TRITON_ALL_BLOCKS_PARALLEL] = _BLOCKS_PARALLEL_SAFE_VALUE
     try:
         yield
     finally:
-        os.environ[_BLOCKS_PARALLEL_ENV] = previous
+        os.environ[TRITON_ALL_BLOCKS_PARALLEL] = previous
 
 
 class ParseMetadataFn(Protocol):

@@ -45,10 +45,6 @@ from run_runtime import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 _LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
 _WARNING_PREFIX = "[WARNING]"
-_TORCH_BACKEND_AUTOLOAD_ENV = TORCH_DEVICE_BACKEND_AUTOLOAD
-_ACCURACY_MODE_ENV = TRITON_AGENT_ACCURACY_MODE
-_DTYPE_CLOSE_ATOL_ENV = TRITON_AGENT_DTYPE_CLOSE_ATOL
-_DTYPE_CLOSE_RTOL_ENV = TRITON_AGENT_DTYPE_CLOSE_RTOL
 
 
 @dataclass(frozen=True)
@@ -438,8 +434,8 @@ def _bootstrap_torch_npu() -> None:
     # and torch_npu initialization in a bad state, which later shows up as
     # hangs or missing Triton NPU drivers. The torch import itself is required
     # for these runtimes, so ImportError remains fatal here.
-    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
-    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    previous = os.environ.get(TORCH_DEVICE_BACKEND_AUTOLOAD)
+    os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = "0"
     try:
         importlib.import_module("torch")
         try:
@@ -448,9 +444,9 @@ def _bootstrap_torch_npu() -> None:
             pass
     finally:
         if previous is None:
-            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+            os.environ.pop(TORCH_DEVICE_BACKEND_AUTOLOAD, None)
         else:
-            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
+            os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = previous
 
 
 def _filter_result_payload(result: ResultPayload, *, verbose: bool) -> ResultPayload:
@@ -618,8 +614,12 @@ def run_remote_test(
 def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:
-        extra_env[_ACCURACY_MODE_ENV] = accuracy_mode
-    for name in (_ACCURACY_MODE_ENV, _DTYPE_CLOSE_ATOL_ENV, _DTYPE_CLOSE_RTOL_ENV):
+        extra_env[TRITON_AGENT_ACCURACY_MODE] = accuracy_mode
+    for name in (
+        TRITON_AGENT_ACCURACY_MODE,
+        TRITON_AGENT_DTYPE_CLOSE_ATOL,
+        TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    ):
         if name in extra_env:
             continue
         value = os.environ.get(name)
