@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
 
 from triton_agent.resources import application_root
 from triton_agent.skill_catalog import resolve_skill_source_dir
+
+
+_sys_path_lock = threading.Lock()
 
 
 def repo_root() -> Path:
@@ -42,21 +46,23 @@ def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
         raise ImportError(f"Unable to load skill script: {path}")
     module = importlib.util.module_from_spec(spec)
     script_dir = str(path.parent)
-    added = False
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
-        added = True
-    previous_module = sys.modules.get(module_name)
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        if previous_module is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = previous_module
-        if added:
-            sys.path.remove(script_dir)
+    
+    with _sys_path_lock:
+        added = False
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+            added = True
+        previous_module = sys.modules.get(module_name)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            if previous_module is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
+            if added:
+                sys.path.remove(script_dir)
     return module
 
 
