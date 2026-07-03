@@ -606,6 +606,9 @@ Trend output filters `NO-SESSION` workspaces. Missing round values render as `-`
 `--format json` is available for both views. JSON output uses a top-level `operators` array and raw
 float speedup values. In trend JSON, missing round values are `null`.
 
+`--format html` is available only with `--view trend`. It emits a self-contained static HTML report
+to stdout, so redirect it to a file when needed.
+
 ### Verify The Best Round
 
 ```bash

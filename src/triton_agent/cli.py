@@ -41,7 +41,7 @@ from triton_agent.remote.ssh_preflight import ensure_remote_ssh_ready
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _LANGUAGE_CHOICES = ("triton", "tilelang")
-_FORMAT_CHOICES = ("text", "markdown", "json")
+_FORMAT_CHOICES = ("text", "markdown", "json", "html")
 _STATUS_VIEW_CHOICES = ("best", "trend")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
