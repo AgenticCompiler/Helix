@@ -149,6 +149,33 @@ class OptimizeStatusTests(unittest.TestCase):
                 status.warnings,
             )
 
+    def test_inspect_optimize_status_workspace_returns_round_speedup_trend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual([round.round_name for round in status.rounds], ["round-1", "round-2"])
+            self.assertAlmostEqual(status.rounds[0].geomean_speedup, (10 / 8 * 20 / 16) ** 0.5)
+            self.assertAlmostEqual(status.rounds[1].geomean_speedup, (10 / 5 * 20 / 10) ** 0.5)
+
     def test_inspect_optimize_status_workspace_prefers_overall_summary_and_warns_on_legacy_mismatch(
         self,
     ) -> None:

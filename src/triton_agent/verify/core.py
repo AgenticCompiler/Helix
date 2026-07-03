@@ -13,11 +13,11 @@ from typing import Literal, Protocol, cast
 
 from triton_agent.eval.runners import run_local_bench, run_local_test, run_remote_bench, run_remote_test
 from triton_agent.models import AgentResult
-from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
 from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
 from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
 from triton_agent.status.core import inspect_optimize_status_workspace
+from triton_agent.status.models import OptimizeStatusWorkspace
 from triton_agent.skills.loader import load_operator_eval_script_module
 
 

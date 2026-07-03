@@ -10,8 +10,8 @@ from typing import Protocol, cast
 from triton_agent.optimize.baseline import baseline_dir
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.naming import resolve_round_perf_file
-from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.optimize.round_contract import load_round_state
+from triton_agent.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.skills.loader import load_operator_eval_script_module
 
 
@@ -180,6 +180,7 @@ def inspect_optimize_status_workspace(
             latest_verify_state=latest_verify_state,
             verified=verified,
             verified_geomean_speedup=verified_geomean_speedup,
+            rounds=tuple(comparable_rounds),
         )
 
     if baseline_path is None and not baseline_selection_failed:
@@ -198,6 +199,7 @@ def inspect_optimize_status_workspace(
         latest_verify_state=latest_verify_state,
         verified=verified,
         verified_geomean_speedup=verified_geomean_speedup,
+        rounds=tuple(comparable_rounds),
     )
 
 
