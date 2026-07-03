@@ -53,6 +53,18 @@ Profiler interpretation notes:
 
 ## Implementation sketches (Triton)
 
+### Tiered BLOCK_M example
+
+```python
+if total_rows >= 131072:
+    BLOCK_M = 64
+elif total_rows >= 32768:
+    BLOCK_M = 32
+else:
+    BLOCK_M = 8
+grid = (triton.cdiv(total_rows, BLOCK_M),)
+```
+
 ### Variant A: 2D BLOCK_M (PREFERRED) — coalesced multi-row access with broadcasting
 
 Use this when the kernel operates on a 2D [rows, cols] view of the data. The 2D broadcast pattern enables coalesced loads across both dimensions. This is the variant the structural optimization priority gate requires evaluating first.
