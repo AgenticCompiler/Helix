@@ -66,7 +66,6 @@ Use the `ascend-npu-run-eval` skill to validate generated tests.
 
 - Standalone or baseline differential validation: run `run-test-baseline`.
 - Optimize differential validation: run `run-test-optimize`.
-- Differential manual compare: keep `compare-result` for reruns or for cases where you already have both archived payloads.
 - For command details and required inputs, read only the focused run-eval guide for the chosen subcommand.
 - If validation is remote, carry the same remote flags through the relevant command path.
 

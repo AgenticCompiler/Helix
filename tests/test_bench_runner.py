@@ -203,6 +203,16 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertNotIn("class _BenchRunnerDeps", source)
         self.assertNotIn("_DEPS =", source)
 
+    def test_runtime_support_scripts_avoid_typealias_runtime_imports(self) -> None:
+        module = load_bench_runner_module()
+        module_file = module.__file__
+        assert module_file is not None
+        support_paths = [Path(module_file)] + list(module._bench_runtime_support_paths())
+
+        for support_path in support_paths:
+            source = support_path.read_text(encoding="utf-8")
+            self.assertNotIn("TypeAlias", source, str(support_path))
+
     def test_run_local_bench_torch_npu_profiler_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -869,7 +879,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
                 created_output_dirs.append(output_dir)
-                case_idx = int(str(command[-1]).removeprefix("case-"))
+                case_idx = int(str(command[command.index("--case-id") + 1]).removeprefix("case-"))
                 csv_path = output_dir / f"op_statistic_20260424{case_idx}.csv"
                 csv_path.write_text(
                     "\n".join(
@@ -912,7 +922,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertTrue(case_command[1].startswith("--output="))
             self.assertEqual(case_command[2:5], [sys.executable, str(module._bench_runtime_script_path()), "run-one"])
             self.assertEqual(
-                case_command[5:11],
+                case_command[5:13],
                 [
                     "--bench-file",
                     "bench_abs.py",
@@ -920,6 +930,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     "abs.py",
                     "--case-id",
                     "case-2",
+                    "--iterations",
+                    "55",
                 ],
             )
             self.assertTrue(created_output_dirs)
@@ -953,7 +965,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 self.assertTrue((workdir_path / "bench_abs.py").exists())
                 self.assertTrue((workdir_path / "abs.py").exists())
                 output_dir = Path(command[1].split("=", 1)[1])
-                case_idx = int(str(command[-1]).removeprefix("case-"))
+                case_idx = int(str(command[-3]).removeprefix("case-"))
                 if case_idx == 1:
                     __import__("time").sleep(0.05)
                 (output_dir / f"op_statistic_{case_idx}.csv").write_text(
@@ -1511,7 +1523,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
                 self.assertEqual(stall_timeout_seconds, 300)
-                case_idx = int(str(command[-1]).removeprefix("case-"))
+                case_idx = int(str(command[-3]).removeprefix("case-"))
                 output_dir = Path(command[1].split("=", 1)[1])
                 if case_idx == 1:
                     return make_skill_result(1, "", "case one failed\n")
@@ -2243,6 +2255,116 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(return_code, 0)
             self.assertIn("Metric source: mixed (kernel + total-op fallback)", output)
 
+    def test_compare_perf_files_auto_mode_rejects_mixed_sources_within_one_case(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                (
+                    "latency-case-1: 22.6848\n"
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":22.6848}]}\n'
+                ),
+                encoding="utf-8",
+            )
+            compare.write_text(
+                (
+                    "latency-case-1: NA\n"
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 0)
+            self.assertIn("baseline=total-op=22.6848", output)
+            self.assertIn("compare=NA (total-op=10.7328)", output)
+            self.assertIn("Metric source: total-op", output)
+            self.assertNotIn("Metric source: kernel", output)
+
+    def test_compare_perf_files_auto_mode_fails_cleanly_when_total_op_rebuild_is_missing(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text("latency-case-1: 22.6848\n", encoding="utf-8")
+            compare.write_text(
+                (
+                    "latency-case-1: NA\n"
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
+            self.assertNotIn("Traceback", output)
+
+    def test_compare_perf_files_auto_mode_skips_missing_total_op_rebuild_when_requested(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                (
+                    "latency-case-1: 22.6848\n"
+                    "latency-case-2: 30.0\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":30.0}]}\n'
+                ),
+                encoding="utf-8",
+            )
+            compare.write_text(
+                (
+                    "latency-case-1: NA\n"
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                    "latency-case-2: 24.0\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":24.0}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(
+                        baseline,
+                        compare,
+                        skip_latency_errors=True,
+                    )
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("latency-case-2", output)
+            self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
+            self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
+            self.assertNotIn("latency-case-1: baseline=", output)
+
     def test_compare_perf_files_all_mode_prints_kernel_and_total_op_sections(self) -> None:
         module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -2555,7 +2677,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
         self.assertIn('"total_op_avg_time_us":12.5', line)
         self.assertIn('"kernel_avg_time_us":12.5', line)
 
-    def test_total_op_avg_time_us_still_sums_ops_for_profiler_modes(self) -> None:
+    def test_profiler_mode_jsonl_uses_explicit_total_op_avg_time_us(self) -> None:
         module = load_perf_artifacts_module()
         record = module.PerfCaseRecord(
             case_label="case-e",
@@ -2567,12 +2689,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     {"op_type": "KA", "avg_time_us": 5.0},
                     {"op_type": "KB", "avg_time_us": 6.0},
                 ],
+                "total_op_avg_time_us": 13.5,
             },
             case_wall_clock_seconds=1.5,
             bench_mode="torch-npu-profiler",
         )
         line = module.render_perf_case_record_jsonl(record)
-        self.assertIn('"total_op_avg_time_us":11.0', line)
+        self.assertIn('"total_op_avg_time_us":13.5', line)
 
     # ------------------------------------------------------------------
     # cross-mode comparison guards

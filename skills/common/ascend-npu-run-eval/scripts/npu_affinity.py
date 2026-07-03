@@ -4,6 +4,8 @@ import queue
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from env_registry import ASCEND_RT_VISIBLE_DEVICES
+
 
 def parse_npu_devices(raw: str | None) -> tuple[str, ...] | None:
     if raw is None:
@@ -21,7 +23,7 @@ def parse_npu_devices(raw: str | None) -> tuple[str, ...] | None:
 
 
 def affinity_env_for_device(device: str) -> dict[str, str]:
-    return {"ASCEND_RT_VISIBLE_DEVICES": device}
+    return {ASCEND_RT_VISIBLE_DEVICES: device}
 
 
 class NpuDevicePool:

@@ -15,6 +15,7 @@ class CommandKind(str, Enum):
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
     RUN_BENCH = "run-bench"
+    PROBE_BENCH = "probe-bench"
     RUN_SIMULATOR = "run-simulator"
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
@@ -31,7 +32,7 @@ class CommandKind(str, Enum):
     REPORT = "report"
     REPORT_BATCH = "report-batch"
     CLEAN = "clean"
-    DIFF_SKILLS_UPDATE = "diff-skills-update"
+    DISTILL = "distill"
 
 
 def command_to_skill(command_kind: CommandKind, language: str = "triton") -> str:

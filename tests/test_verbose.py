@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.verbose import _supports_color, emit_command_block, emit_verbose
+from triton_agent.terminal.verbose import _supports_color, emit_command_block, emit_verbose
 
 
 class _TtyStringIO(StringIO):

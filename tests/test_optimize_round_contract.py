@@ -7,14 +7,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 
 
 class OptimizeRoundContractTests(unittest.TestCase):
     def test_runtime_round_helpers_match_split_round_submit_contract(self) -> None:
         module = load_skill_script_module(
-            "ascend-npu-optimize-submit-round",
-            "optimize_submit_round",
+            "ascend-npu-optimize-state",
+            "round/check",
         )
 
         with tempfile.TemporaryDirectory() as tmp:

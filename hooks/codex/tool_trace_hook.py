@@ -497,9 +497,9 @@ def _classify_command(command: str) -> str:
         return "compare_perf"
     if "compare-result" in normalized:
         return "compare_result"
-    if "check-baseline" in normalized:
+    if "submit-baseline" in normalized:
         return "check_baseline"
-    if "check-round" in normalized:
+    if "submit-round" in normalized:
         return "check_round"
     if "run-test" in normalized or "pytest" in normalized or "differential_test_" in normalized:
         return "correctness_test"

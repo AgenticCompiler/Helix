@@ -8,6 +8,8 @@ from triton_agent.log_check.log_check_launcher import run_log_check
 
 
 def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_log_check_batch(parser, args)
     target_path = Path(args.input).expanduser().resolve()
     if not target_path.exists():
         parser.error(f"Input path does not exist: {target_path}")
@@ -20,7 +22,7 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "stream_output", True)),
         log_tools=bool(getattr(args, "log_tools", False)),
-        language=getattr(args, "language", "triton"),
+        language=getattr(args, "lang", "triton"),
     )
 
 
@@ -41,6 +43,6 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "stream_output", True)),
         log_tools=bool(getattr(args, "log_tools", False)),
-        language=getattr(args, "language", "triton"),
+        language=getattr(args, "lang", "triton"),
         max_concurrency=concurrency,
     )

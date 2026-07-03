@@ -11,12 +11,14 @@ from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import prepare_generation_targets
 from triton_agent.generation.orchestration import build_generation_request, run_generation_request
 from triton_agent.models import CommandKind
-from triton_agent.npu_affinity import resolve_batch_concurrency
-from triton_agent.output import render_result
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.batch.affinity import resolve_batch_concurrency
+from triton_agent.terminal.render import render_result
+from triton_agent.terminal.verbose import emit_verbose_lines
 
 
 def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_gen_eval_batch(parser, args)
     return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
 
 
