@@ -116,6 +116,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                accuracy_mode="npu-contract",
                 verbose=False,
             )
 
@@ -140,6 +141,8 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                     str(operator),
                     "--ref-result",
                     str(ref_result),
+                    "--accuracy-mode",
+                    "dtype-close",
                 ]
             )
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -159,11 +162,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                accuracy_mode="dtype-close",
                 verbose=False,
             )
             compare_mock.assert_called_once_with(
                 ref_result.resolve(),
                 archive,
+                accuracy_mode="dtype-close",
             )
 
     def test_handle_run_test_prints_hint_when_run_test_cleanup_does_not_delete_archive(self) -> None:
@@ -259,6 +264,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "differential",
                 "alice@example.com",
                 "/tmp/triton-agent",
+                accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
@@ -268,6 +274,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 archive,
                 "alice@example.com",
                 "/tmp/triton-agent",
+                accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
             )
@@ -308,6 +315,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                accuracy_mode="npu-contract",
                 verbose=True,
             )
 
@@ -352,6 +360,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com",
                 "/tmp/triton-agent",
+                accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,

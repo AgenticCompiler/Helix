@@ -14,6 +14,8 @@ class CompareResultModule(Protocol):
         self,
         ref_result: Path,
         new_result: Path,
+        *,
+        accuracy_mode: str | None = None,
     ) -> int: ...
 
     def compare_remote_result_files(
@@ -22,6 +24,8 @@ class CompareResultModule(Protocol):
         new_result: Path,
         remote: str,
         remote_workdir: str | None,
+        *,
+        accuracy_mode: str | None = None,
         verbose: bool = False,
         stderr: TextIO | None = None,
     ) -> int: ...
@@ -46,8 +50,17 @@ def _load_compare_perf() -> ComparePerfModule:
     return cast(ComparePerfModule, load_operator_eval_script_module("perf_artifacts"))
 
 
-def compare_result_files(ref_result: Path, new_result: Path) -> int:
-    return _load_compare_result().compare_result_files(ref_result, new_result)
+def compare_result_files(
+    ref_result: Path,
+    new_result: Path,
+    *,
+    accuracy_mode: str | None = None,
+) -> int:
+    return _load_compare_result().compare_result_files(
+        ref_result,
+        new_result,
+        accuracy_mode=accuracy_mode,
+    )
 
 
 def compare_remote_result_files(
@@ -56,6 +69,7 @@ def compare_remote_result_files(
     remote: str,
     remote_workdir: str | None,
     *,
+    accuracy_mode: str | None = None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> int:
@@ -64,6 +78,7 @@ def compare_remote_result_files(
         new_result,
         remote,
         remote_workdir,
+        accuracy_mode=accuracy_mode,
         verbose=verbose,
         stderr=stderr,
     )
@@ -102,13 +117,18 @@ def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namesp
                 new_result,
                 remote,
                 remote_workdir,
+                accuracy_mode=args.accuracy_mode,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
         except (RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    return compare_result_files(ref_result, new_result)
+    return compare_result_files(
+        ref_result,
+        new_result,
+        accuracy_mode=args.accuracy_mode,
+    )
 
 
 def handle_compare_perf(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

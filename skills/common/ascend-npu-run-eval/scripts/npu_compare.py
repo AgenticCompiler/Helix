@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
+import os
 from typing import cast
 
 import torch
 
 
+_ACCURACY_MODE_ENV = "TRITON_AGENT_RUN_TEST_ACCURACY_MODE"
+_DTYPE_CLOSE_ATOL_ENV = "TRITON_AGENT_RUN_TEST_ATOL"
+_DTYPE_CLOSE_RTOL_ENV = "TRITON_AGENT_RUN_TEST_RTOL"
+_DEFAULT_ACCURACY_MODE = "npu-contract"
+_ACCURACY_MODES = frozenset({_DEFAULT_ACCURACY_MODE, "dtype-close"})
+_CURRENT_ACCURACY_MODE: ContextVar[str | None] = ContextVar(
+    "triton_agent_current_accuracy_mode",
+    default=None,
+)
 _FLOAT_FAMILY = {
     "float8_e4m3",
     "float8_e4m3fn",
@@ -108,6 +119,18 @@ _MAX_ERROR_THRESHOLDS = {
         "rtol": 2 ** -13,
     },
 }
+_DTYPE_CLOSE_TOLERANCES = {
+    "float64": {"rtol": 1e-5, "atol": 1e-8},
+    "complex128": {"rtol": 1e-5, "atol": 1e-8},
+    "float32": {"rtol": 1e-4, "atol": 1e-5},
+    "hifloat32": {"rtol": 1e-4, "atol": 1e-5},
+    "complex64": {"rtol": 1e-4, "atol": 1e-5},
+    "float16": {"rtol": 5e-4, "atol": 5e-5},
+    "bfloat16": {"rtol": 1e-3, "atol": 1e-4},
+    "float8_e4m3": {"rtol": 1e-2, "atol": 1e-3},
+    "float8_e5m2": {"rtol": 1e-2, "atol": 1e-3},
+    "fallback": {"rtol": 1e-4, "atol": 1e-5},
+}
 
 
 @dataclass(frozen=True)
@@ -145,56 +168,81 @@ def compare_case_result(
     golden: object,
     inputs: object,
     compute: bool = True,
+    accuracy_mode: str | None = None,
 ) -> CaseCompareResult:
-    input_info = _infer_input_info(inputs)
-    leaf_results = _compare_value(
-        actual=actual,
-        golden=golden,
-        case_id=case_id,
-        compute=compute,
-        input_info=input_info,
-        output_path="output",
-    )
-    if not leaf_results:
+    resolved_accuracy_mode = _resolve_accuracy_mode(accuracy_mode)
+    token = _CURRENT_ACCURACY_MODE.set(resolved_accuracy_mode)
+    try:
+        input_info = _infer_input_info(inputs)
+        leaf_results = _compare_value(
+            actual=actual,
+            golden=golden,
+            case_id=case_id,
+            compute=compute,
+            input_info=input_info,
+            output_path="output",
+        )
+        if not leaf_results:
+            return _case_result(
+                passed=True,
+                case_id=case_id,
+                compute=compute,
+                input_info=input_info,
+                output_dtype=None,
+                comparison_path="empty-output",
+                message=f"PASS case '{case_id}' has no comparable outputs.",
+                diagnostics={"case_id": case_id, "output_path": "output"},
+            )
+        failed = next((result for result in leaf_results if not result.passed), None)
+        if failed is not None:
+            return failed
+        first = leaf_results[0]
+        output_dtype = first.output_dtype if len({result.output_dtype for result in leaf_results}) == 1 else "multiple"
+        comparison_path = first.comparison_path if len({result.comparison_path for result in leaf_results}) == 1 else "composite"
+        diagnostics: Mapping[str, object]
+        if len(leaf_results) == 1:
+            diagnostics = {**dict(first.diagnostics), "leaf_count": 1}
+        else:
+            diagnostics = {
+                "case_id": case_id,
+                "compute": compute,
+                "input_type": input_info.input_type,
+                "input_dtype": input_info.input_dtype,
+                "output_path": "output",
+                "leaf_count": len(leaf_results),
+            }
         return _case_result(
             passed=True,
             case_id=case_id,
             compute=compute,
             input_info=input_info,
-            output_dtype=None,
-            comparison_path="empty-output",
-            message=f"PASS case '{case_id}' has no comparable outputs.",
-            diagnostics={"case_id": case_id, "output_path": "output"},
+            output_dtype=output_dtype,
+            comparison_path=comparison_path,
+            message=f"PASS case '{case_id}' matched across {len(leaf_results)} output leaf/leaves.",
+            diagnostics=diagnostics,
         )
-    failed = next((result for result in leaf_results if not result.passed), None)
-    if failed is not None:
-        return failed
-    first = leaf_results[0]
-    output_dtype = first.output_dtype if len({result.output_dtype for result in leaf_results}) == 1 else "multiple"
-    comparison_path = first.comparison_path if len({result.comparison_path for result in leaf_results}) == 1 else "composite"
-    return _case_result(
-        passed=True,
-        case_id=case_id,
-        compute=compute,
-        input_info=input_info,
-        output_dtype=output_dtype,
-        comparison_path=comparison_path,
-        message=f"PASS case '{case_id}' matched across {len(leaf_results)} output leaf/leaves.",
-        diagnostics={
-            "case_id": case_id,
-            "compute": compute,
-            "input_type": input_info.input_type,
-            "input_dtype": input_info.input_dtype,
-            "output_path": "output",
-            "leaf_count": len(leaf_results),
-        },
-    )
+    finally:
+        _CURRENT_ACCURACY_MODE.reset(token)
 
 
 def compare_result_payloads(
     oracle_payload: object,
     actual_payload: object,
+    accuracy_mode: str | None = None,
 ) -> ArtifactCompareResult:
+    resolved_accuracy_mode = _resolve_accuracy_mode(accuracy_mode)
+    token = _CURRENT_ACCURACY_MODE.set(resolved_accuracy_mode)
+    try:
+        return _compare_result_payloads_in_current_mode(oracle_payload, actual_payload)
+    finally:
+        _CURRENT_ACCURACY_MODE.reset(token)
+
+
+def _compare_result_payloads_in_current_mode(
+    oracle_payload: object,
+    actual_payload: object,
+) -> ArtifactCompareResult:
+    accuracy_mode = _current_accuracy_mode()
     oracle_cases, oracle_error = _extract_case_records(oracle_payload, "oracle")
     if oracle_error is not None:
         return ArtifactCompareResult(
@@ -202,7 +250,7 @@ def compare_result_payloads(
             failed_case_count=1,
             case_results=(),
             message=f"FAIL: {oracle_error}",
-            diagnostics={"payload": "oracle"},
+            diagnostics={"payload": "oracle", "accuracy_mode": accuracy_mode},
         )
     actual_cases, actual_error = _extract_case_records(actual_payload, "actual_payload")
     if actual_error is not None:
@@ -211,7 +259,7 @@ def compare_result_payloads(
             failed_case_count=1,
             case_results=(),
             message=f"FAIL: {actual_error}",
-            diagnostics={"payload": "actual_payload"},
+            diagnostics={"payload": "actual_payload", "accuracy_mode": accuracy_mode},
         )
     if len(oracle_cases) != len(actual_cases):
         return ArtifactCompareResult(
@@ -222,7 +270,11 @@ def compare_result_payloads(
                 "FAIL: payload case count mismatch: "
                 f"oracle={len(oracle_cases)}, actual_payload={len(actual_cases)}"
             ),
-            diagnostics={"oracle_case_count": len(oracle_cases), "actual_case_count": len(actual_cases)},
+            diagnostics={
+                "oracle_case_count": len(oracle_cases),
+                "actual_case_count": len(actual_cases),
+                "accuracy_mode": accuracy_mode,
+            },
         )
     oracle_compute = _payload_compute_flag(oracle_payload)
     actual_compute = _payload_compute_flag(actual_payload)
@@ -235,7 +287,11 @@ def compare_result_payloads(
                 "FAIL: payload compute-kind mismatch: "
                 f"oracle={oracle_compute}, actual_payload={actual_compute}"
             ),
-            diagnostics={"oracle_compute": oracle_compute, "actual_compute": actual_compute},
+            diagnostics={
+                "oracle_compute": oracle_compute,
+                "actual_compute": actual_compute,
+                "accuracy_mode": accuracy_mode,
+            },
         )
     case_results: list[CaseCompareResult] = []
     for index, (oracle_case, actual_case) in enumerate(zip(oracle_cases, actual_cases)):
@@ -268,6 +324,7 @@ def compare_result_payloads(
                 golden=oracle_case.result,
                 inputs=oracle_case.inputs,
                 compute=oracle_compute,
+                accuracy_mode=accuracy_mode,
             )
         )
     failed = [result for result in case_results if not result.passed]
@@ -280,14 +337,19 @@ def compare_result_payloads(
                 f"FAIL: {len(failed)} of {len(case_results)} case(s) failed. "
                 f"First failure: {failed[0].message}"
             ),
-            diagnostics={"case_count": len(case_results)},
+            diagnostics={"case_count": len(case_results), "accuracy_mode": accuracy_mode},
         )
+    message = (
+        f"PASS: all {len(case_results)} case(s) matched the NPU accuracy contract."
+        if accuracy_mode == _DEFAULT_ACCURACY_MODE
+        else f"PASS: all {len(case_results)} case(s) matched with accuracy mode '{accuracy_mode}'."
+    )
     return ArtifactCompareResult(
         passed=True,
         failed_case_count=0,
         case_results=tuple(case_results),
-        message=f"PASS: all {len(case_results)} case(s) matched the NPU accuracy contract.",
-        diagnostics={"case_count": len(case_results)},
+        message=message,
+        diagnostics={"case_count": len(case_results), "accuracy_mode": accuracy_mode},
     )
 
 
@@ -503,6 +565,7 @@ def _compare_leaf(
 ) -> CaseCompareResult:
     actual_tensor = _coerce_output_leaf(actual)
     golden_tensor = _coerce_output_leaf(golden)
+    accuracy_mode = _current_accuracy_mode()
     if actual_tensor is None or golden_tensor is None:
         if not compute and actual == golden:
             return _case_result(
@@ -554,6 +617,22 @@ def _compare_leaf(
                 "failure_stage": "unsupported_output_type",
                 "output_path": output_path,
                 "output_dtype": output_dtype,
+            },
+        )
+    if accuracy_mode == "dtype-close" and actual_cpu.dtype != golden_cpu.dtype:
+        return _case_result(
+            passed=False,
+            case_id=case_id,
+            compute=compute,
+            input_info=input_info,
+            output_dtype=output_dtype,
+            comparison_path=comparison_path,
+            message=f"FAIL case '{case_id}' dtype mismatch at {output_path}.",
+            diagnostics={
+                "failure_stage": "dtype_mismatch",
+                "output_path": output_path,
+                "expected_dtype": _dtype_name(golden_cpu.dtype),
+                "actual_dtype": _dtype_name(actual_cpu.dtype),
             },
         )
     if comparison_path == "non-compute":
@@ -609,7 +688,7 @@ def _compare_leaf(
             input_info=input_info,
             output_path=output_path,
             output_dtype=output_dtype,
-            bound=1,
+            bound=0 if accuracy_mode == "dtype-close" else 1,
             comparison_path=comparison_path,
         )
     return _compare_floating_output(
@@ -872,6 +951,16 @@ def _compare_floating_output(
     output_dtype: str,
 ) -> CaseCompareResult:
     actual_cast = actual_cpu.to(dtype=golden_cpu.dtype) if actual_cpu.dtype != golden_cpu.dtype else actual_cpu
+    if _current_accuracy_mode() == "dtype-close":
+        return _compare_dtype_close_floating_output(
+            actual_cpu=actual_cast,
+            golden_cpu=golden_cpu,
+            case_id=case_id,
+            compute=compute,
+            input_info=input_info,
+            output_path=output_path,
+            output_dtype=output_dtype,
+        )
     finite_mask = torch.isfinite(actual_cast) & torch.isfinite(golden_cpu)
     finite_count = int(torch.count_nonzero(finite_mask).item())
     thresholds = _thresholds_for_output_dtype(output_dtype)
@@ -1010,6 +1099,61 @@ def _compare_floating_output(
     )
 
 
+def _compare_dtype_close_floating_output(
+    *,
+    actual_cpu: torch.Tensor,
+    golden_cpu: torch.Tensor,
+    case_id: str,
+    compute: bool,
+    input_info: _InputInfo,
+    output_path: str,
+    output_dtype: str,
+) -> CaseCompareResult:
+    tolerances = _dtype_close_tolerances_for_output_dtype(output_dtype)
+    max_abs_diff = _max_abs_diff(actual_cpu, golden_cpu)
+    diagnostics = {
+        "output_path": output_path,
+        "output_dtype": output_dtype,
+        "tensor_shape": tuple(golden_cpu.shape),
+        "atol": tolerances["atol"],
+        "rtol": tolerances["rtol"],
+        "max_abs_diff": max_abs_diff,
+    }
+    try:
+        torch.testing.assert_close(
+            actual_cpu,
+            golden_cpu,
+            atol=tolerances["atol"],
+            rtol=tolerances["rtol"],
+            equal_nan=True,
+        )
+    except AssertionError as exc:
+        return _case_result(
+            passed=False,
+            case_id=case_id,
+            compute=compute,
+            input_info=input_info,
+            output_dtype=output_dtype,
+            comparison_path="floating-point-compute",
+            message=f"FAIL case '{case_id}' assert_close failed at {output_path}.",
+            diagnostics={
+                **diagnostics,
+                "failure_stage": "assert_close",
+                "assert_close_message": str(exc),
+            },
+        )
+    return _case_result(
+        passed=True,
+        case_id=case_id,
+        compute=compute,
+        input_info=input_info,
+        output_dtype=output_dtype,
+        comparison_path="floating-point-compute",
+        message=f"PASS case '{case_id}' matched dtype-close output at {output_path}.",
+        diagnostics=diagnostics,
+    )
+
+
 def _finite_float_views(
     actual_cast: torch.Tensor,
     golden_cpu: torch.Tensor,
@@ -1045,6 +1189,22 @@ def _thresholds_for_output_dtype(output_dtype: str) -> dict[str, float]:
     }
 
 
+def _dtype_close_tolerances_for_output_dtype(output_dtype: str) -> dict[str, float]:
+    matched_key = _dtype_close_tolerance_key(output_dtype)
+    matched = _DTYPE_CLOSE_TOLERANCES.get(matched_key, _DTYPE_CLOSE_TOLERANCES["fallback"])
+    tolerances = {
+        "atol": float(matched["atol"]),
+        "rtol": float(matched["rtol"]),
+    }
+    atol = _optional_env_float(_DTYPE_CLOSE_ATOL_ENV)
+    rtol = _optional_env_float(_DTYPE_CLOSE_RTOL_ENV)
+    if atol is not None:
+        tolerances["atol"] = atol
+    if rtol is not None:
+        tolerances["rtol"] = rtol
+    return tolerances
+
+
 def _threshold_key(output_dtype: str) -> str:
     if output_dtype.startswith("float8_e4m3"):
         return "float8_e4m3"
@@ -1053,6 +1213,65 @@ def _threshold_key(output_dtype: str) -> str:
     if output_dtype in {"float16", "bfloat16", "float32", "hifloat32"}:
         return output_dtype
     return "fallback"
+
+
+def _dtype_close_tolerance_key(output_dtype: str) -> str:
+    if output_dtype.startswith("float8_e4m3"):
+        return "float8_e4m3"
+    if output_dtype.startswith("float8_e5m2"):
+        return "float8_e5m2"
+    if output_dtype in {
+        "float16",
+        "bfloat16",
+        "float32",
+        "hifloat32",
+        "float64",
+        "complex64",
+        "complex128",
+    }:
+        return output_dtype
+    return "fallback"
+
+
+def _resolve_accuracy_mode(accuracy_mode: str | None) -> str:
+    raw_value = accuracy_mode if accuracy_mode is not None else os.environ.get(_ACCURACY_MODE_ENV)
+    if raw_value is None or not raw_value.strip():
+        return _DEFAULT_ACCURACY_MODE
+    normalized = raw_value.strip().lower()
+    if normalized not in _ACCURACY_MODES:
+        supported = ", ".join(sorted(_ACCURACY_MODES))
+        raise ValueError(f"accuracy_mode must be one of {supported}, got {raw_value!r}")
+    return normalized
+
+
+def _current_accuracy_mode() -> str:
+    current = _CURRENT_ACCURACY_MODE.get()
+    if current is not None:
+        return current
+    return _resolve_accuracy_mode(None)
+
+
+def _optional_env_float(name: str) -> float | None:
+    raw_value = os.environ.get(name)
+    if raw_value is None or not raw_value.strip():
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a float, got {raw_value!r}") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative, got {raw_value!r}")
+    return value
+
+
+def _max_abs_diff(actual_cpu: torch.Tensor, golden_cpu: torch.Tensor) -> float:
+    if actual_cpu.numel() == 0:
+        return 0.0
+    try:
+        diff = (actual_cpu - golden_cpu).abs()
+    except RuntimeError:
+        diff = (actual_cpu.to(dtype=torch.float32) - golden_cpu.to(dtype=torch.float32)).abs()
+    return float(diff.max().item())
 
 
 def _select_comparison_path(
@@ -1224,5 +1443,6 @@ def _case_result(
             "input_type": input_info.input_type,
             "input_dtype": input_info.input_dtype,
             **diagnostics,
+            "accuracy_mode": _current_accuracy_mode(),
         },
     )

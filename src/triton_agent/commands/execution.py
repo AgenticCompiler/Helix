@@ -46,6 +46,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         remote=remote,
         remote_workdir=remote_workdir,
     )
+    accuracy_mode = args.accuracy_mode
     remote_workspace: str | None = None
     try:
         if remote is not None:
@@ -55,6 +56,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                accuracy_mode=accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -64,6 +66,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 test_file,
                 operator_file,
                 resolved_test_mode,
+                accuracy_mode=accuracy_mode,
                 verbose=args.verbose,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -80,6 +83,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 archived_result,
                 remote,
                 remote_workdir,
+                accuracy_mode=accuracy_mode,
                 verbose=args.verbose,
             )
         cleaned_pt = cleanup_run_test_pt_files((archived_result,))
@@ -102,16 +106,22 @@ def _compare_run_test_result(
     remote: str | None,
     remote_workdir: str | None,
     *,
+    accuracy_mode: str,
     verbose: bool,
 ) -> int:
     if remote is None:
-        return compare_result_files(ref_result, archived_result)
+        return compare_result_files(
+            ref_result,
+            archived_result,
+            accuracy_mode=accuracy_mode,
+        )
     try:
         return compare_remote_result_files(
             ref_result,
             archived_result,
             remote,
             remote_workdir,
+            accuracy_mode=accuracy_mode,
             verbose=verbose,
             stderr=sys.stderr,
         )
@@ -315,6 +325,7 @@ def resolve_run_test_comparison_inputs(
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                accuracy_mode=args.accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -330,6 +341,7 @@ def resolve_run_test_comparison_inputs(
                 test_file,
                 ref_operator_file,
                 resolved_test_mode,
+                accuracy_mode=args.accuracy_mode,
                 verbose=args.verbose,
             )
             render_result(ref_run_result, skip_stdout=False)

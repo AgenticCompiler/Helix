@@ -93,6 +93,9 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
+| `TRITON_AGENT_RUN_TEST_ACCURACY_MODE` | No | staged run-eval CLI, run-eval MCP `run-test-*`, `compare-result` helpers | Accuracy mode for agent-run correctness validation. Supported values are `npu-contract` and `dtype-close`; default is `npu-contract`. The top-level `triton-agent run-test` and `compare-result` commands also expose `--accuracy-mode`. |
+| `TRITON_AGENT_RUN_TEST_ATOL` | No | `dtype-close` correctness comparison | Absolute tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
+| `TRITON_AGENT_RUN_TEST_RTOL` | No | `dtype-close` correctness comparison | Relative tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-state` `submit-baseline` flow, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
 | `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
 | `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
@@ -195,6 +198,7 @@ Common options:
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
 - `--ref-result <path>`: in `differential` mode, automatically compare the new archived result against an existing reference payload.
 - `--ref-operator-file <path>`: in `differential` mode, derive the reference payload path from the reference operator and auto-run the reference test first if the payload does not exist yet.
+- `--accuracy-mode npu-contract|dtype-close`: choose the comparison mode for standalone validation and automatic differential result comparison. Default is `npu-contract`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -709,9 +713,10 @@ Common options:
 
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
+- `--accuracy-mode npu-contract|dtype-close`
 - `--verbose`
 
-Correctness result comparison always uses the shared NPU accuracy comparison contract and reports detailed diagnostics for failing cases.
+Correctness result comparison defaults to the shared NPU accuracy comparison contract. Use `--accuracy-mode dtype-close` for dtype-aware `torch.testing.assert_close` style floating-point and complex comparisons.
 
 ### Compare Performance Results
 

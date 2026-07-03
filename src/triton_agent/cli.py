@@ -892,6 +892,11 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--ref-result", "--baseline-result", dest="ref_result")
         subparser.add_argument("--ref-operator-file", "--baseline-operator-file", dest="ref_operator_file")
+        subparser.add_argument(
+            "--accuracy-mode",
+            choices=("npu-contract", "dtype-close"),
+            default="npu-contract",
+        )
         return
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
@@ -923,6 +928,11 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-result":
         subparser.add_argument("--ref-result", "--oracle-result", dest="ref_result", required=True)
         subparser.add_argument("--new-result", required=True)
+        subparser.add_argument(
+            "--accuracy-mode",
+            choices=("npu-contract", "dtype-close"),
+            default="npu-contract",
+        )
         return
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)

@@ -73,7 +73,7 @@ The managed run-eval MCP server currently exposes:
 - `run-test-baseline`
 - `run-test-optimize`
 
-Both tools should gain an optional `accuracy_mode` parameter with supported values `npu-contract` and `dtype-close`, defaulting to `npu-contract`.
+Do not expose `accuracy_mode`, `atol`, or `rtol` as MCP tool parameters. Agents should not actively choose the precision policy. Instead, configure the managed run-eval MCP server process with `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`, `TRITON_AGENT_RUN_TEST_ATOL`, and `TRITON_AGENT_RUN_TEST_RTOL` before the agent calls `run-test-baseline` or `run-test-optimize`; the spawned staged run-eval CLI inherits those environment variables.
 
 This change does not add a new MCP `compare-result` tool.
 
@@ -81,7 +81,7 @@ This change does not add a new MCP `compare-result` tool.
 
 ### Public API Shape
 
-`skills/triton-npu-run-eval/scripts/npu_compare.py` remains the only public comparison module.
+`skills/common/ascend-npu-run-eval/scripts/npu_compare.py` remains the only public comparison module.
 
 Its public entrypoints should become:
 
@@ -98,26 +98,25 @@ This keeps existing generated harnesses valid because they already call `compare
 
 ### Runtime configuration mechanism
 
-The shared runtime-configuration mechanism is a module-local `ContextVar`, not an environment variable.
+Agent-facing run-eval execution uses environment variables as the runner-owned runtime configuration mechanism. This is required because the staged run-eval CLI launches local worker subprocesses and remote SSH commands; environment variables cross those process boundaries without changing generated harness contracts.
 
-`npu_compare.py` should own:
+The environment variables are:
 
-- a `ContextVar[str | None]` that stores the current default accuracy mode for the active run scope
-- a small helper such as `override_accuracy_mode(mode)` that sets the context-local default and restores the previous value in `finally`
-- a resolver that chooses, in order:
-  1. explicit `accuracy_mode` argument
-  2. active context-local default
-  3. `"npu-contract"`
+- `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`: optional `npu-contract` or `dtype-close`; default is `npu-contract`
+- `TRITON_AGENT_RUN_TEST_ATOL`: optional dtype-close absolute tolerance override
+- `TRITON_AGENT_RUN_TEST_RTOL`: optional dtype-close relative tolerance override
 
-Rationale:
+`npu_compare.py` should resolve accuracy mode in this order:
 
-- this avoids process-wide environment leakage
-- this avoids plain module-global state that would be unsafe for future parallel execution
-- this keeps the mechanism runner-owned and invisible to generated harness authors
+1. explicit `accuracy_mode` argument
+2. `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`
+3. `"npu-contract"`
 
-For standalone runs, the runner should enter the override scope immediately before calling `main(operator_api)` and must reset it immediately after the call completes, even on failure.
+`TRITON_AGENT_RUN_TEST_ATOL` and `TRITON_AGENT_RUN_TEST_RTOL` should only affect the `dtype-close` floating-point and complex comparison path.
 
-Harnesses may import `npu_compare` before the override scope is entered. That is acceptable because accuracy mode is resolved when `compare_case_result(...)` executes, not at import time.
+The top-level `triton-agent run-test` command still exposes an explicit `--accuracy-mode` option and forwards that value into the skill runner environment. This keeps the top-level CLI deterministic even if the user's shell already has run-eval environment variables set.
+
+Harnesses may import `npu_compare` before the environment is read. That is acceptable because accuracy mode and tolerance are resolved when `compare_case_result(...)` executes, not at import time.
 
 ### `npu-contract`
 
@@ -228,17 +227,17 @@ The generated file contract does not change in this design:
 - no new required helper import
 - no required `accuracy_mode=` argument in generated harness code
 
-Instead, runner-owned execution should provide the selected accuracy mode as shared runtime configuration before the test module calls `compare_case_result(...)`.
+Instead, runner-owned execution should provide the selected accuracy mode as environment-backed shared runtime configuration before the test module calls `compare_case_result(...)`.
 
 More precisely:
 
 - import the harness module normally
 - resolve `operator_api`
-- enter `npu_compare.override_accuracy_mode(selected_mode)`
-- call `main(operator_api)` inside that scope
-- always restore the previous mode afterward
+- set `TRITON_AGENT_RUN_TEST_ACCURACY_MODE` for the local worker or remote command environment
+- call `main(operator_api)`
+- avoid adding any generated-harness argument or required metadata field
 
-The override is per run scope, not a permanent process setting, and harness code should not change it mid-run.
+The environment-backed configuration is scoped to the launched worker process or remote command. Harness code should not change it mid-run.
 
 This preserves compatibility with already-generated test files.
 
@@ -266,7 +265,7 @@ Update these entrypoints to accept and forward `accuracy_mode`:
 - `src/triton_agent/cli.py`
 - `src/triton_agent/commands/execution.py`
 - `src/triton_agent/commands/comparison.py`
-- `skills/triton-npu-run-eval/scripts/run-command.py`
+- `skills/common/ascend-npu-run-eval/scripts/cli.py`
 
 Rules:
 
@@ -281,9 +280,9 @@ Rules:
 
 Update these skill-side runtime files:
 
-- `skills/triton-npu-run-eval/scripts/test_runner.py`
-- `skills/triton-npu-run-eval/scripts/compare_result.py`
-- `skills/triton-npu-run-eval/scripts/npu_compare.py`
+- `skills/common/ascend-npu-run-eval/scripts/test_runner.py`
+- `skills/common/ascend-npu-run-eval/scripts/compare_result.py`
+- `skills/common/ascend-npu-run-eval/scripts/npu_compare.py`
 
 Requirements:
 
@@ -303,14 +302,15 @@ Implementation notes:
 
 Update:
 
-- `src/triton_agent/run_eval_mcp_server.py`
+- `src/triton_agent/eval/mcp_server.py`
 
 Requirements:
 
-- `run-test-baseline` accepts optional `accuracy_mode`
-- `run-test-optimize` accepts optional `accuracy_mode`
-- `_build_run_test_arguments(...)` forwards it using the canonical CLI flag
-- tool metadata documents the supported values and default behavior
+- `run-test-baseline` does not accept `accuracy_mode`, `atol`, or `rtol`
+- `run-test-optimize` does not accept `accuracy_mode`, `atol`, or `rtol`
+- the MCP server should not synthesize accuracy environment variables from tool arguments
+- staged run-eval subprocesses inherit the managed MCP server process environment normally
+- tool metadata must not document precision controls as agent-visible parameters
 
 ## Diagnostics
 
@@ -341,8 +341,11 @@ the result shape may stay the same as today, but diagnostics should still expose
 Update:
 
 - `README.md`
-- `skills/triton-npu-run-eval/references/run-test.md`
-- `skills/triton-npu-run-eval/references/compare-result.md`
+- `skills/common/ascend-npu-run-eval/references/run-test.md`
+
+Remove:
+
+- `skills/common/ascend-npu-run-eval/references/compare-result.md`, because the staged run-eval `cli.py` no longer exposes an agent-facing `compare-result` subcommand
 
 Do not update:
 
@@ -374,9 +377,9 @@ Expected verification commands after implementation:
 - `uv run python -m unittest tests.test_npu_compare -v`
 - `uv run python -m unittest tests.test_skill_command_script -v`
 - `uv run python -m unittest tests.test_run_eval_mcp_server_tool_metadata -v`
-- `bash scripts/run-skill-script-pyright.sh skills/triton-npu-run-eval/scripts/npu_compare.py`
-- `bash scripts/run-skill-script-pyright.sh skills/triton-npu-run-eval/scripts/compare_result.py`
-- `bash scripts/run-skill-script-pyright.sh skills/triton-npu-run-eval/scripts/test_runner.py`
+- `bash scripts/run-skill-script-pyright.sh skills/common/ascend-npu-run-eval/scripts/npu_compare.py`
+- `bash scripts/run-skill-script-pyright.sh skills/common/ascend-npu-run-eval/scripts/compare_result.py`
+- `bash scripts/run-skill-script-pyright.sh skills/common/ascend-npu-run-eval/scripts/test_runner.py`
 - `uv run --group dev ruff check`
 - `uv run pyright`
 - `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`

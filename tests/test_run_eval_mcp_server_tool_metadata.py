@@ -34,6 +34,9 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-test-baseline"].parameters["properties"]["test_mode"]["description"],
             "Optional test mode override. Supported values: standalone, differential.",
         )
+        self.assertNotIn("accuracy_mode", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("atol", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("rtol", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("compare_level", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("ref_result", tools["run-test-baseline"].parameters["properties"])
 
@@ -45,6 +48,9 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-test-optimize"].parameters["properties"]["ref_operator_file"]["description"],
             "Absolute path to the reference operator file used to produce comparison output.",
         )
+        self.assertNotIn("accuracy_mode", tools["run-test-optimize"].parameters["properties"])
+        self.assertNotIn("atol", tools["run-test-optimize"].parameters["properties"])
+        self.assertNotIn("rtol", tools["run-test-optimize"].parameters["properties"])
         self.assertNotIn("compare_level", tools["run-test-optimize"].parameters["properties"])
 
         self.assertEqual(

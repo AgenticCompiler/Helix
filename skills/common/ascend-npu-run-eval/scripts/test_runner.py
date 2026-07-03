@@ -39,6 +39,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 _LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
 _WARNING_PREFIX = "[WARNING]"
 _TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
+_ACCURACY_MODE_ENV = "TRITON_AGENT_RUN_TEST_ACCURACY_MODE"
+_DTYPE_CLOSE_ATOL_ENV = "TRITON_AGENT_RUN_TEST_ATOL"
+_DTYPE_CLOSE_RTOL_ENV = "TRITON_AGENT_RUN_TEST_RTOL"
 
 
 @dataclass(frozen=True)
@@ -168,6 +171,7 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
     *,
+    accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     maybe_print_visible_devices()
@@ -185,12 +189,14 @@ def run_local_test(
                 command,
                 str(test_file.resolve().parent),
                 stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
             )
         else:
             runner_result = run_buffered_process(
                 command,
                 str(test_file.resolve().parent),
                 stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
             )
         if result_succeeded(runner_result):
             if not result_file.exists():
@@ -537,6 +543,8 @@ def run_remote_test(
     test_mode: str,
     remote: str,
     remote_workdir: str | None,
+    *,
+    accuracy_mode: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -558,7 +566,10 @@ def run_remote_test(
             verbose=verbose,
             stderr=stderr,
         )
-        extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
+        extra_env = {
+            "TRITON_ALWAYS_COMPILE": "1",
+            **_run_test_accuracy_env(accuracy_mode),
+        }
         if test_mode == "standalone":
             result = run_remote_command_streaming(
                 spec,
@@ -595,6 +606,19 @@ def run_remote_test(
     finally:
         if not keep_remote_workdir:
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
+def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
+    extra_env: dict[str, str] = {}
+    if accuracy_mode is not None:
+        extra_env[_ACCURACY_MODE_ENV] = accuracy_mode
+    for name in (_ACCURACY_MODE_ENV, _DTYPE_CLOSE_ATOL_ENV, _DTYPE_CLOSE_RTOL_ENV):
+        if name in extra_env:
+            continue
+        value = os.environ.get(name)
+        if value is not None:
+            extra_env[name] = value
+    return extra_env
 
 
 def _copy_remote_differential_archive(

@@ -750,7 +750,42 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
         self.assertEqual(args.test_file, "test_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
+        self.assertEqual(args.accuracy_mode, "npu-contract")
         self.assertFalse(hasattr(args, "agent"))
+
+    def test_run_test_accepts_accuracy_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--accuracy-mode",
+                "dtype-close",
+            ]
+        )
+
+        self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
+        self.assertEqual(args.accuracy_mode, "dtype-close")
+
+    def test_compare_result_accepts_accuracy_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-result",
+                "--ref-result",
+                "ref_result.pt",
+                "--new-result",
+                "new_result.pt",
+                "--accuracy-mode",
+                "dtype-close",
+            ]
+        )
+
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
+        self.assertEqual(args.accuracy_mode, "dtype-close")
 
     def test_run_bench_requires_bench_and_operator_files(self) -> None:
         parser = build_parser()
@@ -3333,6 +3368,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                accuracy_mode="npu-contract",
                 verbose=False,
             )
 
@@ -3361,6 +3397,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                accuracy_mode="npu-contract",
                 verbose=False,
             )
 
@@ -5045,6 +5082,7 @@ class PathResolutionTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
                 archive,
+                accuracy_mode="npu-contract",
             )
             self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
             self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
@@ -5083,6 +5121,7 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com:2200",
                 "/tmp/runs",
+                accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
@@ -5443,7 +5482,11 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(oracle.resolve(), new.resolve())
+            mocked.assert_called_once_with(
+                oracle.resolve(),
+                new.resolve(),
+                accuracy_mode="npu-contract",
+            )
 
     def test_main_compare_result_uses_remote_comparison_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -5474,6 +5517,7 @@ class PathResolutionTests(unittest.TestCase):
                 new.resolve(),
                 "alice@example.com:2200",
                 None,
+                accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
             )
