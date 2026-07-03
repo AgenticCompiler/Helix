@@ -7,11 +7,12 @@ from typing import TextIO
 
 import torch
 
+from env_registry import (
+    TRITON_AGENT_ACCURACY_MODE,
+    TRITON_AGENT_DTYPE_CLOSE_ATOL,
+    TRITON_AGENT_DTYPE_CLOSE_RTOL,
+)
 from npu_compare import compare_result_payloads, format_artifact_compare_result
-
-_ACCURACY_MODE_ENV = "TRITON_AGENT_RUN_TEST_ACCURACY_MODE"
-_DTYPE_CLOSE_ATOL_ENV = "TRITON_AGENT_RUN_TEST_ATOL"
-_DTYPE_CLOSE_RTOL_ENV = "TRITON_AGENT_RUN_TEST_RTOL"
 
 
 def main() -> int:
@@ -101,8 +102,12 @@ def compare_remote_result_files(
 def _comparison_extra_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:
-        extra_env[_ACCURACY_MODE_ENV] = accuracy_mode
-    for name in (_ACCURACY_MODE_ENV, _DTYPE_CLOSE_ATOL_ENV, _DTYPE_CLOSE_RTOL_ENV):
+        extra_env[TRITON_AGENT_ACCURACY_MODE] = accuracy_mode
+    for name in (
+        TRITON_AGENT_ACCURACY_MODE,
+        TRITON_AGENT_DTYPE_CLOSE_ATOL,
+        TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    ):
         if name in extra_env:
             continue
         value = os.environ.get(name)
