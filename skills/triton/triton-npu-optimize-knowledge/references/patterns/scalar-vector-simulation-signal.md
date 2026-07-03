@@ -17,7 +17,7 @@ Match observed signals in overall content of `report.txt` against the categories
   - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
   - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
 
-  ## Avoid When
+## Avoid When
 
   - The optimization target is **pure tiling parameter tuning** (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, grid config) — these are invisible in single-program simulation and must use hardware profiling.
   - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
@@ -331,6 +331,20 @@ Read from `report.txt` overall:
 - **Primary trigger:** overall `[VECTOR Unit]` UB Read Conflict > 100 OR UB Write Conflict > 100
 - **Confirmation:** overall `[VECTOR Unit]` Top-conflict instrs show utilization < 50% (U% column)
 - **Fire when:** Primary trigger AND confirmation are both met. Conflicts without low utilization may be benign (hardware handles them efficiently), so do not fire on conflicts alone.
+
+### Mandatory: Shape-Based Dispatch Verification (before any application)
+
+Before applying a Pattern based on Cat 3 (UB Conflict) to choose 1-row specialization or broadcast elimination, the agent MUST verify:
+
+1. Is the UB Conflict from 2D broadcasts that could be eliminated by shape-based dispatch (e.g. restrict BLOCK_M > 1 to shapes where UB does not overflow)?
+2. Benchmark the shape-based dispatch alternative:
+   - Large shape (UB overflow risk): use 1-row specialization
+   - Small/medium shape (no UB overflow): use BLOCK_M > 1 with fast path
+3. If shape-based dispatch is faster than 1-row-only on full-N suite, choose shape-based dispatch.
+
+Rationale: Cat 3 UB Conflict from 2D broadcasts often has two solutions:
+(a) eliminate 2D broadcasts entirely (1-row specialization), or
+(b) restrict 2D broadcasts to shapes where UB does not overflow(shape-based dispatch). Solution (b) preserves BLOCK_M > 1 amortization on shapes where it is safe. Skipping this verification leads to over-broad 1-row specialization that loses BLOCK_M>1 amortization on shapes where UB does not actually overflow (e.g. hidden_size ≤ 2048 in FusedAddRmsnorm-style kernels).
 
 ### What It Means
 
