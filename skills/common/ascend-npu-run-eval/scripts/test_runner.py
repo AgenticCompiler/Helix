@@ -18,6 +18,13 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 from debug_device import maybe_print_visible_devices
+from env_registry import (
+    TORCH_DEVICE_BACKEND_AUTOLOAD,
+    TRITON_AGENT_ACCURACY_MODE,
+    TRITON_AGENT_DTYPE_CLOSE_ATOL,
+    TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    TRITON_ALWAYS_COMPILE,
+)
 from run_runtime import (
     ResultPayload,
     RemoteSpec,
@@ -38,7 +45,6 @@ from run_runtime import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 _LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
 _WARNING_PREFIX = "[WARNING]"
-_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,7 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
     *,
+    accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     maybe_print_visible_devices()
@@ -185,12 +192,14 @@ def run_local_test(
                 command,
                 str(test_file.resolve().parent),
                 stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
             )
         else:
             runner_result = run_buffered_process(
                 command,
                 str(test_file.resolve().parent),
                 stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
             )
         if result_succeeded(runner_result):
             if not result_file.exists():
@@ -297,8 +306,8 @@ def _run_import_only_standalone_test(
     verbose: bool = False,
 ) -> ResultPayload:
     real_stderr = sys.stderr
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()
     try:
@@ -337,9 +346,9 @@ def _run_import_only_standalone_test(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 def _run_declarative_differential_test(
@@ -359,8 +368,8 @@ def _run_declarative_differential_test(
             stdout="",
             stderr=f"Missing differential test dependency: {exc}",
         )
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()
     try:
@@ -409,9 +418,9 @@ def _run_declarative_differential_test(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 def _bootstrap_torch_npu() -> None:
@@ -425,8 +434,8 @@ def _bootstrap_torch_npu() -> None:
     # and torch_npu initialization in a bad state, which later shows up as
     # hangs or missing Triton NPU drivers. The torch import itself is required
     # for these runtimes, so ImportError remains fatal here.
-    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
-    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    previous = os.environ.get(TORCH_DEVICE_BACKEND_AUTOLOAD)
+    os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = "0"
     try:
         importlib.import_module("torch")
         try:
@@ -435,9 +444,9 @@ def _bootstrap_torch_npu() -> None:
             pass
     finally:
         if previous is None:
-            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+            os.environ.pop(TORCH_DEVICE_BACKEND_AUTOLOAD, None)
         else:
-            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
+            os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = previous
 
 
 def _filter_result_payload(result: ResultPayload, *, verbose: bool) -> ResultPayload:
@@ -537,6 +546,8 @@ def run_remote_test(
     test_mode: str,
     remote: str,
     remote_workdir: str | None,
+    *,
+    accuracy_mode: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -558,7 +569,10 @@ def run_remote_test(
             verbose=verbose,
             stderr=stderr,
         )
-        extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
+        extra_env = {
+            TRITON_ALWAYS_COMPILE: "1",
+            **_run_test_accuracy_env(accuracy_mode),
+        }
         if test_mode == "standalone":
             result = run_remote_command_streaming(
                 spec,
@@ -595,6 +609,23 @@ def run_remote_test(
     finally:
         if not keep_remote_workdir:
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
+def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
+    extra_env: dict[str, str] = {}
+    if accuracy_mode is not None:
+        extra_env[TRITON_AGENT_ACCURACY_MODE] = accuracy_mode
+    for name in (
+        TRITON_AGENT_ACCURACY_MODE,
+        TRITON_AGENT_DTYPE_CLOSE_ATOL,
+        TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    ):
+        if name in extra_env:
+            continue
+        value = os.environ.get(name)
+        if value is not None:
+            extra_env[name] = value
+    return extra_env
 
 
 def _copy_remote_differential_archive(

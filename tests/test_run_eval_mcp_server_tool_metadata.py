@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent import run_eval_mcp_server as module
+from triton_agent.eval import mcp_server as module
 
 
 class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
@@ -34,6 +34,9 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-test-baseline"].parameters["properties"]["test_mode"]["description"],
             "Optional test mode override. Supported values: standalone, differential.",
         )
+        self.assertNotIn("accuracy_mode", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("atol", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("rtol", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("compare_level", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("ref_result", tools["run-test-baseline"].parameters["properties"])
 
@@ -45,6 +48,9 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-test-optimize"].parameters["properties"]["ref_operator_file"]["description"],
             "Absolute path to the reference operator file used to produce comparison output.",
         )
+        self.assertNotIn("accuracy_mode", tools["run-test-optimize"].parameters["properties"])
+        self.assertNotIn("atol", tools["run-test-optimize"].parameters["properties"])
+        self.assertNotIn("rtol", tools["run-test-optimize"].parameters["properties"])
         self.assertNotIn("compare_level", tools["run-test-optimize"].parameters["properties"])
 
         self.assertEqual(
@@ -58,6 +64,18 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
         self.assertEqual(
             tools["run-bench"].parameters["properties"]["bench_mode"]["description"],
             "Optional benchmark mode override. Supported values: torch-npu-profiler, msprof, perf-counter.",
+        )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["baseline_operator_file"]["description"],
+            "Optional absolute path to the baseline operator file used for automatic perf comparison.",
+        )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["metric_source"]["description"],
+            "Optional perf comparison metric-source override for automatic baseline comparison.",
+        )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["skip_latency_errors"]["description"],
+            "Optional flag to keep automatic baseline comparison running when latency-error entries are present.",
         )
 
         self.assertEqual(

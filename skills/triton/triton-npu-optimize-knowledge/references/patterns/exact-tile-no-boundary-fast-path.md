@@ -89,7 +89,7 @@ tl.store(dst + offs_m[:, None] * out_m + offs_n[None, :], value)
 
 ## Evidence
 
-NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim=0, index=(2560,27648)`. Splitting an aligned/no-boundary kernel reduced about `4239us -> 3850us` (**~1.10x**). The remaining bottleneck was still random global-memory gather, so treat this as control-overhead cleanup rather than an access-pattern fix.
+Splitting an aligned/no-boundary kernel out of a masked kernel removes boundary-check control overhead. The gain is modest (roughly ~1.1x) when the dominant cost lies elsewhere — for example a rank-2 gather whose real bottleneck is random global-memory access. Treat this as control-overhead cleanup rather than an access-pattern fix.
 
 ## What To Verify After Applying
 

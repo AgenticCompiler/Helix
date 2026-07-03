@@ -3,16 +3,15 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, MutableMapping
 
-_REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
-_REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
+from env_registry import TRITON_AGENT_REMOTE, TRITON_AGENT_REMOTE_WORKDIR
 
 
 def remote_target_env_name() -> str:
-    return _REMOTE_TARGET_ENV
+    return TRITON_AGENT_REMOTE
 
 
 def remote_workdir_env_name() -> str:
-    return _REMOTE_WORKDIR_ENV
+    return TRITON_AGENT_REMOTE_WORKDIR
 
 
 def build_remote_execution_env(
@@ -22,10 +21,10 @@ def build_remote_execution_env(
     resolved_remote = _normalize_value(remote)
     if resolved_remote is None:
         return {}
-    env = {_REMOTE_TARGET_ENV: resolved_remote}
+    env = {TRITON_AGENT_REMOTE: resolved_remote}
     resolved_workdir = _normalize_value(remote_workdir)
     if resolved_workdir is not None:
-        env[_REMOTE_WORKDIR_ENV] = resolved_workdir
+        env[TRITON_AGENT_REMOTE_WORKDIR] = resolved_workdir
     return env
 
 
@@ -35,10 +34,12 @@ def resolve_remote_execution(
     environ: Mapping[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
     source = os.environ if environ is None else environ
-    remote = _normalize_value(explicit_remote) or _normalize_value(source.get(_REMOTE_TARGET_ENV))
+    remote = _normalize_value(explicit_remote) or _normalize_value(source.get(TRITON_AGENT_REMOTE))
     if remote is None:
         return None, None
-    remote_workdir = _normalize_value(explicit_remote_workdir) or _normalize_value(source.get(_REMOTE_WORKDIR_ENV))
+    remote_workdir = _normalize_value(explicit_remote_workdir) or _normalize_value(
+        source.get(TRITON_AGENT_REMOTE_WORKDIR)
+    )
     return remote, remote_workdir
 
 
@@ -50,15 +51,15 @@ def apply_remote_execution_env(
     target = os.environ if environ is None else environ
     remote = _normalize_value(explicit_remote)
     if remote is None:
-        target.pop(_REMOTE_TARGET_ENV, None)
-        target.pop(_REMOTE_WORKDIR_ENV, None)
+        target.pop(TRITON_AGENT_REMOTE, None)
+        target.pop(TRITON_AGENT_REMOTE_WORKDIR, None)
         return
-    target[_REMOTE_TARGET_ENV] = remote
+    target[TRITON_AGENT_REMOTE] = remote
     remote_workdir = _normalize_value(explicit_remote_workdir)
     if remote_workdir is None:
-        target.pop(_REMOTE_WORKDIR_ENV, None)
+        target.pop(TRITON_AGENT_REMOTE_WORKDIR, None)
         return
-    target[_REMOTE_WORKDIR_ENV] = remote_workdir
+    target[TRITON_AGENT_REMOTE_WORKDIR] = remote_workdir
 
 
 def _normalize_value(raw: str | None) -> str | None:

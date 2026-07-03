@@ -8,17 +8,19 @@ from typing import Literal, cast
 from triton_agent.commands.input_resolution import resolve_single_operator_input
 from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import CommandKind
-from triton_agent.npu_affinity import resolve_batch_concurrency
+from triton_agent.batch.affinity import resolve_batch_concurrency
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.validation import validate_optimize_options
 from triton_agent.optimize_upload.client import UploadUrlMissingError
 from triton_agent.optimize_upload.workflow import upload_optimize_workspace
-from triton_agent.output import render_result
+from triton_agent.terminal.render import render_result
 
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_optimize_batch(parser, args)
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:
@@ -33,6 +35,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -117,6 +120,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -169,7 +173,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
-        language=getattr(args, "language", "triton"),
+        language=getattr(args, "lang", "triton"),
         verbose=bool(getattr(args, "verbose", False)),
         stream_output=bool(getattr(args, "stream_output", True)),
         remote=getattr(args, "remote", None),

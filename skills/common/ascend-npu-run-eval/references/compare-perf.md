@@ -9,7 +9,7 @@ Run:
 
 **Kernel-target optimize rounds** (kernel latency is the primary optimization target):
 ```bash
-python3 ./scripts/run-command.py compare-perf \
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py compare-perf \
   --baseline baseline/<operator>_perf.txt \
   --compare opt-round-N/opt_<operator>_perf.txt \
   --metric-source kernel
@@ -17,7 +17,7 @@ python3 ./scripts/run-command.py compare-perf \
 
 **Operator-target optimize rounds** (both kernel and total-op views are needed):
 ```bash
-python3 ./scripts/run-command.py compare-perf \
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py compare-perf \
   --baseline baseline/<operator>_perf.txt \
   --compare opt-round-N/opt_<operator>_perf.txt \
   --metric-source all

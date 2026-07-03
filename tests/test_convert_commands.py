@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.otel_trace import TRACE_PATH_ENV
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.trace.core import TRACE_PATH_ENV
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 class ConvertCommandModuleTests(unittest.TestCase):
