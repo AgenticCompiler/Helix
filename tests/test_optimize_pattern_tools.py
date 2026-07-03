@@ -1,31 +1,41 @@
 from __future__ import annotations
 
-import importlib.util
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from triton_agent.optimize.pattern_reminders import build_high_priority_pattern_reminder_lines
+from triton_agent.optimize_knowledge import pattern_index
 
 
-def _load_skill_script(relative_path: str):
-    path = REPO_ROOT / relative_path
-    spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
-    if spec is None or spec.loader is None:
-        raise AssertionError(f"Unable to load script module for {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+class _PatternIndexModule:
+    _style: pattern_index.PatternIndexStyle
+
+    def __init__(self, style: pattern_index.PatternIndexStyle) -> None:
+        self._style = style
+
+    def build_index_text(self, patterns_dir: Path) -> str:
+        return pattern_index.build_index_text(patterns_dir, style=self._style)
+
+    def list_high_priority_pattern_cards(self, patterns_dir: Path) -> list[pattern_index.PatternCard]:
+        return pattern_index.list_high_priority_pattern_cards(patterns_dir)
+
+    def build_high_priority_reminder_lines(self, patterns_dir: Path) -> list[str]:
+        return pattern_index.build_high_priority_reminder_lines(patterns_dir)
+
+
+DEFAULT_PATTERN_INDEX = _PatternIndexModule("default")
+EXTENDED_PATTERN_INDEX = _PatternIndexModule("extended")
 
 
 class PatternRoutingToolTests(unittest.TestCase):
     def test_build_index_requires_summary_and_use_when(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "broken.md").write_text(
@@ -36,9 +46,7 @@ class PatternRoutingToolTests(unittest.TestCase):
                 module.build_index_text(patterns_dir)
 
     def test_build_index_keeps_free_sections_but_ignores_them_for_summary(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -67,9 +75,7 @@ Extra prose that should stay in the source file but not become a first-line inde
             self.assertNotIn("Extra prose", rendered)
 
     def test_checked_in_pattern_index_matches_generator(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         patterns_dir = (
             REPO_ROOT
             / "skills"
@@ -90,9 +96,7 @@ Extra prose that should stay in the source file but not become a first-line inde
         self.assertEqual(generated, checked_in)
 
     def test_checked_in_torch_npu_pattern_index_matches_generator(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         patterns_dir = (
             REPO_ROOT
             / "skills"
@@ -112,10 +116,8 @@ Extra prose that should stay in the source file but not become a first-line inde
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
 
-    def test_v1_pattern_catalog_builds_high_priority_reminder_lines(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
-        )
+    def test_v1_pattern_builder_builds_high_priority_reminder_lines(self) -> None:
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "grid.md").write_text(
@@ -162,12 +164,10 @@ Keep peak footprint bounded.
                 ["`grid-flatten-and-ub-buffering`: Flatten logical work items onto physical cores."],
             )
 
-    def test_v2_pattern_catalog_renders_high_priority_section_before_full_summaries(
+    def test_v2_pattern_builder_renders_high_priority_section_before_full_summaries(
         self,
     ) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
-        )
+        module = EXTENDED_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "autotune.md").write_text(
@@ -197,10 +197,8 @@ Use bounded config search when structure is already sound.
                 rendered.index("## Generated Pattern Summaries"),
             )
 
-    def test_v3_pattern_catalog_rejects_invalid_priority_value(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
-        )
+    def test_v3_pattern_builder_rejects_invalid_priority_value(self) -> None:
+        module = EXTENDED_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -226,10 +224,26 @@ Short summary.
             ):
                 module.build_index_text(patterns_dir)
 
+    def test_runtime_pattern_reminders_use_src_pattern_index_builder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_root = Path(tmp) / "demo-skill"
+            patterns_dir = skill_root / "references" / "patterns"
+            patterns_dir.mkdir(parents=True)
+
+            with patch(
+                "triton_agent.optimize.pattern_reminders.resolve_skill_source_dir",
+                return_value=skill_root,
+            ), patch(
+                "triton_agent.optimize.pattern_reminders.build_high_priority_reminder_lines",
+                return_value=["loaded from patterns"],
+            ) as build_lines:
+                lines = build_high_priority_pattern_reminder_lines("demo-skill")
+
+            self.assertEqual(lines, ["loaded from patterns"])
+            build_lines.assert_called_once_with(patterns_dir)
+
     def test_build_index_rejects_invalid_priority_value(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -255,9 +269,7 @@ Short summary.
                 module.build_index_text(patterns_dir)
 
     def test_generated_index_lists_high_priority_patterns_before_full_summaries(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "high.md").write_text(
@@ -308,9 +320,7 @@ Normal summary.
             )
 
     def test_generated_index_renders_none_when_no_patterns_are_high_priority(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "normal.md").write_text(
@@ -333,9 +343,7 @@ Normal summary.
             self.assertIn("- None.", rendered)
 
     def test_checked_in_v2_pattern_index_matches_generator(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
-        )
+        module = EXTENDED_PATTERN_INDEX
         patterns_dir = (
             REPO_ROOT
             / "skills"
@@ -356,9 +364,7 @@ Normal summary.
         self.assertEqual(generated, checked_in)
 
     def test_checked_in_v3_pattern_index_matches_generator(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
-        )
+        module = EXTENDED_PATTERN_INDEX
         patterns_dir = (
             REPO_ROOT
             / "skills"
@@ -379,9 +385,7 @@ Normal summary.
         self.assertEqual(generated, checked_in)
 
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -392,9 +396,7 @@ Normal summary.
             self.assertIn("[demo.md](patterns/demo.md)", rendered)
 
     def test_generated_index_omits_post_apply_verification_section(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -419,9 +421,7 @@ Short summary.
             self.assertNotIn("Verify something important", rendered)
 
     def test_generated_index_omits_related_patterns_section(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "demo.md").write_text(
@@ -446,9 +446,7 @@ Short summary.
             self.assertNotIn("other-pattern", rendered)
 
     def test_build_index_ignores_pattern_directory_readme(self) -> None:
-        module = _load_skill_script(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
-        )
+        module = DEFAULT_PATTERN_INDEX
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
             (patterns_dir / "README.md").write_text(

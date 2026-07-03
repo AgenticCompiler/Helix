@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from pathlib import Path
-from typing import cast
-
-from triton_agent.skill_catalog import resolve_skill_source_dir
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.optimize_knowledge.pattern_index import build_high_priority_reminder_lines
+from triton_agent.skills.catalog import resolve_skill_source_dir
 
 
 def _optimize_knowledge_skill_name(language: str) -> str:
@@ -40,12 +36,5 @@ def build_high_priority_pattern_reminder_lines(skill_name: str) -> list[str]:
     if not patterns_dir.exists():
         raise FileNotFoundError(f"Pattern directory does not exist: {patterns_dir}")
 
-    module = load_skill_script_module(skill_name, "pattern_catalog")
-    builder = getattr(module, "build_high_priority_reminder_lines", None)
-    if not callable(builder):
-        raise AttributeError(
-            f"Skill {skill_name} pattern catalog does not expose build_high_priority_reminder_lines"
-        )
-    typed_builder = cast(Callable[[Path], list[str]], builder)
-    reminder_lines = typed_builder(patterns_dir)
+    reminder_lines = build_high_priority_reminder_lines(patterns_dir)
     return [str(line) for line in reminder_lines]

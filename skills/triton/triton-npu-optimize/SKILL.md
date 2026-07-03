@@ -30,9 +30,10 @@ Optimize target modes:
 ## Core Loop
 
 - establish or reuse `baseline/`
-- open `opt-round-N/` and start `attempts.md`
+- open `opt-round-N/`, initialize round strategy state through `ascend-npu-optimize-state start-round`, and start `attempts.md`
 - choose the current analysis level
 - make one coherent optimization attempt
+- optionally screen the direction cheaply with `probe-bench` when the available run-eval surface exposes it
 - validate correctness and benchmark performance
 - record the round outcome
 
@@ -48,7 +49,9 @@ Optimize target modes:
 ## Stage 1: Round Entry
 
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
+- Use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to initialize the active round's `round_strategy`, `analysis_policy`, and `reason` before the first code change in that round.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+- Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history; do not manually duplicate the same `round_strategy`, `analysis_policy`, and `reason` bookkeeping in both `attempts.md` and `summary.md`.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
 - When pattern triage is used, explicitly record the candidate patterns you considered, the selected pattern if one is chosen, and why that pattern looks plausible in `attempts.md`.
 - When a named pattern guides the round, explicitly record the final selected pattern direction in `summary.md`.
@@ -56,6 +59,7 @@ Optimize target modes:
 - Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
+- If the active round's intent or required evidence depth changes mid-round, use the sibling `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand instead of silently changing the round contract in prose only.
 
 ## Optimization Priority Guide
 
@@ -114,7 +118,8 @@ Optimize analysis is layered.
   1. **Multi-row batching (program-multiple-rows, BLOCK_M variant):** Is the kernel row-structured and processing one row per program? Does the current launch lack a row-batching dimension (`BLOCK_M > 1`)? The **2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting with `BLOCK_M` as `tl.constexpr`) is the preferred form because it enables coalesced loads and parallel row processing. The looped `BLOCK_ROWS` variant is a weaker fallback. Read [`../triton-npu-optimize-knowledge/references/patterns/program-multiple-rows.md`](../triton-npu-optimize-knowledge/references/patterns/program-multiple-rows.md) and explicitly choose the 2D BLOCK_M variant if the kernel structure permits it.
   2. **Dispatch-parameter specialization:** Does the operator use dispatch parameters (dimension arguments, dtype, mode flags) that cause the same generic kernel to handle structurally different data layouts? Are there parameter values that incur avoidable wrapper-level overhead (layout transposition, contiguity materialization, reshape chains)? Evaluate whether dedicated kernels for specific parameter values can materialize the optimal layout on the host before kernel launch, eliminating in-kernel compensation work. This is the **layout-materialization-elision** approach.
   3. **Grid-decomposition optimization (tile-selection-heuristic):** After structural dispatch is addressed, evaluate whether a manual tile-selection heuristic (grid-minimization sweep over `BLOCK_M × BLOCK_SIZE` tile sizes) can beat autotune. Autotune with a limited config set may not adapt well to diverse shape regimes. If the operator spans wide shape ranges (e.g., rows varying by orders of magnitude, col widths from tens to tens of thousands), read [`../triton-npu-optimize-knowledge/references/patterns/tile-selection-heuristic.md`](../triton-npu-optimize-knowledge/references/patterns/tile-selection-heuristic.md) and consider replacing or augmenting autotune with a grid-minimization heuristic.
-- After the structural optimization priority gate is satisfied (all three directions evaluated and addressed where applicable), proceed to the mandatory diagnostic steps below.
+  4. **Layout-copy elimination (reduce-avoid-transpose-copy):** Does the wrapper use `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or any equivalent full-tensor layout materialization before the kernel launch? If yes, you **must** read [`../triton-npu-optimize-knowledge/references/patterns/reduce-avoid-transpose-copy.md`](../triton-npu-optimize-knowledge/references/patterns/reduce-avoid-transpose-copy.md) and evaluate whether a strided/tiled kernel operating directly on the original layout can eliminate the copy entirely. This pattern applies to **any** axis-wise operator that processes a non-last dimension via copy-then-kernel, including reductions (`sum`, `mean`, `max`), prefix scans (`cumsum`, `cumprod`, `cummax`), and other element-wise axis computations. **Rational-override warning:** Do not reject the strided kernel approach based on first-principles reasoning about memory access patterns. The strided kernel does not need to be faster than the contiguous kernel in isolation — it needs to be faster than `copy + contiguous kernel` end-to-end. The most common mistake is assuming "strided access is always slower than contiguous access + copy" without benchmarking. If you find yourself thinking "strided access would be much slower," that is exactly the signal to implement and benchmark it. The strided/tiled kernel loads contiguous chunks of the inner dimension at each scan step (not individual strided elements), which is fundamentally different from naive per-element strided access.
+- After the structural optimization priority gate is satisfied (all four directions evaluated and addressed where applicable), proceed to the mandatory diagnostic steps below.
 - **Simulation-signal as mandatory diagnostic step:** When `extracted_bin_data/report.txt` exists, you must read [`../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md`](../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md) and execute the signal matching flow (check each Category in priority order). If any Category fires, `scalar-vector-simulation-signal (Cat N)` could appear as a candidate pattern in the `attempts.md` candidate list. When selecting the final pattern, evaluate `scalar-vector-simulation-signal` alongside other candidates: it may be selected as the primary pattern (using its Code Manifestations and generic transforms), or it may route to a more specific domain pattern via its Related Patterns / Optimization Direction. Record the fired Categories and the reasoning for whether simulation-signal was selected or routed to another pattern in `attempts.md`.
 - **Autotune as mandatory signal-driven optimization:** When `extracted_bin_data/report.txt` exists in the workspace or current `opt-round-N/` directory, you **must** read [`../triton-npu-optimize-knowledge/references/patterns/autotune.md`](../triton-npu-optimize-knowledge/references/patterns/autotune.md) and execute all three phases. Execute this check **after** the simulation-signal check (scalar-vector-simulation-signal) so that code-level signals are evaluated first. **Phase 1 (Pre-Gate A-Cat-5):** Check if memory layout is fundamentally fragmented. If A-Cat-5 fires, autotune is not suitable — route to `compile_hint` or `discrete_memory_access` and exit. **Phase 2 (Parameter Diagnostics):** Only if Pre-Gate passes — check A-Cat-6 → A-Cat-1 → A-Cat-2 → A-Cat-3 → A-Cat-4 in order. The fired Category's Optimization Direction already contains concrete `triton.Config` examples. **Phase 3 (Config Route):** Choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written, using Category examples as starting points). Record the diagnosis result and reasoning explicitly in `attempts.md`.
 - **Profiling-data-driven self-directed exploration:** When `extracted_bin_data/` exists, read the instruction-level profiling methodology in [`references/optimize.md`](references/optimize.md). Read all available files: `report.txt`, `dataType_4_API_INSTR.json`, `dataType_3_API_FILE.json`, `dataType_1_SOURCE_<operator_name>.txt`, `flows.json`, and `dataType_2_TRACE.json`. Identify bottlenecks against all 6 metrics, evaluate all 7 optimization categories, and avoid the 5 prohibited optimizations. Every metric and category needs an explicit conclusion. Record bottleneck metrics, evaluated categories, and their conclusions in `attempts.md`.
@@ -190,27 +195,31 @@ The most common semantic repair on Ascend NPU kernels is adding `propagate_nan=t
 ## Stage 3: Validate And Record
 
 - Run correctness validation before trusting any performance result.
+- After correctness passes, you may use the sibling `ascend-npu-run-eval` skill's `probe-bench` flow as a fast baseline-vs-candidate screen when you need a cheap directional signal before paying canonical benchmark cost.
+- Use `probe-bench` only when the active run-eval surface actually exposes it. If the current surface does not expose `probe-bench`, skip the screen and continue with canonical validation.
+- Treat `probe-bench` as non-canonical screening evidence only. Do not use its output as the official round perf artifact, do not write probe artifacts into `round-state.json`, and do not claim round speedups from probe output alone.
+- Use `probe-bench` to reject clearly bad candidates early or to justify keeping a clearly promising direction long enough to run canonical benchmarking.
 - **Isolate correctness failures when multiple changes are bundled.** If a round contains two or more independent changes and correctness fails, do not assume which change caused the failure. Revert changes one at a time and retest until the failing change is identified. An optimization incorrectly blamed for an unrelated failure will be discarded and may never be re-evaluated.
 - After correctness passes, run benchmark validation and preserve the round-local benchmark evidence.
 - In each round directory, keep the optimized operator snapshot as `opt_<original-operator>.py`.
 - In each round directory, keep the benchmark artifact as `opt_<original-operator>_perf.txt`, ensure that file is generated by the `ascend-npu-run-eval` skill's `run-bench` flow, and record that exact filename in `round-state.json`.
 - Use `baseline/<operator>_perf.txt` for canonical optimize-session performance comparisons, even when the current round also compares locally against its parent.
 - Once baseline and round perf artifacts both exist, use the `ascend-npu-run-eval` skill to run `compare-perf`.
+- Even after `probe-bench` reports `likely_gain` or `likely_regression`, still run canonical `run-bench` and `compare-perf` before recording any official round conclusion.
 - Treat the `ascend-npu-run-eval` skill's `compare-perf` flow as the only authority for claimed benchmark deltas and speedups, including `Avg improvement`, `Geomean speedup`, and any claimed benchmark delta.
 - Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`, using `kernel`, `total-op`, or `mixed`.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-
-- Use the sibling `triton-npu-optimize-submit-round` skill to submit the current round (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the round until it passes before continuing or stopping.
+- Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
-- Before opening the next round, use the sibling `triton-npu-optimize-start-round` skill to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
 - In each round, keep the `extracted_bin_data` directory parsed from the simulator data of the current round, copy to the `opt-round-<N>` directory.
+- Before opening the next round, use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
+- `attempts.md`: chronological round log for the current round, including the script-written `State Update` history, `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, probe-screening outcomes when `probe-bench` is used, and canonical benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed. Do not duplicate the full round strategy state history here.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons

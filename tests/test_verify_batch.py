@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import main
 from triton_agent.cli import build_parser
 from triton_agent.commands.verify import handle_verify_batch
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.verify.batch import run_verify_batch
 from triton_agent.verify.core import VerifyOptions
 from triton_agent.verify.core import VerifyResult

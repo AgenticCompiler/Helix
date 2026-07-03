@@ -1,24 +1,26 @@
 ---
 id: reduce-avoid-transpose-copy
-priority: normal
+priority: high
 ---
-# Reduce Avoid Transpose Copy for Non-Last-Dim Reduction
+# Reduce Avoid Transpose Copy for Non-Last-Dim Axis-Wise Operations
 
 ## Summary
 
-Avoid implementing a non-last-dimension single-axis reduction by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, reduce, inner]` from the original shape and reduce directly from the original layout with a strided/tiled kernel.
+Avoid implementing a non-last-dimension single-axis operation (reduction, prefix scan, or other axis-wise computation) by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, scan, inner]` from the original shape and operate directly from the original layout with a strided/tiled kernel.
 
-The goal is end-to-end latency, not making the new kernel faster than a pure contiguous last-dim reduction in isolation. This pattern wins when removing the copy costs more than the extra strided-access cost.
+The goal is end-to-end latency, not making the new kernel faster than a pure contiguous last-dim kernel in isolation. This pattern wins when removing the copy costs more than the extra strided-access cost.
+
+**Critical:** Do not reject this pattern based on reasoning that "strided access is slower than contiguous access." The strided/tiled kernel loads contiguous chunks of the `inner` dimension at each scan step — it does NOT do per-element strided loads. Benchmark the strided kernel against the copy+contiguous kernel before deciding.
 
 ## Use When
 
-- The operator reduces exactly one logical axis.
-- The reduce dimension is not the last dimension.
+- The operator performs an axis-wise computation along exactly one logical axis (reductions like `sum`/`mean`/`max`, prefix scans like `cumsum`/`cumprod`/`cummax`, or other element-wise axis operations).
+- The target axis is not the last dimension.
 - The input tensor is contiguous in its original row-major layout.
-- The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before reduction.
-- Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, or similar layout-conversion work before the reduction kernel.
-- The copy time is comparable to or larger than the reduction-kernel time.
-- The suffix dimension after the reduced axis is large enough to provide reasonably coalesced loads along `inner`.
+- The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before the kernel.
+- Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, `aclnnInplaceCopy`, or similar layout-conversion work before the kernel.
+- The copy time is comparable to or larger than the kernel time, OR the copy is a meaningful fraction of total end-to-end time.
+- The suffix dimension after the target axis is large enough to provide reasonably coalesced loads along `inner` (ideally `inner_size >= 16`).
 
 ## Avoid When
 
@@ -92,6 +94,8 @@ inner stride  = 1
 
 ## Example Rewrite
 
+### Example 1: Reduction (`torch.sum(x, dim=1)`)
+
 For `x.shape = [B, M, N]` and `torch.sum(x, dim=1)`:
 
 ```python
@@ -116,6 +120,56 @@ out = out_2d.reshape(B, N)
 
 The key change is that the optimized path never materializes `[B, N, M]` as a temporary contiguous tensor.
 
+### Example 2: Prefix Scan (`torch.cumsum(x, dim=0)` on `[R, C]`)
+
+For `x.shape = [R, C]` and `torch.cumsum(x, dim=0)`:
+
+```python
+# Before: move dim 0 to last, materialize a copy, then scan.
+x2 = x.movedim(0, -1).contiguous()   # [C, R] — full copy of R*C elements!
+scan_size = x2.shape[-1]             # R
+outer_size = x2.numel() // scan_size # C
+out = cumsum_lastdim_kernel(x2.reshape(outer_size, scan_size))
+out = out.reshape(C, R).movedim(-1, 0)  # back to [R, C]
+```
+
+```python
+# After: scan directly from the original [R, C] layout.
+outer_size = C   # suffix product after dim=0
+scan_size = R    # length of dim=0
+inner_size = 1   # no suffix dims after dim=0 in 2D
+
+# For 2D dim=0: inner_size=1, so use a 1D grid over outer (C rows)
+# For higher-dim: inner_size = product of suffix dims
+
+out = torch.empty_like(x)
+strided_cumsum_kernel(x, out, outer_size=outer_size, scan_size=scan_size, inner_size=inner_size)
+```
+
+The strided kernel loops over `scan_size` sequentially, loading `BLOCK_INNER` contiguous elements from the inner dimension at each step:
+
+```python
+@triton.jit
+def strided_cumsum_kernel(x_ptr, out_ptr, outer_size, scan_size, inner_size,
+                          BLOCK_M: tl.constexpr, BLOCK_INNER: tl.constexpr):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    row_mask = rows < outer_size
+    inner_offs = pid_n * BLOCK_INNER + tl.arange(0, BLOCK_INNER)
+    inner_mask = inner_offs < inner_size
+    row_base = rows[:, None] * scan_size * inner_size
+    carry = tl.zeros([BLOCK_M, BLOCK_INNER], dtype=tl.float32)
+    for s in range(scan_size):
+        offs = row_base + s * inner_size + inner_offs[None, :]
+        mask = row_mask[:, None] & inner_mask[None, :]
+        val = tl.load(x_ptr + offs, mask=mask, other=0.0)
+        carry = carry + val
+        tl.store(out_ptr + offs, carry, mask=mask)
+```
+
+**Key insight:** Each `tl.load` in the scan loop fetches `BLOCK_INNER` **contiguous** elements (inner stride = 1). Only the scan dimension is strided (stride = `inner_size`), but it is accessed **sequentially** (`for s in range(scan_size)`), enabling hardware prefetch. This is fundamentally different from naive per-element strided access.
+
 ## Implementation Notes
 
 - `reduce_size` means the length of the reduced axis: `shape[dim]`.
@@ -133,12 +187,14 @@ The key change is that the optimized path never materializes `[B, N, M]` as a te
 
 ## Pitfalls / Risks
 
+- **Do not reject this pattern based on reasoning alone.** The most common failure mode is an agent reasoning "strided access is always slower than contiguous access + copy" and dismissing the pattern without benchmarking. The strided/tiled kernel loads contiguous chunks of the `inner` dimension at each scan step — it does NOT do per-element strided loads. The correct comparison is `strided_kernel` vs `copy + contiguous_kernel`, not `strided_kernel` vs `contiguous_kernel` in isolation. If you find yourself thinking "strided access would be much slower," implement and benchmark it before deciding.
 - Do not use `movedim(...).reshape(...)` as a "check"; the copy may already have happened.
 - Small `inner_size` can erase the coalescing benefit even if the copy disappears.
-- Large tiles can create UB pressure.
+- Large tiles can create UB pressure. Keep `BLOCK_M * BLOCK_INNER <= 4096` for 192KB UB safety.
 - Non-contiguous inputs need a separate stride-aware kernel.
-- Floating-point differences are expected because the summation order changes.
+- Floating-point differences are expected because the summation/scan order changes.
 - For `fp16` / `bf16` inputs, accumulate in `fp32` when possible before casting back to the output dtype.
+- For prefix scans specifically: the scan dimension must be processed sequentially (it has a data dependency), so the kernel uses a `for` loop over `scan_size`. This is inherent to the algorithm and cannot be parallelized across the scan dimension.
 
 ## What To Verify After Applying
 

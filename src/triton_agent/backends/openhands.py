@@ -9,11 +9,11 @@ from typing import Any, TextIO
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.show_output_log import (
+from triton_agent.terminal.logs import (
     open_show_output_log,
     write_show_output_chunk,
 )
-from triton_agent.verbose import emit_command_block
+from triton_agent.terminal.verbose import emit_command_block
 
 
 class OpenHandsSetupError(RuntimeError):

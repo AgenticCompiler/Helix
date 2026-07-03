@@ -24,7 +24,9 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             results,
             output_format=str(getattr(args, "format", "text")),
         )
-    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
+    workspace_candidates = sorted(
+        path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+    )
     if not workspace_candidates:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1

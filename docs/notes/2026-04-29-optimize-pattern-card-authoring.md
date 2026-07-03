@@ -55,16 +55,18 @@ The generated `pattern_index.md` also includes a `## High Priority Patterns` sec
 After editing any pattern card, regenerate the checked-in index:
 
 ```bash
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
+  --style default
 ```
 
 To verify that the checked-in index is up to date without rewriting it:
 
 ```bash
-python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
   --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
+  --style default \
   --check
 ```

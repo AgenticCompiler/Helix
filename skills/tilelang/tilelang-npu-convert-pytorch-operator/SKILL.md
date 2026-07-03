@@ -63,19 +63,11 @@ TileLang-Ascend APIs are organized in three layers from base to advanced.
 
 1. **Start with Layer 1**: Use `T.alloc_shared` / `T.alloc_fragment` for memory, `T.Parallel` + symbolic math for element-wise, `T.gemm_v0` for matrix multiply, `T.reduce_*` for reductions. The compiler handles CV splitting, sync, and memory planning automatically via `pass_configs`.
 2. **Use Layer 2 when needed**: When Layer 1 primitives cannot express an operation (e.g., sort, topk, compare, cast, gather_mask, transpose), use the corresponding `T.tile.*` extension.
-3. **Layer 3 is available**: Explicit hardware memory (`T.alloc_ub` / `T.alloc_L1` / `T.alloc_L0*`), manual sync primitives, and Expert `pass_configs` offer finer control. Prefer the auto-managed Layer 1 approach; use Layer 3 only when the kernel genuinely requires precise hardware-level control.
+3. **Do not use Layer 3 (Expert) in convert**: `T.alloc_ub` / `T.alloc_L1` / `T.alloc_L0*`, manual sync, and Expert `pass_configs` are for optimize tuning — not convert. Convert produces a correct baseline; Expert-level control belongs in later optimization rounds.
 
 ### Reference Documents
 
-| File | Contents |
-|------|----------|
-| [tilelang-kernel-basics.md](references/tilelang-kernel-basics.md) | Shared infrastructure: `@tilelang.jit`, `T.Kernel`, loops, `pass_configs`, cache, autotune |
-| [tilelang-memory-developer.md](references/tilelang-memory-developer.md) | Layer 1 memory: `T.alloc_shared`, `T.alloc_fragment`, `T.alloc_var`, `T.copy` |
-| [tilelang-memory-expert.md](references/tilelang-memory-expert.md) | Layer 3 memory: `T.alloc_ub`, `T.alloc_L1`, `T.alloc_L0*` |
-| [tilelang-compute-developer.md](references/tilelang-compute-developer.md) | Layer 1 compute: `T.gemm_v0`, `T.reduce_*`, `T.Parallel` + symbolic math |
-| [tilelang-compute-expert.md](references/tilelang-compute-expert.md) | Layer 2 extended `T.tile.*` + Layer 3 sync primitives |
-| [TileLang-Ascend Developer API Reference](../../TileLang-Ascend%20Developer%20API%20Reference.md) | Full Developer mode API reference |
-| [TileLang-Ascend Expert API Reference](../../TileLang-Ascend%20Expert%20API%20Reference.md) | Full Expert mode API reference |
+See the [TileLang API reference](../tilelang-npu-api-reference/SKILL.md) for all TileLang Ascend NPU API documentation.
 
 ## Required Workflow
 
@@ -102,8 +94,8 @@ Correctness validation is **not advisory** — it is the final gate before conve
 
 You MUST use the validation commands prescribed by the `ascend-npu-run-eval` skill:
 
-- **Differential mode**: `run-command.py run-test-optimize` with `--baseline-operator-file <original>`
-- **Standalone mode**: `run-command.py run-test-baseline`
+- **Differential mode**: `cli.py run-test-optimize` with `--baseline-operator-file <original>`
+- **Standalone mode**: `cli.py run-test-baseline`
 
 These commands handle result archiving, NPU synchronization, and comparison — all of which you cannot replicate reliably with ad-hoc scripting.
 
@@ -115,7 +107,7 @@ The following self-validation patterns are **strictly forbidden**. Violating any
 |-----------|---------|-----|
 | Ad-hoc `python3 -c "import torch; ..."` comparison scripts | `python3 -c "import torch; ref=torch.load(...); torch.allclose(...)"` | Bypasses the standard `compare_result.py` and its audited tolerance levels |
 | Using `torch.allclose` / `torch.testing.assert_close` with custom tolerances | `torch.allclose(a, b, rtol=1e-5, atol=1e-8)` | Tolerances different from the NPU accuracy contract thresholds may mask real errors or produce false positives |
-| Running a differential test file directly with `python3` instead of through `run-command.py` | `python3 differential_test_xxx.py --operator-file xxx` | Bypasses result archiving, synchronization, and comparison logic |
+| Running a differential test file directly with `python3` instead of through `cli.py` | `python3 differential_test_xxx.py --operator-file xxx` | Bypasses result archiving, synchronization, and comparison logic |
 | Generating and comparing custom `.pt` files on your own | `torch.save(ref, "REFERENCE_RESULT.pt")` then manual compare | Creates files that may interfere with the CLI validation loop and use inconsistent formats |
 | Self-declaring "PASS" based on your own comparison logic | "PASS: Minor 1-ULP differences only (expected for cross-implementation)" | Only `run-test-optimize` / `run-test-baseline` output determines pass/fail |
 
@@ -140,7 +132,7 @@ pass_configs = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CROSS_CORE_SYNC: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
 }
 
 M = 1024
@@ -182,7 +174,7 @@ def tilelang_add(M: int, N: int, block_M: int, block_N: int, dtype: str = "float
 func = tilelang_add(M, N, block_M, block_N)
 
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
@@ -205,7 +197,7 @@ In this kind of conversion:
 - `tilelang_add(...)` is the factory function that builds and returns a compiled TileLang kernel
 - `add_kernel` is the `@T.prim_func` kernel definition — all compute happens here
 - `func = tilelang_add(M, N, block_M, block_N)` compiles the kernel at module load time via `@tilelang.jit`
-- `class ModelNew` is the converted public architecture — `forward()` just calls the compiled kernel
+- `class Model` is the converted public architecture — `forward()` just calls the compiled kernel
 - The trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
 - The original source operator remains the correctness oracle for differential validation
 - This example uses **Layer 1 (Developer mode)**: `T.alloc_shared` for memory, `T.Parallel` + symbolic math for compute, auto-managed `pass_configs` with all four auto-passes enabled, and `threads=2` vid elimination
@@ -247,7 +239,7 @@ def forward(self, x, w):
 def matmul_kernel(...):
     pass
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, w):
         return torch.matmul(x, w)  # Forbidden: kernel never called
 ```
@@ -272,7 +264,7 @@ def forward(self, x, w):
 # Kernel compiled at module level
 kernel = tile_operator(M, N, block_M, block_N)
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, y):
         return kernel(x, y)  # Allowed: call compiled TileLang kernel
 ```
@@ -287,6 +279,12 @@ class ModelNew(nn.Module):
 - Input validation in the converted operator must limit itself to zero-cost metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`). Never scan tensor data for bounds or value-range validation — calling `.min().item()`, `.max().item()`, or any reduction+`.item()` on input tensors forces a GPU→CPU synchronization on every forward call and destroys performance. The caller is responsible for providing valid inputs, just as it is for the original PyTorch operator.
 - Prefer Layer 1 base primitives for memory and compute (`T.alloc_shared`, `T.alloc_fragment`, `T.Parallel` + symbolic math). Use Layer 2 `T.tile.*` extensions when Layer 1 cannot express the needed operation. Layer 3 explicit hardware memory and manual sync are available but prefer the auto-managed approach — only use them when the kernel genuinely requires precise hardware-level control.
 
+## When to Stop and Report
+
+Do NOT replace broken TileLang kernels with PyTorch just to get validation green. A partial conversion that genuinely runs at least one TileLang kernel is valid; a conversion where `forward()` uses only PyTorch while TileLang kernels sit unused is not. If you cannot make a kernel correct after thorough debugging, report honestly to the user rather than hiding the problem.
+
+**Litmus test**: if you deleted every `@T.prim_func` definition and `func = ...` call from the file, would `forward()` still produce a correct result? If yes, it is a fake conversion — the kernels are decoration, not the computation. Small PyTorch ops in `forward()` (dtype casts, shape manipulation, or ops TileLang cannot express like fp8 conversion) are acceptable as long as removing the TileLang kernels would break the output.
+
 ## Do Not
 
 - Do not call `optimize` or create `opt-round-*` directories from this workflow.
@@ -297,5 +295,5 @@ class ModelNew(nn.Module):
 - Do not write your own comparison script (e.g., `python3 -c "import torch; ..."`) to compare result `.pt` files or operator outputs.
 - Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `ascend-npu-run-eval` skill.
 - Do not self-declare the conversion as "PASS" based on your own tolerance analysis — only the printed output of `run-test-optimize` or `run-test-baseline` determines success.
-- Do not run differential test files directly with `python3` — always use `run-command.py run-test-optimize` or `run-command.py run-test-baseline`.
+- Do not run differential test files directly with `python3` — always use `cli.py run-test-optimize` or `cli.py run-test-baseline`.
 - Do not save custom `.pt` files (e.g., `REFERENCE_RESULT.pt`, `COMPARE_RESULT.pt`) for manual comparison — this may interfere with the CLI validation loop's result caching.

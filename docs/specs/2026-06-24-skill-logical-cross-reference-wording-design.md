@@ -23,7 +23,7 @@ Update the live skill docs that still expose cross-skill relative paths:
 - `ascend-npu-analyze-round-performance`
 - `ascend-npu-gen-eval-suite`
 - `ascend-npu-profile-operator`
-- `ascend-npu-kernel-bench-logs`
+- `ascend-npu-distill-patterns`
 - `triton-npu-optimize`
 - `triton-npu-optimize/references/artifacts.md`
 
