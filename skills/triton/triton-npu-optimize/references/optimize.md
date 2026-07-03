@@ -92,6 +92,8 @@ For the 7 categories below, **evaluate each one individually**. Every item requi
 4. Host dispatches to _kernel_fast or _kernel_slow based on _can_use_fast_path()
 ```
 
+**⚠️ Slow-path coverage**: If the slow path retains unoptimized baseline code (no structural changes applied), you must verify benchmark sample coverage per **Step 3.5** before claiming this optimization as complete.
+
 ---
 
 ### Optimization 4: Eliminate Redundant Instructions
@@ -169,6 +171,28 @@ For the 7 categories below, **evaluate each one individually**. Every item requi
 
 ---
 
+## Step 3.5: Benchmark Sample Coverage Verification (applies across all Step 3 optimizations)
+
+When you apply **any** optimization from Step 3 that creates or modifies dispatch-based code paths (fast/slow split, shape/dtype/mode specialization, kernel decomposition for different parameter regimes), the per-round benchmark metric becomes blind to any code path not exercised by the sample set. A Geomean computed over only covered paths inflates apparent improvement and hides regressions on uncovered paths.
+
+**Detection**: After applying an optimization, check whether the resulting code contains conditional dispatch to structurally different code paths:
+
+1. **Shape-based dispatch**: `if hidden_size <= threshold`, `if num_rows >= N`, etc.
+2. **Parameter-based dispatch**: `if dtype == float32`, `if M % BLOCK_M == 0`, etc.
+3. **Decomposition-based dispatch**: different kernel counts or grid layouts for different input configurations.
+
+If ANY such dispatch exists, execute the following coverage check **for each distinct code path**:
+
+1. **Cross-reference**: Map each code path's triggering condition to the shape spec in the operator's `JSON_FILE` at the indices listed in the benchmark's `REPRESENTATIVE_INDICES`. Determine which paths are exercised.
+2. **If any path is NOT covered** by at least one benchmark sample, you **MUST**:
+   - **Option A (preferred)**: Apply the same structural optimization to the uncovered path so all paths benefit equivalently. Do not leave uncovered paths as unoptimized baseline code.
+   - **Option B**: Explicitly record in `attempts.md` which code paths are uncovered, what shapes would exercise them, and what optimizations are deferred. The full evaluation (`tmp/opt_*_perf.txt`) will expose these gaps; revisit them before claiming final results.
+3. **Record**: In `attempts.md`, list each code path, its trigger condition, and whether it is covered by a benchmark sample.
+
+**Rationale**: The per-round benchmark samples 5 shapes selected by quantile of element count. These 5 shapes do not necessarily cover all parameter-driven dispatch paths. An uncovered path is invisible to the per-round Geomean but fully visible in the 50-group full evaluation. Fixing an uncovered regression discovered only at full-evaluation time costs multiple additional rounds.
+
+---
+
 ## Step 4: Prohibited Optimizations (cause degradation on Ascend Triton)
 
 | # | Prohibited Item | Reason | Affected Scenario |
@@ -196,6 +220,7 @@ Before submitting optimized code, confirm that every item below has been evaluat
 | 7 | Optimize instruction composition | ☐ Applied / ☐ Not applicable, reason: ___ |
 | — | No prohibited optimization techniques used | ☐ Confirmed |
 | — | All modifications have correctness justification | ☐ Confirmed |
+| — | **Step 3.5 benchmark sample coverage verified**: every dispatch-based code path is exercised by at least one benchmark sample? | ☐ Yes (path → sample mapping: ___) / ☐ Not applicable (no dispatch paths created) / ☐ No — action taken: ___ |
 
 ---
 
