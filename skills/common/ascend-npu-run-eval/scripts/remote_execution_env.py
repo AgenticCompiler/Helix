@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, MutableMapping
 
-_REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
-_REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
+from env_registry import TRITON_AGENT_REMOTE, TRITON_AGENT_REMOTE_WORKDIR
+
+_REMOTE_TARGET_ENV = TRITON_AGENT_REMOTE
+_REMOTE_WORKDIR_ENV = TRITON_AGENT_REMOTE_WORKDIR
 
 
 def remote_target_env_name() -> str:

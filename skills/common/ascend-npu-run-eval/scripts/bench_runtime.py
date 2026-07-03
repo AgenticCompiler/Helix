@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
+from env_registry import (
+    TORCH_DEVICE_BACKEND_AUTOLOAD,
+    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    TRITON_ALWAYS_COMPILE,
+)
 from perf_artifacts import (
     PerfCaseRecord,
     PerfMetrics,
@@ -47,8 +52,8 @@ PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler kernel view"
-_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
-_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
+_LOCAL_BENCH_OUTPUT_DIR_ENV = TRITON_AGENT_BENCH_OUTPUT_DIR
+_TORCH_BACKEND_AUTOLOAD_ENV = TORCH_DEVICE_BACKEND_AUTOLOAD
 
 
 @dataclass(frozen=True)
@@ -245,8 +250,8 @@ def profile_all_bench_cases(
     output: str | None = None,
     preloaded: LoadedBenchCases | None = None,
 ) -> RuntimeBenchResult:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
         cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -286,9 +291,9 @@ def profile_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +362,8 @@ def time_all_bench_cases(
     bench_mode: str = "perf-counter",
     output: str | None = None,
 ) -> RuntimeBenchResult:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
         cases, resolution = load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -393,9 +398,9 @@ def time_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
