@@ -4,26 +4,29 @@
 
 Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The optimized path should express the target auxiliary logic in Triton; simple Torch wrapper glue is allowed, but Torch/CANN compute operators should not replace the auxiliary logic being optimized. Each external auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
 
-## Wrapper Torch API Boundary
+## Wrapper API Boundary
 
 Simple Torch wrapper glue is acceptable when it is not the target auxiliary computation. This means buffer allocation (`torch.empty`, `torch.zeros`, `torch.ones`), shape/view preparation (`view`, `reshape`, `permute`, `transpose`, `contiguous` when required by the kernel contract), metadata reads (`shape`, `dtype`, `device`, `numel`), and Triton kernel launch setup. Do not use Torch compute functions, tensor arithmetic, reductions, or another complex Torch/CANN operator such as an NPU/CANN aggregation or a pre-baked `aclnn*`/`torch.ops.npu.*` op as the result of this pattern.
 
-**Data rearrangement is not a bypass.** A common rationalization is to re-label a torch arithmetic chain that packs, unpacks, or reorders tensor data as "data rearrangement" or "non-compute glue" so it appears outside the Wrapper Torch API Boundary. Reordering that needs arithmetic (e.g. int4 → int8 pack via `torch.where(idx < 0, x | 0xF0, x & 0x0F)` style, or signed/unsigned conversion with masking) is a compute op, not a layout copy, and falls under the boundary. Only pure layout copies (`view`, `reshape`, `permute`, `transpose`, `contiguous`, `aclnnInplaceCopy`) are glue; anything that combines tensor values with arithmetic is the auxiliary logic itself and must be Tritonized.
+**Variant dispatch across auxiliary flags**: when the operator has multiple auxiliary-flagged cases (e.g. `use_dropout` vs not), each case's wrapper path must be checked against the Wrapper API Boundary independently. A common rationalization is to fuse only the flag-bearing case (e.g. dropout case) and leave the non-flag case as a torch aclnn chain without checking. The correct process is:
 
-When the auxiliary lookup is a small per-element indirect load (e.g. weight/bias indexed by a per-element channel or group id), keep the standard indirect `tl.load(ptr + indirect_offset)` form by default. Consider the Triton-side `tl.gather(small_table, index, axis=0)` follow-up only when the table is small enough to fit in UB and profile or simulator evidence shows the indirect load is a bottleneck — see "Gather Optimization for Small Lookup Tables" under "Tritonize Frequency Count Metadata".
+1. Check the non-flag case's wrapper independently — if it still has an aclnn chain, that's a boundary violation.
+2. Decide the form per case — either fuse into the same kernel with identity constants (e.g. `dropout_mask=1, inv_keep_prob=1` for the non-dropout variant), or use separate specialized Triton variants / dispatch composition when one shared kernel is not the clearest or fastest form.
 
-**Variant dispatch across auxiliary flags**: when the operator has multiple auxiliary-flagged cases (e.g. `use_dropout` vs not), each case's wrapper path must be checked against the Wrapper Torch API Boundary independently. A common rationalization is to fuse only the flag-bearing case (e.g. dropout case) and leave the non-flag case as a torch aclnn chain (`aclnnMul + aclnnReduceSum + aclnnSub + aclnnMul*2`). This is a boundary violation for the non-flag case. Every flag branch that computes auxiliary logic must dispatch to a fused or Tritonized compute path; this may be one shared kernel with identity constants for disabled flags (e.g. `dropout_mask=1, inv_keep_prob=1`) or separate specialized Triton variants when that is simpler or faster.
+The rationalization to avoid is "skip the non-flag case's boundary check entirely", not "every case must use the same fused kernel".
 
 ## Use When
 
-- Source code has a clear **auxiliary-op sequence -> Triton path** structure.
-- The auxiliary ops compute intermediate values such as scales, masks, clamps, casts, offsets, row statistics, or broadcasted factors that are consumed by the Triton path.
-- The auxiliary ops compute frequency/count metadata such as `bincount`, per-key counts, label counts, or segment counts that are consumed by the Triton path for scaling, filtering, normalization, or weighting; the output domain is known or bounded and the result is metadata rather than the operator's primary output.
-- Perf output shows the auxiliary ops in `ops` before the main Triton path, and their combined time is meaningful in `total_op_avg_time_us`.
-- The auxiliary output has one dominant downstream consumer, OR multiple consumers that share the same upstream load (multi-output fusion case).
-- If the auxiliary output is part of the API result, the fused or Tritonized path can still store the same output.
-- The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, frequency count, or simple index transforms. Use Torch only for non-compute wrapper glue; do not delegate the target auxiliary computation to `torch.ops.npu.*`, `aclnn*`, or another framework compute op.
-- Simulator data for the fused candidate does not show that the extra in-kernel work overwhelms the removed auxiliary-op cost.
+Use these cases as rejection signals when the auxiliary chain is not a meaningful `total_op_avg_time_us` contributor across the relevant shapes, or when correctness/Triton expressibility is blocked. High auxiliary-op share should trigger fusion-form analysis before rejecting this pattern.
+
+- The auxiliary output has multiple downstream consumers with incompatible traversal patterns, and any fused form would duplicate expensive full-input loads or recompute the same shared work for each consumer.
+- The auxiliary operation requires order-dependent global semantics, unbounded or highly irregular output cardinality, dynamic global allocation, or cross-row/cross-batch coordination that cannot be represented with bounded Triton tiles or bounded metadata.
+- The candidate output is the operator's primary API result and cannot be produced exactly by a Triton result-producing path.
+- The auxiliary output is API-visible and cannot be produced exactly by the Triton path.
+- The required PyTorch/CANN numerical behavior is part of the operator contract and cannot be reproduced or validated in Triton for the relevant cases, such as required rounding modes, NaN/Inf behavior, dtype promotion, saturation, or broadcast corner cases.
+- The candidate target is a standalone pure layout materialization (`aclnnInplaceCopy`, `Transpose`, `Contiguous`, `Copy`) with no adjacent auxiliary compute or downstream compute path to fuse. If the copy only exists between fusible auxiliary compute and a Triton consumer, handle it as part of the larger fused path or `layout-materialization-elision`.
+- The proposed change delegates the target auxiliary computation to `torch.ops.npu.*`, `aclnn*`, or Torch framework compute instead of expressing it in Triton.
+- Perf shows the auxiliary ops are consistently tiny across the relevant shapes, and the main Triton kernel or another unrelated bottleneck dominates.
 
 ## Avoid When
 
@@ -50,6 +53,16 @@ When the precondition holds and a fusion attempt regresses:
 1. **Use concrete evidence to separate form failure from pattern failure.** Document whether the regression is likely caused by double reads, register/UB pressure, occupancy loss, address-generation overhead, or a correctness/compile blocker. Do not keep the unfused wrapper chain solely because of intuition about those costs.
 2. **Choose at most one evidence-backed follow-up form for the current round.** If the first form regresses but shape, dependency, or simulator evidence still favors fusion, try the single most plausible alternative: single-pass compact fusion for proven small-K rows, a two-pass single-kernel form for wide rows, or shape-dispatched composition when the shape set clearly splits. Defer other variants to later rounds instead of spending the current round on a sequence of speculative benchmarks.
 3. **Keep a Tritonized auxiliary path only with concrete evidence.** A preprocessing kernel plus downstream kernel is valid when shape analysis, profile data, simulator data, or measured results show single-kernel fusion is blocked by compile/correctness issues or loses because of register/UB pressure, occupancy loss, repeated reads, or another measured bottleneck. Record the specific reason.
+
+### After a Failed Fusion Attempt
+
+When a full hot-path fusion attempt fails, do not immediately shrink the target to a small local fusion. First classify the failure:
+
+1. **Implementation-form failure**: correctness, compile, UB, stride, register pressure, or unsupported addressing failed in one form. Keep the same hot-path fusion target and try one alternative form that removes the specific blocker. For example, if an external pack/reorder kernel with strided loads fails, try store-time packing inside the fused compute/store kernel using contiguous row loads.
+2. **Substage-specific blocker**: one substage is blocked, but other auxiliary stages are still fusible. Fuse all remaining stages and leave only the blocked substage outside the fused kernel. Record the blocked substage and the concrete evidence. Do not use the blocked substage as a reason to keep unrelated auxiliary Torch/CANN ops on the same hot path.
+3. **True pattern failure**: after a coherent hot-path attempt plus one evidence-backed alternative, correctness passes but warm `total-op` still regresses, or the removed auxiliary chain is no longer a bottleneck. Only then re-rank other patterns.
+
+A partial local fusion, such as fusing only the first wrapper op in a longer auxiliary chain, is acceptable as a temporary validated fallback. Record it as partial, including which auxiliary stages remain outside the fused path and the concrete blocker for each remaining stage. Do not describe a local fallback as full hot-path fusion or as proof that the broader fusion surface is exhausted.
 
 **Failure signal that this framing itself is wrong**: if a coherent implementation plus one evidence-backed follow-up both regress on net `total-op`, and the bottleneck is no longer the removed auxiliary chain, re-rank other candidate patterns instead of continuing to force fusion in the same round.
 
@@ -370,6 +383,8 @@ Use this form when the output domain is large enough that output-owner scanning 
 Validation should prioritize `total-op`, not just `kernel`, because the new count kernel may be reported as additional Triton kernel time even while it removes a much larger framework op. Verify ignored keys, invalid keys, empty inputs, count dtype conversion, count overflow assumptions, and count values consumed by the downstream path.
 
 ### Gather Optimization for Small Lookup Tables (optional follow-up, not a replacement)
+
+When the auxiliary lookup is a small per-element indirect load (e.g. weight/bias indexed by a per-element channel or group id), keep the standard indirect `tl.load(ptr + indirect_offset)` form by default. Consider the Triton-side `tl.gather(small_table, index, axis=0)` follow-up only when the table is small enough to fit in UB and profile or simulator evidence shows the indirect load is a bottleneck.
 
 **This subsection is an optional follow-up optimization that applies only when the lookup table is small. It does NOT replace the standard `tl.load(metadata_ptr + key)` form shown above — that form remains the default and is correct for large lookup tables. Apply this follow-up only when its applicability conditions are met; otherwise keep the standard indirect `tl.load`.**
 
