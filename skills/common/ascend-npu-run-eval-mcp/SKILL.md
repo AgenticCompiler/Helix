@@ -16,12 +16,6 @@ Primary MCP tools:
 - `profile-report`
 - `compare-perf`
 
-Fast-screening note:
-
-- `probe-bench` is not currently exposed as an MCP tool in this surface.
-- When you need a fast baseline-vs-candidate screen, use the non-MCP `ascend-npu-run-eval` skill or the public `triton-agent probe-bench` command if that workspace exposes it.
-- If neither surface is available, fall back to canonical `run-bench` plus `compare-perf`.
-
 Read only the focused guide for the MCP tool you are about to call:
 
 - `run-test-baseline` / `run-test-optimize`: [references/run-test.md](references/run-test.md)

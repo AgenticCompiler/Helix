@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TextIO
 
 from bench_runner import stream_target_for_verbosity
-from env_registry import TRITON_AGENT_PROFILE_TIMEOUT_SECONDS, TRITON_ALWAYS_COMPILE
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
@@ -25,7 +24,7 @@ from run_runtime import (
 
 
 def _profile_timeout() -> int:
-    return env_int(TRITON_AGENT_PROFILE_TIMEOUT_SECONDS, 900)
+    return env_int("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", 900)
 
 
 def run_local_profile_bench(
@@ -113,15 +112,15 @@ def _run_local_profile_torch_npu_profiler(
     operator_file: Path,
     case_id: str,
 ) -> ResultPayload:
-    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
-    os.environ[TRITON_ALWAYS_COMPILE] = "1"
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
         return profile_local_torch_npu_profiler_case(bench_file, operator_file, case_id)
     finally:
         if prev is None:
-            del os.environ[TRITON_ALWAYS_COMPILE]
+            del os.environ["TRITON_ALWAYS_COMPILE"]
         else:
-            os.environ[TRITON_ALWAYS_COMPILE] = prev
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
 def _run_local_profile_msprof(  # pyright: ignore[reportUnusedFunction]
@@ -146,7 +145,7 @@ def _run_local_profile_msprof(  # pyright: ignore[reportUnusedFunction]
         ],
         str(bench_file.parent),
         stall_timeout_seconds=_profile_timeout(),
-        extra_env={TRITON_ALWAYS_COMPILE: "1"},
+        extra_env={"TRITON_ALWAYS_COMPILE": "1"},
     )
 
 
@@ -167,7 +166,7 @@ def _run_remote_profile_torch_npu_profiler(
             verbose=verbose,
             stderr=stderr,
         )
-    extra_env = {TRITON_ALWAYS_COMPILE: "1"}
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     with stream_target_for_verbosity(verbose) as stream_target:
         return run_remote_command_streaming(
             spec,

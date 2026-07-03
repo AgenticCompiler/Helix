@@ -25,19 +25,14 @@ Optimize target modes:
 - `baseline/`
 - `opt-round-N/`
 - completed round entries and one final `## Overall Summary` in `opt-note.md`
-- round-local `profile/` or `perf-analysis.md` artifacts when deeper investigation is needed
-
-## TileLang API Reference
-
-Before any round, read the [TileLang API reference](../tilelang-npu-api-reference/SKILL.md) so you understand the APIs the kernel uses.
+- round-local `profile/`, `ir/`, `perf-analysis.md`, or `compiler-analysis.md` artifacts when deeper investigation is needed
 
 ## Core Loop
 
 - establish or reuse `baseline/`
-- open `opt-round-N/`, initialize round strategy state through `ascend-npu-optimize-state start-round`, and start `attempts.md`
+- open `opt-round-N/` and start `attempts.md`
 - choose the current analysis level
 - make one coherent optimization attempt
-- optionally screen the direction cheaply with `probe-bench` when the available run-eval surface exposes it
 - validate correctness and benchmark performance
 - record the round outcome
 
@@ -47,14 +42,12 @@ Before any round, read the [TileLang API reference](../tilelang-npu-api-referenc
 - Otherwise use the sibling `npu-prepare-optimize-baseline` skill to establish or repair the baseline before creating `opt-round-1/`.
 - Establish or reuse `baseline/` before treating any `opt-round-N/` directory as a completed optimization round.
 - Read [artifacts.md](references/artifacts.md) before choosing authoritative baseline or round artifact paths.
-- Keep top-level optimize workflow references at the skill boundary: use sibling skills for baseline preparation, evaluation, profiling, and round gating rather than direct helper-script paths here.
+- Keep top-level optimize workflow references at the skill boundary: use sibling skills for baseline preparation, evaluation, profiling, IR analysis, compiler-source analysis, and round gating rather than direct helper-script paths here.
 
 ## Stage 1: Round Entry
 
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
-- Use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to initialize the active round's `round_strategy`, `analysis_policy`, and `reason` before the first code change in that round.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
-- Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history; do not manually duplicate the same `round_strategy`, `analysis_policy`, and `reason` bookkeeping in both `attempts.md` and `summary.md`.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
 - When pattern triage is used, explicitly record the candidate patterns you considered, the selected pattern if one is chosen, and why that pattern looks plausible in `attempts.md`.
 - When a named pattern guides the round, explicitly record the final selected pattern direction in `summary.md`.
@@ -62,20 +55,20 @@ Before any round, read the [TileLang API reference](../tilelang-npu-api-referenc
 - Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
-- If the active round's intent or required evidence depth changes mid-round, use the sibling `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand instead of silently changing the round contract in prose only.
 
 ## Stage 2: Layered Analysis
 
 Optimize analysis is layered.
 
-- Default escalation order: `pattern triage -> profiling diagnosis`.
+- Default escalation order: `pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation`.
 - Start each round at the shallowest level that can justify the next move.
 - Escalate only when the current level is insufficient.
 - Keep `Primary analysis level` distinct from `Supporting evidence` in round records.
+- Using IR as supporting evidence does not automatically change the round's primary analysis level.
 - Record the chosen level and why the round stayed there or escalated deeper.
 - Show the level explicitly in `attempts.md`, for example `Primary analysis level: profiling diagnosis`.
 - When a round escalates, record both `Escalation: <from> -> <to>` and `Escalation reason: <why the previous level was insufficient>`.
-- Do not rely on the presence of `profile/` or `perf-analysis.md` to imply the current level; state it directly.
+- Do not rely on the presence of `profile/`, `ir/`, or `perf-analysis.md` to imply the current level; state it directly.
 
 ### pattern triage
 
@@ -99,35 +92,51 @@ Optimize analysis is layered.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use the sibling `npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
 - Use the sibling `npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
-- Use the sibling knowledge skill's symptom cards to narrow pattern candidates after structured profiler evidence exists, rather than rereading the whole pattern library.
+- Use the sibling knowledge skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists, rather than rereading the whole pattern library.
+- This deeper diagnosis may end as either `profile-only diagnosis` or `profile-plus-IR diagnosis`.
 - Write `opt-round-N/perf-analysis.md` when the deeper round-analysis flow is used.
+
+### IR attribution
+
+- Use IR attribution only after profiler-backed symptoms still need explanation.
+- `npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md` when the round deepens from profiler evidence into IR-backed attribution.
+- In that flow, use `tilelang-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
+- Use the sibling `tilelang-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
+- Keep IR evidence under `opt-round-N/ir/`.
+- In optimize rounds, keep IR capture round-local, for example:
+  ```bash
+  python3 ../tilelang-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+  python3 ../tilelang-npu-analyze-ir/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
+  ```
+
+### compiler-source escalation
+
+- Use compiler-source escalation only when compiler source analysis is enabled and after profiler and IR evidence have narrowed a concrete compiler-side question.
+- Use the sibling `tilelang-npu-analyze-compiler-source` skill only when the round still needs performance-focused explanation before the next operator change is clear.
+- When compiler source analysis is enabled, treat the compiler source checkout as read-only and use compiler-source evidence only when it is genuinely needed.
+- Write `opt-round-N/compiler-analysis.md`.
 
 ## Stage 3: Validate And Record
 
 - Run correctness validation before trusting any performance result.
-- After correctness passes, you may use the sibling `npu-run-eval` skill's `probe-bench` flow as a fast baseline-vs-candidate screen when you need a cheap directional signal before paying canonical benchmark cost.
-- Use `probe-bench` only when the active run-eval surface actually exposes it. If the current surface does not expose `probe-bench`, skip the screen and continue with canonical validation.
-- Treat `probe-bench` as non-canonical screening evidence only. Do not use its output as the official round perf artifact, do not write probe artifacts into `round-state.json`, and do not claim round speedups from probe output alone.
-- Use `probe-bench` to reject clearly bad candidates early or to justify keeping a clearly promising direction long enough to run canonical benchmarking.
 - After correctness passes, run benchmark validation and preserve the round-local benchmark evidence.
 - In each round directory, keep the optimized operator snapshot as `opt_<original-operator>.py`.
 - In each round directory, keep the benchmark artifact as `opt_<original-operator>_perf.txt`, ensure that file is generated by the `npu-run-eval` skill's `run-bench` flow, and record that exact filename in `round-state.json`.
 - Use `baseline/<operator>_perf.txt` for canonical optimize-session performance comparisons, even when the current round also compares locally against its parent.
 - Once baseline and round perf artifacts both exist, use the `npu-run-eval` skill to run `compare-perf`.
-- Even after `probe-bench` reports `likely_gain` or `likely_regression`, still run canonical `run-bench` and `compare-perf` before recording any official round conclusion.
 - Treat the `npu-run-eval` skill's `compare-perf` flow as the only authority for claimed benchmark deltas and speedups, including `Avg improvement`, `Geomean speedup`, and any claimed benchmark delta.
 - Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`, using `kernel`, `total-op`, or `mixed`.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-- Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round and repair the round until it passes before continuing or stopping.
+- Use the sibling `npu-optimize-submit-round` skill to submit the current round and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
-- Before opening the next round, use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
+- Before opening the next round, use the sibling `npu-optimize-start-round` skill to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including the script-written `State Update` history, `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, probe-screening outcomes when `probe-bench` is used, and canonical benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed. Do not duplicate the full round strategy state history here.
+- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons
@@ -139,14 +148,15 @@ Admission criteria:
 Append a lesson only when it passes all admission criteria:
 
 - The lesson generalizes to a family of TileLang Ascend NPU operators, not only the current operator.
-- The lesson is supported by correctness, benchmark, profiler, or compiler-error evidence.
+- The lesson is supported by correctness, benchmark, profiler, IR, or compiler-error evidence.
 - The lesson is written as a reusable rule, diagnostic mapping, or optimization heuristic.
 - The lesson states where it applies or what limits it.
-- The lesson could plausibly be promoted into an optimize skill, profiling analysis reference, or pattern reference.
+- The lesson could plausibly be promoted into an optimize skill, profiling analysis reference, IR analysis reference, or pattern reference.
 
 Use `learned_lessons.md` for concise distilled rules such as:
 
 - profile-to-optimization mappings
+- IR-to-code-change mappings
 - compiler error repairs that reveal recurring TileLang or Ascend NPU constraints
 - new optimization points inferred from recurring TileLang code patterns
 - validated benchmark interpretation rules that would help future rounds start faster

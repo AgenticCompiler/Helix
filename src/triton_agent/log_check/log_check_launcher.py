@@ -8,13 +8,12 @@ from typing import Any, Literal, cast
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
-from triton_agent.trace.core import build_tool_trace_env, new_trace_run_id, trace_path_from_request
-from triton_agent.trace.summary import write_tool_trace_summary
-from triton_agent.paths import skills_root
-from triton_agent.skills.selection import resolve_staged_skills
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.staging import SkillLinkManager, staged_skill_dir
-from triton_agent.terminal.verbose import emit_verbose_lines
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
+from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.show_output_log import show_output_log_path
+from triton_agent.skills import SkillLinkManager, staged_skill_dir
+from triton_agent.verbose import emit_verbose_lines
 
 from .check_json import (
     repair_json,
@@ -272,7 +271,7 @@ def build_log_check_request(
         stream_output=show_output,
         force_overwrite=False,
         agent_name=agent_name,
-        skill_name="ascend-npu-optimize-state",
+        skill_name="ascend-npu-optimize-submit-round",
         prompt=build_log_check_prompt(
             target_path=resolved_target,
             log_check_json_file=output_json,

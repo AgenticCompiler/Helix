@@ -18,8 +18,8 @@ from triton_agent.generation.outputs import (
 )
 from triton_agent.generation.orchestration import build_generation_request
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.trace.core import TRACE_PATH_ENV
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.otel_trace import TRACE_PATH_ENV
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class GenerationHelpersTests(unittest.TestCase):

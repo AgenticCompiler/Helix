@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.remote import env as remote_env_module
-from triton_agent.skills.loader import load_operator_eval_script_module
+from triton_agent import remote_execution_env as remote_env_module
+from triton_agent.skill_loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
     load_bench_runner_module,
@@ -223,7 +223,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path.cwd() / "src"))
-from triton_agent.skills.loader import load_operator_eval_script_module
+from triton_agent.skill_loader import load_operator_eval_script_module
 module = load_operator_eval_script_module("bench_runner")
 result = {
     "return_code": 0,
@@ -645,7 +645,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         new,
                         "alice@example.com",
                         None,
-                        accuracy_mode="dtype-close",
                     )
 
         compare_script = copy_to_remote.call_args_list[0].args[1]
@@ -667,8 +666,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "oracle result.pt",
                 "--new-result",
                 "new result.pt",
-                "--accuracy-mode",
-                "dtype-close",
             ],
         )
 
@@ -801,11 +798,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         command,
                     )
                 )
-                case_id = (
-                    command[command.index("--case-id") + 1]
-                    if "--case-id" in command
-                    else command[-2]
-                )
+                case_id = command[-2]
                 return make_skill_result(
                     0,
                     (
@@ -1210,8 +1203,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "kernel.py",
                             "--case-id",
                             "case-1",
-                            "--iterations",
-                            "55",
                         ],
                     )
                 ],
@@ -1336,8 +1327,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "opt-round-13/opt_kernel.py",
                             "--case-id",
                             "case-1",
-                            "--iterations",
-                            "55",
                         ],
                     )
                 ],
@@ -1389,8 +1378,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
                 self.assertEqual(command[0], "msprof")
-                case_id = command[command.index("--case-id") + 1]
-                if case_id == "case-1":
+                if command[-1] == "case-1":
                     return make_skill_result(1, "", "case one failed\n")
                 return make_skill_result(0, "profile stdout\n", "")
 
@@ -1428,61 +1416,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_read_remote_msprof_metrics_supports_kernel_suffix_alias_and_total_op(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            remote_workspace = Path(tmp) / "remote-workspace"
-            remote_workspace.mkdir()
-            for support_path in module._bench_runtime_support_paths():
-                shutil.copy2(support_path, remote_workspace / support_path.name)
-
-            output_dir = remote_workspace / "ASCEND_PROFILER_OUTPUT"
-            output_dir.mkdir()
-            (output_dir / "op_statistic_1.csv").write_text(
-                "\n".join(
-                    [
-                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
-                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
-                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            def _fake_remote_buffered(spec, remote_workspace_arg, command, **kwargs):
-                del kwargs
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace_arg, str(remote_workspace))
-                self.assertEqual(command[:2], ["python3", "-c"])
-                completed = subprocess.run(
-                    command,
-                    cwd=remote_workspace,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                return make_skill_result(completed.returncode, completed.stdout, completed.stderr)
-
-            with patch.object(module, "run_remote_command_buffered", side_effect=_fake_remote_buffered):
-                metrics = module._read_remote_msprof_metrics(
-                    "spec",
-                    str(remote_workspace),
-                    str(output_dir),
-                    ["KernelA"],
-                )
-
-        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
-        self.assertEqual(
-            metrics["ops"],
-            [
-                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
-                {"op_type": "HelperKernel", "avg_time_us": 3.5},
-            ],
-        )
-        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
 
     def test_run_remote_bench_msprof_records_na_when_remote_kernel_row_is_missing(self) -> None:
         module = load_bench_runner_module()
@@ -1800,114 +1733,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertIn('"kernel_avg_time_us":null', perf_text)
             self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
-
-
-class RemoteProbeTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.bench = load_bench_runner_module()
-        run_runtime = load_operator_eval_script_module("run_runtime")
-        self.spec = run_runtime.parse_remote_spec("user@host")
-
-    def test_probe_remote_script_includes_clamp_and_preloaded(self) -> None:
-        script = self.bench._build_remote_torch_npu_profiler_probe_run_all_script(
-            verbose=False, warmup_cap=1, repeats_cap=3
-        )
-        self.assertIn("dataclasses.replace", script)
-        self.assertIn("min(c.warmup, 1)", script)
-        self.assertIn("min(c.repeats, 3)", script)
-        self.assertIn("preloaded=(clamped, resolution)", script)
-        self.assertIn("runtime.load_bench_cases", script)
-
-    def test_canonical_remote_script_does_not_clamp(self) -> None:
-        script = self.bench._build_remote_torch_npu_profiler_run_all_script(verbose=False)
-        self.assertNotIn("dataclasses.replace", script)
-        self.assertNotIn("preloaded=", script)
-
-    def test_remote_profiler_uses_probe_script_when_caps_set(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-            )
-        command = mocked_run.call_args.args[2]
-        script = command[2]
-        self.assertIn("preloaded=(clamped, resolution)", script)
-        self.assertIn("min(c.warmup, 1)", script)
-
-    def test_remote_profiler_uses_canonical_script_without_caps(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-            )
-        command = mocked_run.call_args.args[2]
-        script = command[2]
-        self.assertNotIn("preloaded=", script)
-        self.assertNotIn("dataclasses.replace", script)
-
-    def test_run_remote_probe_threads_probe_caps(self) -> None:
-        sentinel = ({"return_code": 0, "stdout": "", "stderr": ""}, None, "ws")
-        with patch.object(self.bench, "run_remote_bench", return_value=sentinel) as mocked:
-            self.bench.run_remote_probe(
-                Path("bench.py"),
-                Path("op.py"),
-                "torch-npu-profiler",
-                "user@host",
-                None,
-                warmup_cap=1,
-                repeats_cap=3,
-            )
-        self.assertEqual(mocked.call_args.kwargs.get("probe_caps"), (1, 3))
-
-    def test_remote_profiler_passes_devices_env_when_caps_set(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-                devices=("4", "5"),
-            )
-        self.assertEqual(
-            mocked_run.call_args.kwargs["extra_env"]["ASCEND_RT_VISIBLE_DEVICES"],
-            "4,5",
-        )
-
-    def test_remote_profiler_omits_devices_env_without_devices(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-            )
-        self.assertNotIn(
-            "ASCEND_RT_VISIBLE_DEVICES",
-            mocked_run.call_args.kwargs["extra_env"],
-        )
 
 
 if __name__ == "__main__":

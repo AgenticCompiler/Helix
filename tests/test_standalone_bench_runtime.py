@@ -668,7 +668,7 @@ def build_bench_case_fn(operator_api, case):
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
 
-    def test_read_profiler_metrics_prefers_kernel_details_and_uses_step_totals(self) -> None:
+    def test_read_profiler_metrics_filters_zero_duration_non_kernel_rows(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
@@ -676,21 +676,10 @@ def build_bench_case_fn(operator_api, case):
                 "\n".join(
                     [
                         "Name,Device Self Duration(us)",
-                        "aclnnMul,999",
-                        "aclnnInplaceCopy,111",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            (profile_root / "kernel_details.csv").write_text(
-                "\n".join(
-                    [
-                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
-                        "6,KernelA_kernel,5.0,0,3",
-                        "6,HelperKernel,3.0,0,3",
-                        "7,KernelA_kernel,8.0,0,3",
-                        "7,HelperKernel,4.0,0,3",
+                        "aten::view,0",
+                        "KernelA,10",
+                        "aten::empty,0",
+                        "KernelB,20",
                     ]
                 )
                 + "\n",
@@ -699,21 +688,20 @@ def build_bench_case_fn(operator_api, case):
 
             metrics = module._read_profiler_metrics(
                 profile_root,
-                active_count=2,
-                kernel_names=["KernelA"],
+                active_count=5,
+                kernel_names=["KernelA", "KernelB"],
             )
 
         self.assertEqual(
             metrics["ops"],
             [
-                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
-                {"op_type": "HelperKernel", "avg_time_us": 3.5},
+                {"op_type": "KernelA", "avg_time_us": 2.0},
+                {"op_type": "KernelB", "avg_time_us": 4.0},
             ],
         )
-        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
-        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.0)
 
-    def test_read_profiler_metrics_ignores_operator_details_without_kernel_view_csv(self) -> None:
+    def test_read_profiler_metrics_preserves_zero_duration_resolved_kernel_rows(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
@@ -721,20 +709,27 @@ def build_bench_case_fn(operator_api, case):
                 "\n".join(
                     [
                         "Name,Device Self Duration(us)",
-                        "aclnnMul,10",
-                        "aclnnInplaceCopy,2",
+                        "aten::view,0",
+                        "KernelZero,0",
                     ]
                 )
                 + "\n",
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(FileNotFoundError, "No kernel_details.csv or op_statistic.csv found"):
-                module._read_profiler_metrics(
-                    profile_root,
-                    active_count=5,
-                    kernel_names=["KernelZero"],
-                )
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelZero"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelZero", "avg_time_us": 0.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 0.0)
 
     def test_read_profiler_metrics_falls_back_to_op_statistic_when_operator_details_is_missing(self) -> None:
         module = load_bench_runtime_module()
@@ -766,7 +761,6 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 1.0)
-        self.assertEqual(metrics["total_op_avg_time_us"], 5.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_is_missing(self) -> None:
         module = load_bench_runtime_module()
@@ -775,10 +769,10 @@ def build_bench_case_fn(operator_api, case):
             (profile_root / "kernel_details.csv").write_text(
                 "\n".join(
                     [
-                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
-                        "6,KernelA,9.0,0,3",
-                        "7,KernelA,6.0,0,3",
-                        "8,KernelB,3.0,0,1",
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelA,9.0,0,3",
+                        "KernelA,6.0,0,3",
+                        "KernelB,3.0,0,1",
                     ]
                 )
                 + "\n",
@@ -799,7 +793,6 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
-        self.assertEqual(metrics["total_op_avg_time_us"], 6.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_total_is_zero(self) -> None:
         module = load_bench_runtime_module()
@@ -819,10 +812,8 @@ def build_bench_case_fn(operator_api, case):
             (profile_root / "kernel_details.csv").write_text(
                 "\n".join(
                     [
-                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
-                        "6,KernelFromKernelDetails,5.0,0,3",
-                        "7,KernelFromKernelDetails,5.0,0,3",
-                        "8,KernelFromKernelDetails,5.0,0,3",
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelFromKernelDetails,15.0,0,3",
                     ]
                 )
                 + "\n",
@@ -852,71 +843,6 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
-        self.assertEqual(metrics["total_op_avg_time_us"], 5.0)
-
-    def test_read_profiler_metrics_falls_back_to_op_statistic_with_kernel_suffix_alias(self) -> None:
-        module = load_bench_runtime_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            profile_root = Path(tmp)
-            (profile_root / "op_statistic.csv").write_text(
-                "\n".join(
-                    [
-                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
-                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
-                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            metrics = module._read_profiler_metrics(
-                profile_root,
-                active_count=2,
-                kernel_names=["KernelA"],
-            )
-
-        self.assertEqual(
-            metrics["ops"],
-            [
-                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
-                {"op_type": "HelperKernel", "avg_time_us": 3.5},
-            ],
-        )
-        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
-        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
-
-    def test_read_profiler_metrics_op_statistic_fallback_prefers_active_count_over_count_proxy(self) -> None:
-        module = load_bench_runtime_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            profile_root = Path(tmp)
-            (profile_root / "op_statistic.csv").write_text(
-                "\n".join(
-                    [
-                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
-                        "0,engram_hash_kernel_kernel,MIX_AIC,45,9227.36,204.78,205.052,205.34,56.884",
-                        "0,BroadcastTo,AI_VECTOR_CORE,180,1913.52,5.72,10.63,16.4,11.796",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            metrics = module._read_profiler_metrics(
-                profile_root,
-                active_count=50,
-                kernel_names=["engram_hash_kernel"],
-            )
-
-        self.assertAlmostEqual(metrics["kernel_avg_time_us"], 184.5472, places=6)
-        self.assertEqual(
-            metrics["ops"],
-            [
-                {"op_type": "engram_hash_kernel_kernel", "avg_time_us": 184.5472},
-                {"op_type": "BroadcastTo", "avg_time_us": 38.2704},
-            ],
-        )
-        self.assertAlmostEqual(metrics["total_op_avg_time_us"], 222.8176, places=6)
 
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_bench_runtime_module()
@@ -934,12 +860,12 @@ def build_bench_case_fn(operator_api, case):
             def __exit__(self, exc_type, exc, tb):
                 del exc_type, exc, tb
                 self.profile_root.mkdir(parents=True, exist_ok=True)
-                csv_path = self.profile_root / "kernel_details.csv"
+                csv_path = self.profile_root / "operator_details.csv"
                 csv_path.write_text(
                     "\n".join(
                         [
-                            "Name,Duration(us),Wait Time(us),Block Dim",
-                            "KernelA,4.0,0,1",
+                            "Name,Device Self Duration(us),Count",
+                            "KernelA,4.0,1",
                         ]
                     )
                     + "\n",
@@ -1033,11 +959,11 @@ def build_bench_case_fn(operator_api, case):
             def __exit__(self, exc_type, exc, tb):
                 del exc_type, exc, tb
                 self.profile_root.mkdir(parents=True, exist_ok=True)
-                (self.profile_root / "kernel_details.csv").write_text(
+                (self.profile_root / "operator_details.csv").write_text(
                     "\n".join(
                         [
-                            "Name,Duration(us),Wait Time(us),Block Dim",
-                            "KernelA,4.0,0,1",
+                            "Name,Device Self Duration(us),Count",
+                            "KernelA,4.0,1",
                         ]
                     )
                     + "\n",
@@ -1116,166 +1042,6 @@ def build_bench_case_fn(operator_api, case):
         self.assertIsNone(error_message)
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(stderr.getvalue(), "")
-
-    def test_profile_case_with_profiler_preserves_active_iterations_after_warmup(self) -> None:
-        module = load_bench_runtime_module()
-        per_iteration_us = 4.0
-
-        class _FakeProfilerAction:
-            NONE = "NONE"
-            WARMUP = "WARMUP"
-            RECORD = "RECORD"
-            RECORD_AND_SAVE = "RECORD_AND_SAVE"
-
-        class _FakeSchedule:
-            def __init__(
-                self,
-                *,
-                wait: int,
-                warmup: int,
-                active: int,
-                repeat: int = 0,
-                skip_first: int = 0,
-                skip_first_wait: int = 0,
-            ) -> None:
-                self.wait = wait
-                self.warmup = warmup
-                self.active = active
-                self.repeat = repeat
-                self.skip_first = skip_first
-                self.skip_first_wait = skip_first_wait
-
-            def __call__(self, step: int) -> str:
-                if step < self.skip_first:
-                    return _FakeProfilerAction.NONE
-                step -= self.skip_first
-                if self.skip_first_wait != 0:
-                    step += self.wait
-                num_steps = self.wait + self.warmup + self.active
-                if self.repeat > 0 and step / num_steps >= self.repeat:
-                    return _FakeProfilerAction.NONE
-                mod_step = step % num_steps
-                if mod_step < self.wait:
-                    return _FakeProfilerAction.NONE
-                if mod_step < self.wait + self.warmup:
-                    return _FakeProfilerAction.WARMUP
-                if mod_step < num_steps - 1:
-                    return _FakeProfilerAction.RECORD
-                return _FakeProfilerAction.RECORD_AND_SAVE
-
-        class _FakeProfilerContext:
-            def __init__(self, profile_root: Path, schedule_fn, on_trace_ready):
-                self.profile_root = profile_root
-                self.schedule_fn = schedule_fn
-                self.on_trace_ready = on_trace_ready
-                self.step_num = 0
-                self.current_action = self.schedule_fn(self.step_num)
-                self.recorded_iterations = 0
-
-            def __enter__(self):
-                _FakeProfilerApi.current_context = self
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                del exc_type, exc, tb
-                _FakeProfilerApi.current_context = None
-                self.profile_root.mkdir(parents=True, exist_ok=True)
-                (self.profile_root / "kernel_details.csv").write_text(
-                    "\n".join(
-                        [
-                            "Name,Duration(us),Wait Time(us),Block Dim",
-                            f"KernelA,{self.recorded_iterations * per_iteration_us},0,1",
-                        ]
-                    )
-                    + "\n",
-                    encoding="utf-8",
-                )
-                if callable(self.on_trace_ready):
-                    self.on_trace_ready()
-                return False
-
-            def step(self):
-                self.step_num += 1
-                self.current_action = self.schedule_fn(self.step_num)
-
-        class _FakeProfilerApi:
-            profile_root: Optional[Path] = None
-            current_context: Optional[_FakeProfilerContext] = None
-
-            class _ExperimentalConfig:
-                def __init__(self, **kwargs):
-                    del kwargs
-
-            class ProfilerLevel:
-                Level1 = object()
-
-            class ProfilerActivity:
-                NPU = object()
-                CPU = object()
-
-            @staticmethod
-            def schedule(**kwargs):
-                return _FakeSchedule(**kwargs)
-
-            @staticmethod
-            def tensorboard_trace_handler(profile_root: str):
-                _FakeProfilerApi.profile_root = Path(profile_root)
-
-                def _handler():
-                    Path(profile_root).mkdir(parents=True, exist_ok=True)
-
-                return _handler
-
-            @staticmethod
-            def profile(**kwargs):
-                profile_root = _FakeProfilerApi.profile_root
-                if profile_root is None:
-                    raise AssertionError("expected tensorboard_trace_handler to set profile_root")
-                return _FakeProfilerContext(
-                    profile_root,
-                    kwargs["schedule"],
-                    kwargs["on_trace_ready"],
-                )
-
-        def _run_case() -> None:
-            ctx = _FakeProfilerApi.current_context
-            if ctx is None:
-                return
-            if ctx.current_action in (
-                _FakeProfilerAction.RECORD,
-                _FakeProfilerAction.RECORD_AND_SAVE,
-            ):
-                ctx.recorded_iterations += 1
-
-        fake_torch = SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
-        fake_torch_npu = SimpleNamespace(profiler=_FakeProfilerApi())
-        case = module.BenchCase(
-            case_id="case-a",
-            fn=_run_case,
-            warmup=1,
-            repeats=3,
-            case_data={"id": "case-a"},
-        )
-        resolution = module.KernelResolution(kernel_names=["KernelA"], kernel_source="metadata")
-
-        with patch.dict(
-            "sys.modules",
-            {"torch": fake_torch, "torch_npu": fake_torch_npu},
-            clear=False,
-        ):
-            metrics, error_message = module._profile_case_with_profiler(
-                case,
-                resolution,
-                Path(tempfile.mkdtemp()) / "profile",
-            )
-
-        self.assertIsNone(error_message)
-        self.assertIsNotNone(metrics)
-        self.assertEqual(
-            metrics["ops"],
-            [{"op_type": "KernelA", "avg_time_us": per_iteration_us}],
-        )
-        self.assertEqual(metrics["kernel_avg_time_us"], per_iteration_us)
 
     # ------------------------------------------------------------------
     # perf-counter timing functions
@@ -1446,31 +1212,6 @@ def build_bench_case_fn(operator_api, case):
         self.assertIn('"case_wall_clock_seconds":', perf_text)
         self.assertIn('"bench_mode":"perf-counter"', perf_text)
         self.assertIn('"case_label":"case-fail"', perf_text)
-
-
-class ExecuteBenchCaseIterationsTests(unittest.TestCase):
-    def _run(self, *, iterations: Optional[int]) -> int:
-        module = load_bench_runtime_module()
-        call_count = 0
-
-        def _fn() -> None:
-            nonlocal call_count
-            call_count += 1
-
-        fake_case = SimpleNamespace(case_id="case-a", fn=_fn)
-        with patch.object(module, "load_bench_cases", return_value=([fake_case], object())), patch.object(
-            module, "select_bench_case", return_value=fake_case
-        ), patch.object(module, "_synchronize"):
-            kwargs = {} if iterations is None else {"iterations": iterations}
-            result = module.execute_bench_case(Path("bench.py"), Path("op.py"), "case-a", **kwargs)
-        self.assertEqual(result["return_code"], 0)
-        return call_count
-
-    def test_defaults_to_single_invocation(self) -> None:
-        self.assertEqual(self._run(iterations=None), 1)
-
-    def test_runs_requested_iteration_count(self) -> None:
-        self.assertEqual(self._run(iterations=55), 55)
 
 
 if __name__ == "__main__":

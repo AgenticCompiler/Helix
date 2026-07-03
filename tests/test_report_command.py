@@ -13,8 +13,8 @@ from triton_agent.cli import build_parser
 from triton_agent.commands.report import handle_report
 from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.staging import SkillLinkSet
+from triton_agent.show_output_log import show_output_log_path
+from triton_agent.skills import SkillLinkSet
 
 
 def _dummy_resolve_staged_skills(*args, **kwargs):

@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import json
 
-from triton_agent.paths import skills_root
+from triton_agent.resources import skills_root
 
 
 _BASELINE_CONTRACT_PATH = (
     skills_root()
     / "common"
-    / "ascend-npu-optimize-state"
+    / "ascend-npu-optimize-submit-baseline"
     / "references"
-    / "baseline-contract.json"
+    / "contract.json"
 )
 _ROUND_CONTRACT_PATH = (
     skills_root()
     / "common"
-    / "ascend-npu-optimize-state"
+    / "ascend-npu-optimize-submit-round"
     / "references"
-    / "round-contract.json"
+    / "contract.json"
 )
 _BASELINE_CONTRACT_DATA = json.loads(_BASELINE_CONTRACT_PATH.read_text(encoding="utf-8"))
 _ROUND_CONTRACT_DATA = json.loads(_ROUND_CONTRACT_PATH.read_text(encoding="utf-8"))

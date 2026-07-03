@@ -13,13 +13,9 @@ class PerfOpRow(TypedDict):
     avg_time_us: float
 
 
-class PerfMetricsRequired(TypedDict):
+class PerfMetrics(TypedDict):
     kernel_avg_time_us: float | None
     ops: list[PerfOpRow]
-
-
-class PerfMetrics(PerfMetricsRequired, total=False):
-    total_op_avg_time_us: float | None
 
 
 @dataclass(frozen=True)
@@ -50,19 +46,6 @@ class PerfParseOutcome:
     skipped_latency_errors: dict[str, str]
 
 
-@dataclass(frozen=True)
-class PerfPairOutcome:
-    baseline_entries: dict[str, PerfEntry]
-    compare_entries: dict[str, PerfEntry]
-    skipped_latency_errors: dict[str, str]
-
-
-@dataclass(frozen=True)
-class MetricSourceSectionResult:
-    metric_source: str
-    rendered_output: str
-
-
 class PerfValueMap(dict[str, float]):
     def __init__(
         self,
@@ -75,9 +58,6 @@ class PerfValueMap(dict[str, float]):
 
 
 RequiredLatencyIds = Union[Collection[str], dict[str, PerfEntry], PerfValueMap]
-PerfPairValues = tuple[dict[str, float], dict[str, float], dict[str, ComparisonMode]]
-RequiredLatencyIdResolution = tuple[set[str], dict[str, ComparisonMode]]
-PerfMetricSummary = tuple[float | None, float | None]
 
 
 def _read_bench_mode_from_jsonl(path: Path) -> str | None:
@@ -169,24 +149,14 @@ def compare_perf_files(
         print(f"FAIL: {exc}")
         return 1
 
-    try:
-        pair_outcome = _normalize_perf_pair_for_comparison(
-            baseline_perf=baseline_perf,
-            compare_perf=compare_perf,
-            baseline_entries=baseline_outcome.entries,
-            compare_entries=compare_outcome.entries,
-            metric_source=metric_source,
-            tolerate_latency_errors=skip_latency_errors,
-        )
-    except ValueError as exc:
-        print(f"FAIL: {exc}")
-        return 1
-    comparable_ids = sorted(set(pair_outcome.baseline_entries) & set(pair_outcome.compare_entries))
+    comparable_ids = sorted(set(baseline_outcome.entries) & set(compare_outcome.entries))
     baseline = {
-        latency_id: pair_outcome.baseline_entries[latency_id].numeric_value for latency_id in comparable_ids
+        latency_id: baseline_outcome.entries[latency_id].numeric_value
+        for latency_id in comparable_ids
     }
     compare = {
-        latency_id: pair_outcome.compare_entries[latency_id].numeric_value for latency_id in comparable_ids
+        latency_id: compare_outcome.entries[latency_id].numeric_value
+        for latency_id in comparable_ids
     }
     invalid_metric_errors = _collect_invalid_metric_errors(
         baseline,
@@ -200,11 +170,11 @@ def compare_perf_files(
                 latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
             ]
             baseline = {
-                latency_id: pair_outcome.baseline_entries[latency_id].numeric_value
+                latency_id: baseline_outcome.entries[latency_id].numeric_value
                 for latency_id in comparable_ids
             }
             compare = {
-                latency_id: pair_outcome.compare_entries[latency_id].numeric_value
+                latency_id: compare_outcome.entries[latency_id].numeric_value
                 for latency_id in comparable_ids
             }
         else:
@@ -215,8 +185,8 @@ def compare_perf_files(
     for latency_id in comparable_ids:
         baseline_value = baseline[latency_id]
         compare_value = compare[latency_id]
-        baseline_display = pair_outcome.baseline_entries[latency_id].display_value
-        compare_display = pair_outcome.compare_entries[latency_id].display_value
+        baseline_display = baseline_outcome.entries[latency_id].display_value
+        compare_display = compare_outcome.entries[latency_id].display_value
         print(
             f"{latency_id}: baseline={baseline_display}, "
             f"compare={compare_display}, "
@@ -226,13 +196,12 @@ def compare_perf_files(
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
     compared_entries = {
-        latency_id: pair_outcome.baseline_entries[latency_id] for latency_id in comparable_ids
+        latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
     }
     print(f"Metric source: {_summarize_metric_source(compared_entries, metric_source=metric_source)}")
     skipped_latency_errors = {
         **baseline_outcome.skipped_latency_errors,
         **compare_outcome.skipped_latency_errors,
-        **pair_outcome.skipped_latency_errors,
         **invalid_metric_errors,
     }
     if skipped_latency_errors:
@@ -256,7 +225,7 @@ def _compare_perf_files_all(
         print(f"FAIL: {exc}")
         return 1
     exit_codes: list[int] = []
-    section_results: list[MetricSourceSectionResult] = []
+    section_results: list[tuple[str, str]] = []
     for section_metric_source in ("kernel", "total-op"):
         try:
             baseline_outcome = _parse_perf_entries_for_comparison(
@@ -272,38 +241,22 @@ def _compare_perf_files_all(
             )
         except ValueError as exc:
             section_results.append(
-                MetricSourceSectionResult(
-                    metric_source=section_metric_source,
-                    rendered_output=f"Metric source section: {section_metric_source}\nunavailable: {exc}\n",
+                (
+                    section_metric_source,
+                    f"Metric source section: {section_metric_source}\nunavailable: {exc}\n",
                 )
             )
             exit_codes.append(1)
             continue
 
-        try:
-            pair_outcome = _normalize_perf_pair_for_comparison(
-                baseline_perf=baseline_perf,
-                compare_perf=compare_perf,
-                baseline_entries=baseline_outcome.entries,
-                compare_entries=compare_outcome.entries,
-                metric_source=cast(MetricSource, section_metric_source),
-                tolerate_latency_errors=skip_latency_errors,
-            )
-        except ValueError as exc:
-            section_results.append(
-                MetricSourceSectionResult(
-                    metric_source=section_metric_source,
-                    rendered_output=f"Metric source section: {section_metric_source}\nFAIL: {exc}\n",
-                )
-            )
-            exit_codes.append(1)
-            continue
-        comparable_ids = sorted(set(pair_outcome.baseline_entries) & set(pair_outcome.compare_entries))
+        comparable_ids = sorted(set(baseline_outcome.entries) & set(compare_outcome.entries))
         baseline = {
-            latency_id: pair_outcome.baseline_entries[latency_id].numeric_value for latency_id in comparable_ids
+            latency_id: baseline_outcome.entries[latency_id].numeric_value
+            for latency_id in comparable_ids
         }
         compare = {
-            latency_id: pair_outcome.compare_entries[latency_id].numeric_value for latency_id in comparable_ids
+            latency_id: compare_outcome.entries[latency_id].numeric_value
+            for latency_id in comparable_ids
         }
         invalid_metric_errors = _collect_invalid_metric_errors(
             baseline,
@@ -317,22 +270,20 @@ def _compare_perf_files_all(
                     latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
                 ]
                 baseline = {
-                    latency_id: pair_outcome.baseline_entries[latency_id].numeric_value
+                    latency_id: baseline_outcome.entries[latency_id].numeric_value
                     for latency_id in comparable_ids
                 }
                 compare = {
-                    latency_id: pair_outcome.compare_entries[latency_id].numeric_value
+                    latency_id: compare_outcome.entries[latency_id].numeric_value
                     for latency_id in comparable_ids
                 }
             else:
                 first_latency_id = sorted(invalid_metric_errors)[0]
                 section_results.append(
-                    MetricSourceSectionResult(
-                        metric_source=section_metric_source,
-                        rendered_output=(
-                            "Metric source section: "
-                            f"{section_metric_source}\nFAIL: {invalid_metric_errors[first_latency_id]}\n"
-                        ),
+                    (
+                        section_metric_source,
+                        "Metric source section: "
+                        f"{section_metric_source}\nFAIL: {invalid_metric_errors[first_latency_id]}\n",
                     )
                 )
                 exit_codes.append(1)
@@ -341,8 +292,8 @@ def _compare_perf_files_all(
         for latency_id in comparable_ids:
             baseline_value = baseline[latency_id]
             compare_value = compare[latency_id]
-            baseline_display = pair_outcome.baseline_entries[latency_id].display_value
-            compare_display = pair_outcome.compare_entries[latency_id].display_value
+            baseline_display = baseline_outcome.entries[latency_id].display_value
+            compare_display = compare_outcome.entries[latency_id].display_value
             lines.append(
                 f"{latency_id}: baseline={baseline_display}, "
                 f"compare={compare_display}, "
@@ -357,7 +308,6 @@ def _compare_perf_files_all(
         skipped_latency_errors = {
             **baseline_outcome.skipped_latency_errors,
             **compare_outcome.skipped_latency_errors,
-            **pair_outcome.skipped_latency_errors,
             **invalid_metric_errors,
         }
         if skipped_latency_errors:
@@ -370,15 +320,10 @@ def _compare_perf_files_all(
         else:
             lines.append(f"PASS: compared {len(baseline)} latency entries")
             exit_codes.append(0)
-        section_results.append(
-            MetricSourceSectionResult(
-                metric_source=section_metric_source,
-                rendered_output="\n".join(lines) + "\n",
-            )
-        )
+        section_results.append((section_metric_source, "\n".join(lines) + "\n"))
 
-    for section_result in section_results:
-        print(section_result.rendered_output, end="")
+    for _section_name, output in section_results:
+        print(output, end="")
     return 0 if section_results and all(code == 0 for code in exit_codes) else 1
 
 
@@ -432,58 +377,6 @@ def parse_required_perf_file_for_metric_source(
             latency_id: entry.comparison_mode for latency_id, entry in outcome.entries.items()
         },
     )
-
-
-def parse_perf_pair_for_comparison(
-    baseline_perf: Path,
-    compare_perf: Path,
-    *,
-    metric_source: MetricSource = "auto",
-) -> PerfPairValues:
-    if metric_source == "all":
-        raise ValueError("parse_perf_pair_for_comparison does not support metric_source='all'")
-    _check_cross_mode(baseline_perf, compare_perf)
-    baseline_outcome = _parse_perf_entries_for_comparison(
-        baseline_perf,
-        skip_latency_errors=False,
-        metric_source=metric_source,
-    )
-    compare_outcome = _parse_required_perf_entries_for_comparison(
-        compare_perf,
-        baseline_outcome.entries,
-        skip_latency_errors=False,
-        metric_source=metric_source,
-    )
-    pair_outcome = _normalize_perf_pair_for_comparison(
-        baseline_perf=baseline_perf,
-        compare_perf=compare_perf,
-        baseline_entries=baseline_outcome.entries,
-        compare_entries=compare_outcome.entries,
-        metric_source=metric_source,
-        tolerate_latency_errors=False,
-    )
-    baseline_values = {
-        latency_id: entry.numeric_value
-        for latency_id, entry in pair_outcome.baseline_entries.items()
-    }
-    compare_values = {
-        latency_id: entry.numeric_value
-        for latency_id, entry in pair_outcome.compare_entries.items()
-    }
-    invalid_metric_errors = _collect_invalid_metric_errors(
-        baseline_values,
-        compare_values,
-        baseline_perf=baseline_perf,
-        compare_perf=compare_perf,
-    )
-    if invalid_metric_errors:
-        first_latency_id = sorted(invalid_metric_errors)[0]
-        raise ValueError(invalid_metric_errors[first_latency_id])
-    comparison_modes: dict[str, ComparisonMode] = {
-        latency_id: entry.comparison_mode
-        for latency_id, entry in pair_outcome.baseline_entries.items()
-    }
-    return baseline_values, compare_values, comparison_modes
 
 
 def perf_output_path(operator_file: Path) -> Path:
@@ -571,10 +464,7 @@ def render_perf_case_record_jsonl(
     if metrics is not None:
         kernel_avg_time_us = metrics["kernel_avg_time_us"]
         ops = metrics["ops"]
-        explicit_total_op_avg_time_us = metrics.get("total_op_avg_time_us")
-        if explicit_total_op_avg_time_us is not None:
-            total_op_avg_time_us = explicit_total_op_avg_time_us
-        elif ops:
+        if ops:
             total_op_avg_time_us = sum(op["avg_time_us"] for op in ops)
         elif record.bench_mode == "perf-counter":
             total_op_avg_time_us = kernel_avg_time_us
@@ -974,7 +864,7 @@ def _parse_latency_errors(path: Path, lines: list[str]) -> dict[str, str]:
 
 def _resolve_required_latency_requirements(
     required_latency_ids: RequiredLatencyIds,
-) -> RequiredLatencyIdResolution:
+) -> tuple[set[str], dict[str, ComparisonMode]]:
     required_ids = set(required_latency_ids)
     comparison_modes: dict[str, ComparisonMode] = {
         latency_id: "latency" for latency_id in required_ids
@@ -1024,21 +914,6 @@ def _legacy_msprof_latency_id_alias(latency_id: str) -> str | None:
         if case_index.isdigit():
             return f"latency-case-{case_index}"
     return None
-
-
-def _rebuild_entry_for_mode(
-    path: Path,
-    latency_id: str,
-    *,
-    target_mode: ComparisonMode,
-) -> PerfEntry:
-    metric_source: MetricSource = "kernel" if target_mode == "latency" else "total-op"
-    return _parse_required_perf_entries_for_comparison(
-        path,
-        {latency_id},
-        skip_latency_errors=False,
-        metric_source=metric_source,
-    ).entries[latency_id]
 
 
 def _require_raw_total(
@@ -1172,59 +1047,10 @@ def _collect_invalid_metric_errors(
     return errors
 
 
-def _normalize_perf_pair_for_comparison(
-    *,
-    baseline_perf: Path,
-    compare_perf: Path,
-    baseline_entries: dict[str, PerfEntry],
-    compare_entries: dict[str, PerfEntry],
-    metric_source: MetricSource,
-    tolerate_latency_errors: bool,
-) -> PerfPairOutcome:
-    if metric_source != "auto":
-        return PerfPairOutcome(
-            baseline_entries=dict(baseline_entries),
-            compare_entries=dict(compare_entries),
-            skipped_latency_errors={},
-        )
-
-    normalized_baseline = dict(baseline_entries)
-    normalized_compare = dict(compare_entries)
-    skipped_latency_errors: dict[str, str] = {}
-    shared_ids = sorted(set(normalized_baseline) & set(normalized_compare))
-    for latency_id in shared_ids:
-        baseline_entry = normalized_baseline[latency_id]
-        compare_entry = normalized_compare[latency_id]
-        if baseline_entry.comparison_mode == compare_entry.comparison_mode:
-            continue
-        try:
-            normalized_baseline[latency_id] = _rebuild_entry_for_mode(
-                baseline_perf,
-                latency_id,
-                target_mode="total-op",
-            )
-            normalized_compare[latency_id] = _rebuild_entry_for_mode(
-                compare_perf,
-                latency_id,
-                target_mode="total-op",
-            )
-        except ValueError as exc:
-            if not tolerate_latency_errors:
-                raise
-            skipped_latency_errors[latency_id] = str(exc)
-            normalized_baseline.pop(latency_id, None)
-            normalized_compare.pop(latency_id, None)
-    return PerfPairOutcome(
-        baseline_entries=normalized_baseline,
-        compare_entries=normalized_compare,
-        skipped_latency_errors=skipped_latency_errors,
-    )
-
-
 def _summarize_perf_metrics(
     baseline: dict[str, float],
     compare: dict[str, float],
-) -> PerfMetricSummary:
+) -> tuple[float | None, float | None]:
     pairs = [(baseline[latency_id], compare[latency_id]) for latency_id in sorted(baseline)]
     if not pairs:
         return None, None

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Callable, Optional
 
-from triton_agent.trace.core import new_trace_run_id
+from triton_agent.otel_trace import new_trace_run_id
 
 
 @dataclass

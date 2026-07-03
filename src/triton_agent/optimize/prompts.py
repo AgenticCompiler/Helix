@@ -17,29 +17,6 @@ def _display_path(path: Path) -> str:
     return path.as_posix()
 
 
-def _supports_ir_attribution(language: str) -> bool:
-    return language == "triton"
-
-
-def _supports_compiler_source_analysis(language: str) -> bool:
-    return language == "triton"
-
-
-def _analysis_ladder(language: str) -> tuple[str, ...]:
-    if _supports_ir_attribution(language):
-        return (
-            "pattern triage",
-            "profiling diagnosis",
-            "IR attribution",
-            "compiler-source escalation",
-        )
-    return ("pattern triage", "profiling diagnosis")
-
-
-def _analysis_ladder_text(language: str) -> str:
-    return ", ".join(_analysis_ladder(language))
-
-
 def strict_learned_lessons_lines(*, language: str) -> list[str]:
     return [
         _resolve(
@@ -60,40 +37,26 @@ def sequential_round_execution_lines() -> list[str]:
     ]
 
 
-def next_round_reflection_lines(*, language: str = "triton") -> list[str]:
-    lines = [
-        "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand before opening the next round.",
-        "That `start-round` call initializes the next round's workflow-owned `round_strategy`, `analysis_policy`, and `reason`.",
+def next_round_reflection_lines() -> list[str]:
+    return [
+        "Use the staged `ascend-npu-optimize-start-round` skill before opening the next round.",
         "Before editing code for the next round, stop and reflect on the best entrypoint.",
         "Choose which operator, kernel path, or wrapper bottleneck should anchor the round before making the next code change.",
         "Decide whether existing benchmark and compare-perf evidence is already sufficient or whether profiling is needed first.",
+        "Escalate to IR only after profiler evidence narrows the bottleneck but still does not explain it.",
+        "Use compiler-source analysis only after profiler and IR evidence have narrowed a concrete compiler-side question.",
         "Do not use agents or subagents to optimize multiple rounds in parallel; keep the optimize session one round at a time.",
         "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead. "
         "Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. "
         "This is cheating behavior and is strictly prohibited.",
     ]
-    if _supports_ir_attribution(language):
-        lines.insert(
-            4,
-            "Escalate to IR only after profiler evidence narrows the bottleneck but still does not explain it.",
-        )
-    if _supports_compiler_source_analysis(language):
-        insert_at = 5 if _supports_ir_attribution(language) else 4
-        lines.insert(
-            insert_at,
-            "Use compiler-source analysis only after profiler and IR evidence have narrowed a concrete compiler-side question.",
-        )
-    return lines
 
 
 def layered_analysis_lines(*, round_scope: str, language: str = "triton") -> list[str]:
-    lines = [
+    return [
         f"Choose the analysis level for {round_scope} before editing code.",
-        "Treat the active round strategy state in the runner-managed workflow state as the authority for the latest `round_strategy`, `analysis_policy`, and `reason`.",
-        "Treat structured `State Update` blocks in `opt-round-N/attempts.md` as script-written history mirrors rather than manual bookkeeping.",
-        "If the active round's intent or required evidence depth changes mid-round, use the staged `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand before continuing edits.",
         "Record the round's primary analysis level separately from its supporting evidence.",
-        f"Escalate analysis in this order: {_analysis_ladder_text(language)}.",
+        "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
         _resolve("Use the staged `{language}-npu-optimize-knowledge` skill for generic pattern and symptom references.", language=language),
         "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
@@ -101,28 +64,12 @@ def layered_analysis_lines(*, round_scope: str, language: str = "triton") -> lis
         _resolve("Read the staged `{language}-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.", language=language),
         "Inspect the operator file directly when code structure is still unclear at pattern triage.",
         "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
-        _resolve(
-            (
-                "Use the staged `{language}-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists."
-                if _supports_ir_attribution(language)
-                else "Use the staged `{language}-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler evidence exists."
-            ),
-            language=language,
-        ),
+        _resolve("Use the staged `{language}-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.", language=language),
+        "Use IR attribution only after profiler-backed symptoms need explanation.",
+        "Use compiler-source escalation only when profiler and IR evidence have already narrowed the issue.",
         "When starting from a deeper level, cite the reused evidence path and explain why the shallower level is already established or insufficient.",
         "Do not begin with blind tiling or launch-parameter search.",
     ]
-    if _supports_ir_attribution(language):
-        lines.insert(
-            -2,
-            "Use IR attribution only after profiler-backed symptoms need explanation.",
-        )
-    if _supports_compiler_source_analysis(language):
-        lines.insert(
-            -2,
-            "Use compiler-source escalation only when profiler and IR evidence have already narrowed the issue.",
-        )
-    return lines
 
 
 def compiler_source_analysis_lines(
@@ -131,8 +78,6 @@ def compiler_source_analysis_lines(
     compiler_source_commit: str | None,
     language: str = "triton",
 ) -> list[str]:
-    if not _supports_compiler_source_analysis(language):
-        return []
     if compiler_source_path is None or compiler_source_commit is None:
         return []
     return [
@@ -155,7 +100,7 @@ def cann_ext_api_lines(*, enabled: bool, language: str) -> list[str]:
             language=language,
         ),
         _resolve(
-            "Use the staged `{language}-npu-cann-ext-api-patterns` skill for the specialized optimization pattern guidance.",
+            "Use the staged `{language}-npu-cann-ext-api-patterns` skill for the specialized A5-only pattern guidance.",
             language=language,
         ),
         "Treat these extension APIs and patterns as a high-value optimization direction when the kernel structure matches.",
@@ -208,17 +153,17 @@ def _shared_optimize_prompt_lines(
     language: str,
     enable_subagent: bool = False,
 ) -> list[str]:
-    lines = [
+    return [
         *optimize_target_lines(optimize_target=optimize_target, language=language),
         "Use the staged `ascend-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
         optimize_check_line,
         *(
-            optimize_subagent_recommendation_lines(language=language)
+            optimize_subagent_recommendation_lines()
             if enable_subagent
             else []
         ),
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline preparation is needed, use the staged `ascend-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `ascend-npu-optimize-state` `submit-baseline`.",
+        "If baseline preparation is needed, use the staged `ascend-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `ascend-npu-optimize-submit-baseline`.",
         "For each round, write the optimized operator snapshot as `opt_<original-operator>.py` inside `opt-round-N/`.",
         "For each round, keep the benchmark artifact as `opt_<original-operator>_perf.txt` inside `opt-round-N/`, ensure that file is generated by the `ascend-npu-run-eval` skill's `run-bench` flow, and record that exact filename in `round-state.json`.",
         "Use `baseline/<operator>_perf.txt` for canonical performance comparisons.",
@@ -226,37 +171,18 @@ def _shared_optimize_prompt_lines(
         "Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source` using one of: `kernel`, `total-op`, or `mixed`.",
         "Do not read staged skill implementation files under skills/*/scripts/ unless debugging, patching, or verifying that helper behavior.",
         "Prefer SKILL.md and references/*.md for workflow guidance.",
-        (
-            "Use the staged `ascend-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence."
-            if _supports_ir_attribution(language)
-            else "Use the staged `ascend-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profiler evidence."
-        ),
+        "Use the staged `ascend-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
         "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
-        *(
-            [
-                "Use `{language}-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `ascend-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
-            ]
-            if _supports_ir_attribution(language)
-            else []
-        ),
+        "Use `{language}-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `ascend-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
-        (
-            "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them."
-            if _supports_ir_attribution(language)
-            else "Explain what evidence supports the change, using benchmark behavior, profiling, code structure, or a combination of them."
-        ),
-        (
-            "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient."
-            if _supports_ir_attribution(language)
-            else "If you skip profiling for a round, explain why the existing evidence is already sufficient."
-        ),
-        *layered_analysis_lines(round_scope="the round", language=language),
+        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(language=language),
         f"Target chip for this optimize session: {target_chip}.",
         f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
     ]
-    return lines
 
 
 def _finalize_optimize_prompt_lines(
@@ -272,7 +198,6 @@ def _finalize_optimize_prompt_lines(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            language=language,
         )
     )
     lines.extend(cann_ext_api_lines(enabled=enable_cann_ext_api, language=language))
@@ -337,15 +262,11 @@ def build_optimize_supervisor_prompt(
             [
                 "Apply only metadata repairs derived from existing facts.",
                 "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
-                "Read the staged `{language}-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, and `ascend-npu-optimize-state` skills as the workflow contract that the worker round was supposed to follow. In `ascend-npu-optimize-state`, baseline gating belongs to `submit-baseline`, round opening belongs to `start-round`, same-round strategy-state changes belong to `set-current-round-state`, and completed-round validation belongs to `submit-round`.",
-                f"Audit the worker against this analysis ladder: {_analysis_ladder_text(language)}.",
+                "Read the staged `{language}-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` skills as the workflow contract that the worker round was supposed to follow.",
+                "Audit the worker against this analysis ladder: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
                 "Require the recorded analysis level, escalation reason, and cited evidence path to agree with the round artifacts.",
                 "Read the latest `opt-round-N/attempts.md`, `summary.md`, and `round-state.json` before deciding anything.",
-                (
-                    "Read existing benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims."
-                    if _supports_ir_attribution(language)
-                    else "Read existing benchmark and profiler artifacts only when they already exist and are needed to verify the worker's recorded claims."
-                ),
+                "Read existing benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims.",
                 (
                     "Accept valid whole-operator restructuring when the optimize target is operator."
                     if optimize_target == "operator"
@@ -367,16 +288,8 @@ def build_optimize_supervisor_prompt(
                 "The CLI decides whether another round is required from the round-loop policy; do not encode stop-versus-continue in the supervisor report.",
                 "Do not edit the operator implementation.",
                 "Do not perform open-ended optimization work.",
-                (
-                    "Do not fabricate missing correctness, benchmark, profiler, or IR evidence."
-                    if _supports_ir_attribution(language)
-                    else "Do not fabricate missing correctness, benchmark, or profiler evidence."
-                ),
-                (
-                    "Do not launch new profiler or IR collection from the supervisor pass."
-                    if _supports_ir_attribution(language)
-                    else "Do not launch new profiler collection from the supervisor pass."
-                ),
+                "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
+                "Do not launch new profiler or IR collection from the supervisor pass.",
                 "Do not silently promote an invalid round to current best.",
             ]
         )
@@ -424,7 +337,7 @@ def build_optimize_resume_prompt(
         "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
-        *next_round_reflection_lines(language=language),
+        *next_round_reflection_lines(),
         *sequential_round_execution_lines(),
         *(
             [
@@ -434,11 +347,11 @@ def build_optimize_resume_prompt(
             else []
         ),
         *(
-            optimize_subagent_recommendation_lines(language=language)
+            optimize_subagent_recommendation_lines()
             if enable_subagent
             else []
         ),
-        *layered_analysis_lines(round_scope="the round", language=language),
+        *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(language=language),
     ]
     lines.extend(continuation_lines)
@@ -446,11 +359,11 @@ def build_optimize_resume_prompt(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            language=language,
         )
     )
     lines.extend(["", f"Progress summary:\n{summary}"])
     return _resolve("\n".join(lines), language=language)
+
 
 def build_optimize_round_prompt(
     input_path: Path,
@@ -499,15 +412,12 @@ def build_optimize_round_prompt(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
             optimize_check_line=(
-                "You must run the staged `ascend-npu-optimize-state` skill's `submit-round` subcommand after each completed round."
+                "You must run the staged `ascend-npu-optimize-submit-round` skill after each completed round."
             ),
             optimize_target=optimize_target,
             language=language,
             enable_subagent=enable_subagent,
         )
-    )
-    lines.append(
-        "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M` with the actual round numbers from this worker batch."
     )
     lines.append("Do not self-approve whether the optimize session should continue.")
     lines.append("Before each round, re-evaluate the next bottleneck and choose the right analysis depth from the current evidence.")
@@ -564,7 +474,6 @@ def build_optimize_baseline_prompt(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            language=language,
         )
     )
     context_lines.extend(cann_ext_api_lines(enabled=enable_cann_ext_api, language=language))
@@ -579,7 +488,7 @@ def build_optimize_baseline_prompt(
         [
             "",
             "Repair or establish `baseline/` before the round loop begins.",
-            "Use the staged `ascend-npu-optimize-state` skill's `submit-baseline` subcommand to submit the baseline until it passes.",
+            "Use the staged `ascend-npu-optimize-submit-baseline` skill to submit the baseline until it passes.",
             "Do not open a new optimization round yet.",
         ]
     )

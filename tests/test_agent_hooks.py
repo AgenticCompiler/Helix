@@ -42,10 +42,9 @@ class AgentHookStageTests(unittest.TestCase):
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
             self.assertFalse((templates_root / "codex" / "policy.json").exists())
+            self.assertTrue((templates_root / "shared" / "tool_use_guard_policy.py").exists())
             self.assertTrue((templates_root / "codex" / "pretooluse_guard.py").exists())
             self.assertTrue((templates_root / "claude" / "pretooluse_guard.py").exists())
-            self.assertTrue((templates_root / "claude" / "settings.json").exists())
-            self.assertTrue((Path(__file__).resolve().parents[1] / "src" / "hook_runtime").is_dir())
 
             state = prepare_codex_hooks(templates_root, workspace)
 
@@ -53,16 +52,12 @@ class AgentHookStageTests(unittest.TestCase):
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             policy_json = hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
-            hook_runtime_dir = hook_dir / "hook_runtime"
-            pretooluse_adapter_module = hook_runtime_dir / "pretooluse_adapter.py"
-            tool_use_decision_module = hook_runtime_dir / "tool_use_decision.py"
+            guard_policy_module = hook_dir / "tool_use_guard_policy.py"
             trace_script = hook_dir / "tool_trace_hook.py"
             self.assertTrue(hooks_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
-            self.assertTrue(hook_runtime_dir.exists())
-            self.assertTrue(pretooluse_adapter_module.exists())
-            self.assertTrue(tool_use_decision_module.exists())
+            self.assertTrue(guard_policy_module.exists())
             self.assertTrue(trace_script.exists())
             self.assertEqual(state.created_paths, [hooks_json, hook_dir])
 
@@ -189,20 +184,12 @@ class AgentHookStageTests(unittest.TestCase):
             settings_json = hook_dir / "settings.json"
             policy_json = hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
-            hook_runtime_dir = hook_dir / "hook_runtime"
-            pretooluse_adapter_module = hook_runtime_dir / "pretooluse_adapter.py"
-            tool_use_decision_module = hook_runtime_dir / "tool_use_decision.py"
+            guard_policy_module = hook_dir / "tool_use_guard_policy.py"
             self.assertTrue(settings_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
-            self.assertTrue(hook_runtime_dir.exists())
-            self.assertTrue(pretooluse_adapter_module.exists())
-            self.assertTrue(tool_use_decision_module.exists())
+            self.assertTrue(guard_policy_module.exists())
             self.assertEqual(state.created_paths, [settings_json, hook_dir])
-            self.assertEqual(
-                settings_json.read_text(encoding="utf-8"),
-                (templates_root / "claude" / "settings.json").read_text(encoding="utf-8"),
-            )
 
             settings = json.loads(settings_json.read_text(encoding="utf-8"))
             self.assertEqual(
@@ -215,9 +202,9 @@ class AgentHookStageTests(unittest.TestCase):
                                 "type": "command",
                                 "command": "python3",
                                 "args": [
-                                    ".claude/triton-agent-hooks/pretooluse_guard.py",
+                                    str(guard_script),
                                     "--policy",
-                                    ".claude/triton-agent-hooks/policy.json",
+                                    str(policy_json),
                                 ],
                             }
                         ],

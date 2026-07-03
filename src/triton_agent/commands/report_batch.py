@@ -17,9 +17,9 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
 
-    agent_name = getattr(args, "agent", None) or "opencode"
+    agent_name = getattr(args, "agent", "codex")
     stream_output = bool(getattr(args, "stream_output", True))
-    concurrency = int(getattr(args, "concurrency", 1))
+    report_workers = int(getattr(args, "report_workers", 4))
 
     print(
         f"[report-batch] start batch report: root={root.as_posix()}, agent={agent_name}",
@@ -42,14 +42,14 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
 
     print(
         f"\n[report-batch] generating per-workspace report.md for {len(workspaces)} workspace(s) "
-        f"using agent={agent_name}, workers={concurrency}...",
+        f"using agent={agent_name}, workers={report_workers}...",
         file=sys.stderr,
         flush=True,
     )
 
     ok_count = 0
     fail_count = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, report_workers)) as executor:
         futures = {
             executor.submit(
                 generate_workspace_report,

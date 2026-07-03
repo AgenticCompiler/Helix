@@ -18,12 +18,15 @@ from triton_agent.optimize.recovery import (
     render_transient_recovery_note,
 )
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
-from triton_agent.skills.loader import load_skill_script_module
+from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
 )
-from triton_agent.optimize.workflow_state import render_optimize_phase_summary
+from triton_agent.optimize.workflow_state import (
+    bootstrap_optimize_workflow_state,
+    render_optimize_phase_summary,
+)
 from triton_agent.optimize.models import (
     BaselinePreflightResult,
     BaselinePreflightState,
@@ -35,20 +38,17 @@ from triton_agent.optimize.prompts import (
     build_optimize_baseline_prompt,
     build_optimize_supervisor_prompt,
 )
-from triton_agent.trace.core import (
+from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
+from triton_agent.otel_trace import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
 )
-from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
-    if request.staged_skill_names is None:
-        return False
-    language = getattr(request, "language", "triton") or "triton"
-    cann_ext_skill = f"{language}-npu-cann-ext-api-patterns"
-    return cann_ext_skill in request.staged_skill_names
+    return request.staged_skill_names is not None and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
 
 
 def _request_optimize_knowledge_skill_name(request: AgentRequest) -> str | None:
@@ -95,8 +95,8 @@ def _round_sort_key(name: str) -> tuple[int, str]:
 
 def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
     module = load_skill_script_module(
-        "ascend-npu-optimize-state",
-        "round/check",
+        "ascend-npu-optimize-submit-round",
+        "optimize_submit_round",
     )
     return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
 
@@ -200,6 +200,16 @@ def execute_multi_invocation_optimize(
         )
         if not request.interact:
             baseline_result = controller.preflight_baseline(request)
+            if (
+                baseline_result.state is BaselinePreflightState.READY
+                and artifacts_state.workflow_state_path is not None
+            ):
+                bootstrap_optimize_workflow_state(
+                    artifacts_state.workflow_state_path,
+                    run_id=artifacts_state.archive.run_id,
+                    source_operator=request.input_path,
+                    baseline_reused=True,
+                )
             if baseline_result.state is not BaselinePreflightState.READY:
                 baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
                 if not baseline_fix_result.succeeded:
@@ -225,6 +235,16 @@ def execute_multi_invocation_optimize(
         warnings = cleanup_session(artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
+        try:
+            cleaned_pt = cleanup_workspace_pt_files(request.workdir)
+            if request.verbose and cleaned_pt:
+                emit_verbose(
+                    verbose_stream,
+                    "agents",
+                    f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
+                )
+        except Exception:
+            pass
 
 
 class MultiInvocationOptimizeController:
@@ -303,20 +323,6 @@ class MultiInvocationOptimizeController:
         batch_start = request.current_round
         batch_end = request.final_round
         previous_batch_issues: str | None = None
-
-        if request.interact:
-            worker_request = self._request_with_fresh_batch_prompt(
-                request,
-                issues=None,
-                batch_start=batch_start,
-                batch_end=batch_end,
-            )
-            return self._run_request(
-                worker_request,
-                show_output_label=(
-                    f"batch-{worker_request.current_round}-{worker_request.final_round}-r1"
-                ),
-            )
 
         while batch_start <= min_rounds:
             worker_request = self._request_with_fresh_batch_prompt(
@@ -624,10 +630,22 @@ class MultiInvocationOptimizeController:
             show_output_label=show_output_label,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
-        if self._stdout is None and self._stderr is None:
-            result = self._runner.run(request)
-        else:
-            result = self._runner.run(request, stdout=self._stdout, stderr=self._stderr)
+        try:
+            if self._stdout is None and self._stderr is None:
+                result = self._runner.run(request)
+            else:
+                result = self._runner.run(request, stdout=self._stdout, stderr=self._stderr)
+        finally:
+            try:
+                cleaned_pt = cleanup_workspace_pt_files(request.workdir)
+                if request.verbose and cleaned_pt:
+                    emit_verbose(
+                        self._verbose_stream,
+                        "agents",
+                        f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
+                    )
+            except Exception:
+                pass
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
             label=launch_label,

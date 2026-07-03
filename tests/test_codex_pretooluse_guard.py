@@ -1,19 +1,16 @@
 import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 _MODULE_NAME = "codex_pretooluse_guard"
 
 
 def _load_guard_module():
-    guard_path = Path(__file__).resolve().parents[1] / "src" / "hook_runtime" / "tool_use_decision.py"
+    guard_path = Path(__file__).resolve().parents[1] / "hooks" / "shared" / "tool_use_guard_policy.py"
     spec = importlib.util.spec_from_file_location(_MODULE_NAME, guard_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load guard script: {guard_path}")
@@ -86,7 +83,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_staged_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -116,7 +113,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -131,7 +128,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_staged_claude_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -146,7 +143,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_claude_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -161,7 +158,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
@@ -176,7 +173,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _policy(workspace),
                 _payload(
                     workspace,
-                    "python3 .codex/skills/ascend-npu-run-eval/scripts/cli.py "
+                    "python3 .codex/skills/ascend-npu-run-eval/scripts/run-command.py "
                     "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
                     "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
                     "--bench-mode msprof 2>&1",
@@ -345,41 +342,44 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_baseline_phase_allows_native_write_to_regular_workspace_file(self) -> None:
+    def test_baseline_phase_allows_native_write_to_source_operator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            notes_file = workspace / "notes.md"
-            notes_file.write_text("draft\n", encoding="utf-8")
+            operator_file = workspace / "kernel.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
             _write_workflow_state(
                 workspace,
                 phase="baseline",
                 baseline_status="pending",
+                source_operator="kernel.py",
             )
             guard = _load_guard_module()
 
-            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(notes_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(operator_file))
 
             self.assertIsNone(reason)
 
-    def test_baseline_phase_blocks_native_write_to_hidden_runtime_state(self) -> None:
+    def test_baseline_phase_blocks_native_write_outside_baseline_minimal_set(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            runtime_state = workspace / ".triton-agent" / "state.json"
-            runtime_state.parent.mkdir(parents=True)
+            round_file = workspace / "opt-round-1" / "opt_kernel.py"
+            round_file.parent.mkdir(parents=True)
             _write_workflow_state(
                 workspace,
                 phase="baseline",
                 baseline_status="pending",
+                source_operator="kernel.py",
             )
             guard = _load_guard_module()
 
-            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(runtime_state))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             assert reason is not None
-            self.assertIn("protected", reason)
-            self.assertIn(".triton-agent/", reason)
+            self.assertIn("Current phase is baseline", reason)
+            self.assertIn("baseline-minimal", reason)
+            self.assertNotIn("First-version scope", reason)
 
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -391,6 +391,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 workspace,
                 phase="awaiting_round_start",
                 baseline_status="passed",
+                source_operator="kernel.py",
             )
             guard = _load_guard_module()
 
@@ -398,8 +399,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             assert reason is not None
             self.assertIn("awaiting_round_start", reason)
-            self.assertIn("ascend-npu-optimize-state", reason)
-            self.assertIn("start-round", reason)
+            self.assertIn("ascend-npu-optimize-start-round", reason)
 
     def test_round_active_allows_native_write_inside_current_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -411,6 +411,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
+                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -427,35 +428,6 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertIsNone(reason)
 
-    def test_round_active_allows_native_write_to_top_level_progress_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "workspace"
-            workspace.mkdir()
-            _write_workflow_state(
-                workspace,
-                phase="round_active",
-                baseline_status="passed",
-                current_round=2,
-                rounds={
-                    "2": {
-                        "status": "active",
-                        "round_dir": "opt-round-2",
-                        "started_at": "2026-06-23T08:00:00Z",
-                        "ended_at": None,
-                    }
-                },
-            )
-            guard = _load_guard_module()
-
-            for file_name in ("opt-note.md", "learned_lessons.md", "supervisor-report.md"):
-                with self.subTest(file_name=file_name):
-                    reason = guard.deny_reason_for_tool_use(
-                        _policy(workspace),
-                        _write_payload(workspace / file_name),
-                    )
-
-                    self.assertIsNone(reason)
-
     def test_round_active_blocks_native_write_outside_current_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -466,6 +438,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
+                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -483,9 +456,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             assert reason is not None
             self.assertIn("Current active round is opt-round-2", reason)
             self.assertIn("must stay inside `opt-round-2/`", reason)
-            self.assertIn("ascend-npu-optimize-state", reason)
-            self.assertIn("set-current-round-state", reason)
-            self.assertIn("submit-round", reason)
+            self.assertIn("ascend-npu-optimize-submit-round", reason)
 
     def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -628,6 +599,7 @@ def _write_workflow_state(
     *,
     phase: str,
     baseline_status: str,
+    source_operator: str,
     current_round: Optional[int] = None,
     rounds: Optional[dict[str, object]] = None,
 ) -> None:
@@ -637,6 +609,7 @@ def _write_workflow_state(
         "schema_version": 1,
         "run_id": "optimize-20260623-guard",
         "phase": phase,
+        "source_operator": source_operator,
         "current_round": current_round,
         "baseline": {
             "status": baseline_status,

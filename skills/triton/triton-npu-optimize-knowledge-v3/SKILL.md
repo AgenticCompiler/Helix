@@ -16,7 +16,7 @@ This skill is the generic optimize knowledge library for reusable pattern and sy
 - This skill does not own `opt-round-N/perf-analysis.md`, `attempts.md`, `summary.md`, or `opt-note.md`.
 - `triton-npu-optimize` owns optimize workflow and validation rules.
 - `triton-npu-analyze-round-performance` owns round-level performance diagnosis.
-- For evidence-to-pattern distillation, follow the `ascend-npu-distill-patterns` skill rather than inventing a local process.
+- For bench-log-to-pattern synthesis workflow (including full-card rewrites and removal of temporary inventory/narrative scaffolding), follow the `ascend-npu-kernel-bench-logs` skill rather than inventing a local process.
 - During synthesis rewrites, preserve valid pre-existing pattern knowledge (examples, technique catalogs, implementation notes) unless round evidence clearly invalidates it.
 
 ## Reading Order

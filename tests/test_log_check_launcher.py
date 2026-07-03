@@ -17,9 +17,9 @@ from triton_agent.log_check.log_check_launcher import (
     run_log_check,
 )
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.trace.core import TRACE_PATH_ENV
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.staging import SkillLinkSet
+from triton_agent.otel_trace import TRACE_PATH_ENV
+from triton_agent.show_output_log import show_output_log_path
+from triton_agent.skills import SkillLinkSet
 
 
 def _make_log_check_json() -> str:

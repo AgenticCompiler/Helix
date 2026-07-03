@@ -5,30 +5,27 @@ import sys
 from pathlib import Path
 
 from triton_agent.backends.factory import create_runner
-from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.models import CommandKind
-from triton_agent.terminal.render import render_result
+from triton_agent.output import render_result
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
-from triton_agent.paths import skills_root
+from triton_agent.resources import skills_root
 from triton_agent.report.workspace import (
     append_report_instructions,
     build_hardware_info_text,
     build_report_request,
 )
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.selection import resolve_staged_skills
-from triton_agent.skills.staging import SkillLinkManager
-from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.show_output_log import show_output_log_path
+from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.skills import SkillLinkManager
+from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
 def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    if getattr(args, "concurrency", None) is not None:
-        return handle_report_batch(parser, args)
     workspace = Path(args.input).expanduser().resolve()
     if not workspace.is_dir():
         parser.error(f"Not a directory: {workspace}")
 
-    agent_name = getattr(args, "agent", None) or "opencode"
+    agent_name = getattr(args, "agent", "codex")
     interact = bool(getattr(args, "interact", False))
     stream_output = bool(getattr(args, "stream_output", True))
     verbose = bool(getattr(args, "verbose", False))

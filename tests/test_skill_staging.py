@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import CommandKind
-from triton_agent.skills.selection import _apply_stage_directives, resolve_staged_skills
+from triton_agent.skill_staging import _apply_stage_directives, resolve_staged_skills
 
 
 class SkillStagingTests(unittest.TestCase):
@@ -114,18 +114,6 @@ class SkillStagingTests(unittest.TestCase):
         )
 
         self.assertIn("torch-npu-optimize-knowledge", names or ())
-
-    def test_resolve_staged_skills_for_distill_includes_distill_workflow_skill(self) -> None:
-        names, sources = resolve_staged_skills(CommandKind.DISTILL)
-
-        self.assertEqual(
-            names,
-            (
-                "ascend-npu-distill-patterns",
-                "triton-npu-optimize-knowledge",
-            ),
-        )
-        self.assertIsNone(sources)
 
     def test_apply_stage_directives_supports_add_remove_and_full_copy(self) -> None:
         self.assertEqual(_apply_stage_directives(("+a", "+b", "-a", "+c")), ("b", "c"))

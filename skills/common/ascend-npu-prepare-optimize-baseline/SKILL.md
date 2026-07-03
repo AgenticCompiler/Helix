@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-prepare-optimize-baseline
-description: Establish a reusable canonical optimize baseline by reusing or generating harnesses, performing minimum repair, and passing `ascend-npu-optimize-state` `submit-baseline`.
+description: Establish a reusable canonical optimize baseline by reusing or generating harnesses, performing minimum repair, and passing `ascend-npu-optimize-submit-baseline`.
 ---
 
 # Prepare Optimize Baseline
@@ -43,7 +43,7 @@ Use this skill when optimize work cannot yet start because baseline artifacts ar
 
 ### 4. Gate The Baseline
 
-- Use the sibling `ascend-npu-optimize-state` skill's `submit-baseline` subcommand to submit the baseline and validate it.
+- Use the sibling `ascend-npu-optimize-submit-baseline` skill to submit the baseline and validate it.
 - Keep repairing baseline state until the baseline submission passes.
 - Stop once the workspace has a reusable canonical baseline.
 
@@ -55,7 +55,7 @@ This skill is complete only when:
 - `baseline/` exists
 - `baseline/state.json` exists and matches the optimize artifact contract
 - `baseline/<operator>_perf.txt` exists
-- `ascend-npu-optimize-state` `submit-baseline` passes
+- `ascend-npu-optimize-submit-baseline` passes
 
 ## Hard Rules
 

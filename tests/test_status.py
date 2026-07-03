@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.status.core import (
     inspect_optimize_status_workspace,
     parse_logged_best_round,
-    scan_optimize_status_workspaces,
     workspace_has_optimize_artifacts,
 )
 
@@ -585,33 +584,6 @@ class OptimizeStatusTests(unittest.TestCase):
             (workspace / "opt-round-1").mkdir()
 
             self.assertTrue(workspace_has_optimize_artifacts(workspace))
-
-    def test_scan_optimize_status_workspaces_skips_hidden_directories(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "visible").mkdir()
-            (root / ".hidden").mkdir()
-            (root / ".hidden" / "kernel_perf.txt").write_text(
-                "latency-a: 10\n", encoding="utf-8"
-            )
-
-            results = scan_optimize_status_workspaces(root)
-
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0].workspace.name, "visible")
-
-    def test_scan_optimize_status_workspaces_includes_all_visible_directories(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "workspace-a").mkdir()
-            (root / "workspace-b").mkdir()
-            (root / ".claude").mkdir()
-            (root / ".git").mkdir()
-
-            results = scan_optimize_status_workspaces(root)
-            names = {result.workspace.name for result in results}
-
-            self.assertEqual(names, {"workspace-a", "workspace-b"})
 
 
 if __name__ == "__main__":

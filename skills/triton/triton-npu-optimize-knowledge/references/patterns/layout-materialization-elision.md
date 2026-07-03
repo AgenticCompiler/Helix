@@ -118,7 +118,7 @@ For a leading singleton such as `[1, C, H, W]`, a reduced-rank specialized kerne
 
 ## Evidence
 
-Permute-style layout kernels commonly expose this. Specialized 2D/3D permute kernels already use block-pointer tile loads and `tl.trans(values)` to write final layouts directly. A remaining opportunity is the leading-singleton squeeze path: it can compute a lower-rank permutation and then call `out.copy_(result_squeezed.reshape(out_shape))`. For a large leading-singleton tensor, that final `copy_` is an extra full-size global-memory pass. Passing the final `out` buffer directly to the lower-rank specialized kernel should remove that copy kernel and its memory traffic.
+NPUKernelBench `12_Permute` exposes this pattern clearly. Existing specialized 2D/3D permute kernels already use block-pointer tile loads and `tl.trans(values)` to write final layouts directly. A remaining opportunity is the leading-singleton squeeze path: it can compute a lower-rank permutation and then call `out.copy_(result_squeezed.reshape(out_shape))`. For large shapes such as `[1, 128, 128, 4096]`, that final `copy_` is an extra full-size global-memory pass. Passing the final `out` buffer directly to the lower-rank specialized kernel should remove that copy kernel and its memory traffic.
 
 The same structural idea also underlies non-last-dimension reductions that avoid `movedim(...).contiguous()` before reducing, but this card applies more broadly to copy-like, store-like, gather-like, and compute-consuming layout bridges.
 

@@ -12,17 +12,17 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TextIO, cast
 
-from triton_agent.batch.discovery import (
+from triton_agent.batch_utils import (
     NO_CANDIDATE_OPERATOR_FILE,
     PrefixedTextStream,
     discover_batch_workspaces,
 )
-from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.optimize.naming import (
     resolve_batch_optimize_operator_file,
 )
-from triton_agent.batch.affinity import (
+from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
@@ -34,7 +34,7 @@ from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize_upload.client import UploadUrlMissingError
 from triton_agent.optimize_upload.workflow import upload_optimize_workspace
-from triton_agent.skills.selection import resolve_staged_skills
+from triton_agent.skill_staging import resolve_staged_skills
 
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1

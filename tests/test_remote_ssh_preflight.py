@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.remote.ssh_preflight as module
+import triton_agent.remote_ssh_preflight as module
 
 
 class RemoteSshPreflightTests(unittest.TestCase):

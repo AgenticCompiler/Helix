@@ -8,17 +8,16 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.factory import create_runner
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
-from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
-from triton_agent.trace.core import build_tool_trace_env, new_trace_run_id, trace_path_from_request
-from triton_agent.trace.summary import write_tool_trace_summary
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
-from triton_agent.remote.env import merge_remote_execution_env
-from triton_agent.paths import skills_root
-from triton_agent.skills.selection import resolve_staged_skills
-from triton_agent.skills.staging import SkillLinkManager
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.remote_execution_env import merge_remote_execution_env
+from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.skills import SkillLinkManager
+from triton_agent.show_output_log import show_output_log_path
+from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
 def build_generation_request(

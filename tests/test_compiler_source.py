@@ -3,9 +3,6 @@ import unittest
 from pathlib import Path
 from typing import Optional
 
-from hook_runtime.optimize.compiler_source import (
-    COMPILER_SOURCE_REPO_URL as HOOK_RUNTIME_COMPILER_SOURCE_REPO_URL,
-)
 from triton_agent.optimize.compiler_source import (
     COMPILER_SOURCE_REPO_URL,
     CompilerSourceInfo,
@@ -15,9 +12,6 @@ from triton_agent.optimize.compiler_source import (
 
 
 class CompilerSourceTests(unittest.TestCase):
-    def test_cli_compiler_source_uses_hook_runtime_contract(self) -> None:
-        self.assertEqual(COMPILER_SOURCE_REPO_URL, HOOK_RUNTIME_COMPILER_SOURCE_REPO_URL)
-
     def test_default_compiler_source_path_uses_cache_dir(self) -> None:
         root = Path("/tmp/fake-home")
 

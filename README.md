@@ -8,22 +8,22 @@ This README is organized by task so you can quickly find the right command for t
 
 - `gen-test`: generate a correctness test for one operator.
 - `run-test`: run an existing generated test.
-- `gen-eval`: generate both test and benchmark assets for one operator; pass `--concurrency` to use batch mode.
+- `gen-eval`: generate both test and benchmark assets for one operator.
 - `gen-eval-batch`: generate evaluation assets for many operator workspaces.
-- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with standalone or differential testing; pass `--concurrency` to use batch mode.
+- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with standalone or differential testing.
 - `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `run-eval-mcp-server`: start the shared run-eval HTTP MCP server for standalone debugging.
-- `optimize`: optimize one operator; pass `--concurrency` to use batch mode.
+- `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
 - `--no-upload`: skip automatic upload after optimize.
-- `log-check`: run Codex log strategy validation for one workspace; pass `--concurrency` to use batch mode.
+- `log-check`: run Codex log strategy validation for one workspace.
 - `log-check-batch`: run log strategy validation across multiple workspaces.
 - `clean`: remove known generated artifacts from one workspace or a batch root.
 - `status`: summarize optimization progress across many workspaces.
-- `verify`: rerun tests and benchmarks for the current best optimize round; pass `--concurrency` to use batch mode, where the concurrency value is ignored.
+- `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
@@ -41,7 +41,6 @@ uv run triton-agent convert-batch --input operators_root
 
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
 
 uv run triton-agent optimize --input a.py
 uv run triton-agent run-eval-mcp-server
@@ -51,18 +50,14 @@ For batch workflows, point `--input` at either a directory whose immediate child
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
-uv run triton-agent gen-eval --input operators_root --concurrency 4
 uv run triton-agent gen-eval-batch --input .
 uv run triton-agent status --input operators_root
 uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
-uv run triton-agent verify --input operators_root --concurrency 1
 uv run triton-agent optimize-batch --input operators_root
-uv run triton-agent optimize --input operators_root --concurrency 4
 uv run triton-agent log-check --input .
 uv run triton-agent log-check-batch --input operators_root
-uv run triton-agent log-check --input operators_root --concurrency 4
 uv run triton-agent clean --input .
 uv run triton-agent clean --input operators_root
 ```
@@ -88,17 +83,14 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
 | `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
-| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
-| `TRITON_AGENT_RUN_TEST_ACCURACY_MODE` | No | staged run-eval CLI, run-eval MCP `run-test-*`, `compare-result` helpers | Accuracy mode for agent-run correctness validation. Supported values are `npu-contract` and `dtype-close`; default is `npu-contract`. The top-level `triton-agent run-test` and `compare-result` commands also expose `--accuracy-mode`. |
-| `TRITON_AGENT_RUN_TEST_ATOL` | No | `dtype-close` correctness comparison | Absolute tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
-| `TRITON_AGENT_RUN_TEST_RTOL` | No | `dtype-close` correctness comparison | Relative tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
-| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-state` `submit-baseline` flow, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
+| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-submit-baseline` skill, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
 | `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
@@ -198,7 +190,6 @@ Common options:
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
 - `--ref-result <path>`: in `differential` mode, automatically compare the new archived result against an existing reference payload.
 - `--ref-operator-file <path>`: in `differential` mode, derive the reference payload path from the reference operator and auto-run the reference test first if the payload does not exist yet.
-- `--accuracy-mode npu-contract|dtype-close`: choose the comparison mode for standalone validation and automatic differential result comparison. Default is `npu-contract`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -342,9 +333,6 @@ Common options:
 
 - `--bench-mode torch-npu-profiler|msprof`: override the mode recorded in the benchmark file.
 - `--output <path>`: write the perf artifact to an explicit path instead of the default path beside the operator file.
-- `--baseline-operator-file <path>`: reuse or generate the baseline perf artifact for that operator, then automatically compare it against the candidate perf artifact from `--operator-file`.
-- `--skip-latency-errors`: keep automatic baseline comparison running when recoverable latency-error entries are present.
-- `--metric-source auto|kernel|total-op|all`: choose which metric source automatic baseline comparison uses.
 - `--npu-devices 0,1,4-7`: run benchmark cases concurrently across the listed Ascend devices. Supports inclusive numeric ranges and preserves current serial behavior when omitted.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -356,16 +344,8 @@ Example:
 ```bash
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py --metric-source all --skip-latency-errors
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
-
-Automatic baseline compare:
-
-- when `--baseline-operator-file` is set, `run-bench` first checks for the default baseline perf artifact beside that baseline operator
-- if the baseline perf artifact is missing, `run-bench` benchmarks the baseline operator once to create it
-- after the candidate benchmark succeeds, `run-bench` automatically runs `compare-perf` with the selected `--metric-source` / `--skip-latency-errors` behavior
 
 For `torch-npu-profiler` benchmarks:
 
@@ -409,7 +389,7 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton/triton-npu-optimize-knowledge-v3/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
-- `--enable-agent-hooks`: enable the workspace-local agent hook guard for this optimize run. Agent hooks are disabled by default.
+- `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--round-mode checked|supervised`: default is `checked`. Controls how the optimize session is structured:
   - `checked`: the CLI launches a worker for a bounded batch of rounds, validates each newly created round in order, and decides whether to continue, stop, or fail.
@@ -463,7 +443,7 @@ Optimize behavior:
 - In `--optimize-target operator`, optimize should inspect both kernel and total-op comparison views and use the total-op conclusion as the canonical round basis.
 - Each round records exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `ascend-npu-prepare-optimize-baseline` before round work begins.
-- The `ascend-npu-optimize-state` `submit-baseline` flow never deletes archived PT result files.
+- The `ascend-npu-optimize-submit-baseline` skill never deletes archived PT result files.
 - Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
 - `--reset-optimize` still deletes known optimize PT artifacts, including workspace-root `*_result.pt` files.
 - Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
@@ -488,9 +468,7 @@ Optimize behavior:
 
 ## Work On Many Operators
 
-Use the batch commands when `--input` points to a directory of operator workspaces. You can either call the existing `*-batch` command, or pass `--concurrency` to the matching single-workspace command to run the same batch implementation. For example, `optimize --input operators_root --concurrency 4` is the batch-mode spelling of `optimize-batch --input operators_root --concurrency 4`.
-
-The switch is based on whether `--concurrency` is present. `--concurrency 1` still selects batch mode with one worker. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
+Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
 
 ### Batch NPU Affinity
 
@@ -499,15 +477,14 @@ Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you w
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 uv run triton-agent optimize-batch --input operators_root --concurrency 4
-uv run triton-agent optimize --input operators_root --concurrency 4
 ```
 
 When this variable is set:
 
-- `gen-eval`, `convert`, and `optimize` in explicit `--concurrency` batch mode assign one device per running workspace, as do their `*-batch` spellings.
-- `-c, --concurrency` may be a positive integer or `max`.
-- `-c max` / `--concurrency max` resolves to the effective batch affinity capacity.
-- numeric `-c` / `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
+- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
+- `--concurrency` may be a positive integer or `max`.
+- `--concurrency max` resolves to the effective batch affinity capacity.
+- numeric `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
 - The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
 
 By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
@@ -521,8 +498,8 @@ uv run triton-agent optimize-batch --input operators_root --concurrency max
 When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
 
 - Effective capacity is `device_count × workers_per_npu`.
-- numeric `-c` / `--concurrency` values must not exceed the effective capacity.
-- `-c max` / `--concurrency max` resolves to that effective capacity.
+- numeric `--concurrency` values must not exceed the effective capacity.
+- `--concurrency max` resolves to that effective capacity.
 - Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
 - This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
 
@@ -530,7 +507,6 @@ When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
-uv run triton-agent gen-eval --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -538,7 +514,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode torch-npu-profiler|msprof`
-- `-c, --concurrency <N|max>`: defaults to `1`
+- `--concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -547,14 +523,13 @@ Common options:
 
 ```bash
 uv run triton-agent convert-batch --input operators_root
-uv run triton-agent convert --input operators_root --concurrency 4
 ```
 
 Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
-- `-c, --concurrency <N|max>`: defaults to `1`
+- `--concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -631,7 +606,6 @@ perf files, `compare-perf.txt` when a benchmark comparison runs, and `verify-sta
 ```bash
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent verify-batch --input operators_root --force-verify
-uv run triton-agent verify --input operators_root --concurrency 1
 ```
 
 Use this command when you want to validate every verifiable optimize workspace under one root.
@@ -645,7 +619,6 @@ The command scans immediate child workspaces and:
 Common options:
 
 - `--force-verify`: rerun verification even when a latest verify result already exists.
-- `--concurrency <N>`: only on the `verify` spelling; selects batch mode and prints a warning because verify batch does not run workspaces concurrently.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--keep-remote-workdir`
@@ -656,7 +629,6 @@ Common options:
 ```bash
 uv run triton-agent optimize-batch --input operators_root
 uv run triton-agent optimize-batch --input .
-uv run triton-agent optimize --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -670,11 +642,10 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`
 - `--enable-compiler-source-analysis`
 - `--enable-cann-ext-api`
-- `--enable-agent-hooks`
 - `--post-optimize-command "..."`: run a local shell command in each workspace after that workspace optimize run succeeds.
 - `--min-rounds <N>`
 - `--no-agent-session`
-- `-c, --concurrency <N|max>`: defaults to `1`
+- `--concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -685,7 +656,6 @@ Example:
 uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v2
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v3
-uv run triton-agent optimize-batch --input operators_root --enable-agent-hooks --agent codex
 uv run triton-agent optimize-batch --input operators_root --post-optimize-command "python summarize.py"
 ```
 
@@ -713,10 +683,9 @@ Common options:
 
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
-- `--accuracy-mode npu-contract|dtype-close`
 - `--verbose`
 
-Correctness result comparison defaults to the shared NPU accuracy comparison contract. Use `--accuracy-mode dtype-close` for dtype-aware `torch.testing.assert_close` style floating-point and complex comparisons.
+Correctness result comparison always uses the shared NPU accuracy comparison contract and reports detailed diagnostics for failing cases.
 
 ### Compare Performance Results
 
@@ -755,14 +724,12 @@ For batch validation across many workspaces:
 
 ```bash
 uv run triton-agent log-check-batch --input operators_root
-uv run triton-agent log-check --input operators_root --concurrency 4
 ```
 
 Common options:
 
 - `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
 - `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
-- `-c, --concurrency <N>`: on `log-check`, selects batch mode; on `log-check-batch`, defaults to `1`.
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--no-stream-output`: disable live agent-output streaming.
 - `--verbose`: print more execution detail.
@@ -782,9 +749,9 @@ These options appear on multiple commands:
 
 ## Optional Agent Hook Guard
 
-When `optimize` or `optimize-batch` launches with `--enable-agent-hooks` and a
-supported backend, `triton-agent` stages temporary workspace-local agent hooks
-before the agent starts. Agent hooks are disabled by default.
+When `optimize --enable-agent-hooks` launches with a supported backend,
+`triton-agent` stages temporary workspace-local agent hooks before the agent
+starts. Agent hooks are disabled by default.
 
 For `--agent codex`, the staged files are:
 
@@ -811,7 +778,7 @@ path, such as `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A
 blocked read returns a short denial message to the agent telling it to stay
 within the workspace and use skill instructions or the documented command
 interface instead. The guard still allows documented helper-script entrypoints
-such as `python3 .opencode/skills/.../scripts/cli.py ...`; it only
+such as `python3 .opencode/skills/.../scripts/run-command.py ...`; it only
 blocks reading those staged implementation files as source.
 
 The staged hook files are removed after the agent process exits. If

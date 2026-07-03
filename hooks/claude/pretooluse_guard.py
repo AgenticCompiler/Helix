@@ -7,32 +7,84 @@ backend-agnostic guard policy module.
 """
 from __future__ import annotations
 
+import argparse
+import importlib.util
+import json
 import sys
 from pathlib import Path
-
-
-def _bootstrap_support_import() -> None:
-    current_dir = Path(__file__).resolve().parent
-    candidates = (
-        current_dir.parent.parent / "src",
-        current_dir,
-    )
-    for candidate in candidates:
-        candidate_str = str(candidate)
-        if candidate.is_dir() and candidate_str not in sys.path:
-            sys.path.insert(0, candidate_str)
-
-
-_bootstrap_support_import()
-
-from hook_runtime.pretooluse_adapter import run_policy_file_wrapper  # noqa: E402
+from typing import Any, Callable, cast
 
 
 def main(argv: list[str] | None = None) -> int:
-    return run_policy_file_wrapper(
-        argv=argv,
-        failure_prefix="triton-agent claude hook",
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--policy", required=True)
+    args = parser.parse_args(argv)
+
+    try:
+        policy = _load_json(Path(args.policy))
+        payload = json.load(sys.stdin)
+    except Exception as exc:  # noqa: BLE001 - Hooks should fail open.
+        print(f"triton-agent claude hook failed open: {exc}", file=sys.stderr)
+        return 0
+
+    try:
+        reason = _deny_reason_for_tool_use(policy, payload)
+    except Exception as exc:  # noqa: BLE001 - Hooks should fail open.
+        print(f"triton-agent claude hook failed open: {exc}", file=sys.stderr)
+        return 0
+
+    if reason is None:
+        return 0
+
+    json.dump(_build_denial_output(reason), sys.stdout)
+    return 0
+
+
+def _build_denial_output(reason: str) -> dict[str, Any]:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return data
+
+
+def _deny_reason_for_tool_use(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
+    module = _load_policy_module()
+    deny_reason = cast(
+        Callable[[dict[str, Any], dict[str, Any]], str | None] | None,
+        getattr(module, "deny_reason_for_tool_use", None),
     )
+    if not callable(deny_reason):
+        raise RuntimeError("shared guard policy module does not export deny_reason_for_tool_use")
+    return deny_reason(policy, payload)
+
+
+def _load_policy_module() -> Any:
+    current_dir = Path(__file__).resolve().parent
+    candidates = [
+        current_dir / "tool_use_guard_policy.py",
+        current_dir.parent / "shared" / "tool_use_guard_policy.py",
+    ]
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location("tool_use_guard_policy", candidate)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    raise RuntimeError("unable to locate shared guard policy module")
 
 
 if __name__ == "__main__":

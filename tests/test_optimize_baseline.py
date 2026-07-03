@@ -11,14 +11,14 @@ from triton_agent.optimize.baseline import (
     inspect_baseline_artifacts,
     load_baseline_state,
 )
-from triton_agent.skills.loader import load_skill_script_module
+from triton_agent.skill_loader import load_skill_script_module
 
 
 class OptimizeBaselineTests(unittest.TestCase):
     def test_runtime_baseline_helpers_match_split_baseline_submit_contract(self) -> None:
         module = load_skill_script_module(
-            "ascend-npu-optimize-state",
-            "baseline/check",
+            "ascend-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -113,24 +113,7 @@ class OptimizeBaselineTests(unittest.TestCase):
 
             inspection = inspect_baseline_artifacts(workspace)
 
-            self.assertIn("missing baseline perf artifact", inspection.issues)
-
-    def test_inspect_baseline_artifacts_accepts_operator_named_perf_when_state_is_invalid(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp)
-            baseline_dir = workspace / "baseline"
-            baseline_dir.mkdir()
-            (baseline_dir / "state.json").write_text("{}", encoding="utf-8")
-            operator_path = baseline_dir / "kernel.py"
-            perf_path = baseline_dir / "kernel_perf.txt"
-            operator_path.write_text("print('baseline')\n", encoding="utf-8")
-            perf_path.write_text("latency-0: 1.0\n", encoding="utf-8")
-
-            inspection = inspect_baseline_artifacts(workspace)
-
-            self.assertEqual(inspection.perf_path, perf_path)
-            self.assertEqual(inspection.operator_path, operator_path)
-            self.assertEqual(inspection.issues, ())
+            self.assertIn("missing baseline/perf.txt", inspection.issues)
 
     def test_inspect_baseline_artifacts_uses_state_declared_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

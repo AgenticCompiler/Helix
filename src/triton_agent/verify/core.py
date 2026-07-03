@@ -11,14 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
-from triton_agent.eval.runners import run_local_bench, run_local_test, run_remote_bench, run_remote_test
+from triton_agent.execution import run_local_bench, run_local_test, run_remote_bench, run_remote_test
 from triton_agent.models import AgentResult
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
 from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
 from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
 from triton_agent.status.core import inspect_optimize_status_workspace
-from triton_agent.skills.loader import load_operator_eval_script_module
+from triton_agent.skill_loader import load_operator_eval_script_module
 
 
 Phase = Literal["all", "test", "bench"]
@@ -48,14 +48,6 @@ class BenchPerfParserModule(Protocol):
         *,
         metric_source: str = "auto",
     ) -> dict[str, float]: ...
-
-    def parse_perf_pair_for_comparison(
-        self,
-        baseline_perf: Path,
-        compare_perf: Path,
-        *,
-        metric_source: str = "auto",
-    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
 
 
 @dataclass(frozen=True)
@@ -469,10 +461,10 @@ def _build_speedup_state(
         resolved_best_perf_path = cast(Path, best_perf_path)
         metric_source = _metric_source_for_verification(target.effective_metric_source)
         if metric_source == "auto":
-            baseline_values, verify_values, _comparison_modes = parser.parse_perf_pair_for_comparison(
-                resolved_baseline_perf_path,
+            baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
+            verify_values = parser.parse_required_perf_file(
                 resolved_best_perf_path,
-                metric_source=metric_source,
+                baseline_values,
             )
         else:
             baseline_values = parser.parse_perf_file_for_metric_source(

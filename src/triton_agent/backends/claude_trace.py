@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from triton_agent.trace.core import append_trace_event, utc_timestamp
+from triton_agent.otel_trace import append_trace_event, utc_timestamp
 
 
 _THINKING_ENV = "TRITON_AGENT_SHOW_OUTPUT_THINKING"
@@ -705,9 +705,9 @@ def _classify_command(command: str) -> str:
         return "compare_perf"
     if "compare-result" in lower:
         return "compare_result"
-    if "submit-baseline" in lower:
+    if "check-baseline" in lower:
         return "check_baseline"
-    if "submit-round" in lower:
+    if "check-round" in lower:
         return "check_round"
     if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
         return "correctness_test"
@@ -758,7 +758,7 @@ def _extract_error_line(text: str) -> str:
         r"AssertionError:\s*.*",
         r"FAIL:\s*.*",
         r"round check requires fixes:\s*.*",
-        r"submit-round requires fixes:\s*.*",
+        r"check-round requires fixes:\s*.*",
         r"usage:\s*.*",
         r".*\berror:\s*.*",
         r"No op_statistic csv.*",

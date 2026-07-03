@@ -36,11 +36,6 @@ const PATH_FRAGMENT_RE =
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
 const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
-const ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = new Set([
-  "opt-note.md",
-  "learned_lessons.md",
-  "supervisor-report.md",
-]);
 
 // ---------------------------------------------------------------------------
 // Hook entrypoints
@@ -415,10 +410,10 @@ function classifyCommand(command) {
   if (normalized.includes("compare-result")) {
     return "compare_result";
   }
-  if (normalized.includes("submit-baseline")) {
+  if (normalized.includes("check-baseline")) {
     return "check_baseline";
   }
-  if (normalized.includes("submit-round")) {
+  if (normalized.includes("check-round")) {
     return "check_round";
   }
   if (normalized.includes("run-test") || normalized.includes("pytest") || normalized.includes("differential_test_")) {
@@ -481,18 +476,17 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
     return builtInEditOutsideWorkspaceDenial();
   }
 
-  const workspaceRelativePath = displayPath(resolvedPath, workspaceRoot);
-  if (isProtectedRuntimeEditPath(workspaceRelativePath)) {
-    return protectedRuntimeEditDenial(workspaceRelativePath);
-  }
-
   const state = await loadWorkflowState(workspaceRoot);
   if (!state) {
     return builtInEditMissingStateDenial();
   }
 
+  const workspaceRelativePath = displayPath(resolvedPath, workspaceRoot);
   if (state.phase === "baseline") {
-    return null;
+    if (isAllowedBaselineEditPath(workspaceRelativePath, state.source_operator)) {
+      return null;
+    }
+    return baselinePhaseBuiltInEditDenial();
   }
   if (state.phase === "awaiting_round_start") {
     return awaitingRoundStartBuiltInEditDenial();
@@ -502,7 +496,7 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
     if (!roundDir) {
       return builtInEditMissingStateDenial();
     }
-    if (isAllowedRoundActiveEditPath(workspaceRelativePath, roundDir)) {
+    if (workspaceRelativePath === roundDir || workspaceRelativePath.startsWith(`${roundDir}/`)) {
       return null;
     }
     return roundActiveBuiltInEditDenial(roundDir);
@@ -525,10 +519,30 @@ async function loadWorkflowState(workspaceRoot) {
     if (typeof state.phase !== "string" || state.phase.length === 0) {
       return null;
     }
+    if (typeof state.source_operator !== "string" || state.source_operator.length === 0) {
+      return null;
+    }
     return state;
   } catch {
     return null;
   }
+}
+
+function isAllowedBaselineEditPath(relativePath, sourceOperator) {
+  if (relativePath === "baseline" || relativePath.startsWith("baseline/")) {
+    return true;
+  }
+  if (relativePath === sourceOperator) {
+    return true;
+  }
+  if (relativePath.includes("/")) {
+    return false;
+  }
+  return (
+    relativePath.startsWith("test_") ||
+    relativePath.startsWith("differential_test_") ||
+    relativePath.startsWith("bench_")
+  );
 }
 
 function activeRoundDir(state) {
@@ -543,41 +557,6 @@ function activeRoundDir(state) {
     return null;
   }
   return roundEntry.round_dir;
-}
-
-function isProtectedRuntimeEditPath(relativePath) {
-  if (relativePath === ".triton-agent" || relativePath.startsWith(".triton-agent/")) {
-    return true;
-  }
-  if (relativePath === "triton-agent-logs" || relativePath.startsWith("triton-agent-logs/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".codex/skills/") && relativePath.includes("/scripts/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".claude/skills/") && relativePath.includes("/scripts/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".opencode/skills/") && relativePath.includes("/scripts/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".codex/triton-agent-hooks/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".claude/triton-agent-hooks/")) {
-    return true;
-  }
-  if (relativePath.startsWith(".opencode/triton-agent-hooks/")) {
-    return true;
-  }
-  return false;
-}
-
-function isAllowedRoundActiveEditPath(relativePath, roundDir) {
-  if (relativePath === roundDir || relativePath.startsWith(`${roundDir}/`)) {
-    return true;
-  }
-  return !relativePath.includes("/") && ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES.has(relativePath);
 }
 
 function builtInEditMissingStateDenial() {
@@ -598,16 +577,9 @@ function builtInEditOutsideWorkspaceDenial() {
 function baselinePhaseBuiltInEditDenial() {
   return (
     "Built-in edit tool blocked by optimize workflow policy. " +
-    "Current phase is baseline. " +
-    "Finish or repair baseline, then submit it through `ascend-npu-optimize-state` `submit-baseline` before opening a round."
-  );
-}
-
-function protectedRuntimeEditDenial(relativePath) {
-  return (
-    "Built-in edit tool blocked by optimize workflow policy. " +
-    `\`${relativePath}\` is a protected internal runtime path. ` +
-    "Do not edit `.triton-agent/`, `triton-agent-logs/`, or backend-managed staged hook/skill implementation files."
+    "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: " +
+    "the source operator, root-level test/bench harness files, and `baseline/` artifacts. " +
+    "Finish or repair baseline, then submit it through `ascend-npu-optimize-submit-baseline` before opening a round."
   );
 }
 
@@ -615,7 +587,7 @@ function awaitingRoundStartBuiltInEditDenial() {
   return (
     "Built-in edit tool blocked by optimize workflow policy. " +
     "Current phase is awaiting_round_start, so no optimize round is active yet. " +
-    "Use `ascend-npu-optimize-state` `start-round` to open the next `opt-round-N/` before editing."
+    "Use `ascend-npu-optimize-start-round` to open the next `opt-round-N/` before editing."
   );
 }
 
@@ -624,9 +596,7 @@ function roundActiveBuiltInEditDenial(roundDir) {
     "Built-in edit tool blocked by optimize workflow policy. " +
     `Current active round is ${roundDir}. Built-in edits must stay inside \`${roundDir}/\`. ` +
     "Edit the round-local snapshot and round artifacts instead of top-level workspace files. " +
-    "If the round's intent or required evidence depth changes mid-round, use " +
-    "`ascend-npu-optimize-state` `set-current-round-state` before continuing edits. " +
-    "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
+    "When this round is ready, use `ascend-npu-optimize-submit-round` to submit it before moving on."
   );
 }
 

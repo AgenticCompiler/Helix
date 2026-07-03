@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest import mock
 
-from triton_agent.batch.affinity import (
+from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_slots,

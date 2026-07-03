@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from triton_agent.skills.loader import load_skill_script_module
+from triton_agent.skill_loader import load_skill_script_module
 
 
-def optimize_state_baseline_module() -> ModuleType:
+def optimize_submit_baseline_module() -> ModuleType:
     return load_skill_script_module(
-        "ascend-npu-optimize-state",
-        "baseline/check",
+        "ascend-npu-optimize-submit-baseline",
+        "optimize_submit_baseline",
     )
 
 
-def optimize_state_round_module() -> ModuleType:
+def optimize_submit_round_module() -> ModuleType:
     return load_skill_script_module(
-        "ascend-npu-optimize-state",
-        "round/check",
+        "ascend-npu-optimize-submit-round",
+        "optimize_submit_round",
     )

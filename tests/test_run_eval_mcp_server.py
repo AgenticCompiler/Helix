@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.eval import mcp_server as module
+from triton_agent import run_eval_mcp_server as module
 
 
 class RunEvalMCPServerTests(unittest.TestCase):
@@ -134,93 +134,6 @@ class RunEvalMCPServerTests(unittest.TestCase):
             },
         )
 
-    def test_run_bench_tool_forwards_baseline_operator_file(self) -> None:
-        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
-        observed: dict[str, object] = {}
-
-        def fake_run_subcommand(
-            subcommand: str,
-            arguments: list[str],
-            *,
-            leased_device: Optional[str] = None,
-            workspace: Path,
-        ):
-            observed["leased_device"] = leased_device
-            observed["subcommand"] = subcommand
-            observed["arguments"] = arguments
-            observed["workspace"] = workspace
-            return {
-                "return_code": 0,
-                "stdout": "Perf file: /tmp/opt_kernel_perf.txt\n",
-                "stderr": "",
-                "perf_path": "/tmp/opt_kernel_perf.txt",
-            }
-
-        async def _call_tool():
-            with (
-                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
-                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
-            ):
-                return await server.call_tool(
-                    "run-bench",
-                    {
-                        "bench_file": "/tmp/bench_kernel.py",
-                        "operator_file": "/tmp/opt_kernel.py",
-                        "baseline_operator_file": "/tmp/kernel.py",
-                    },
-                )
-
-        asyncio.run(_call_tool())
-
-        arguments = cast(list[str], observed["arguments"])
-        self.assertIn("--baseline-operator-file", arguments)
-        self.assertIn("/tmp/kernel.py", arguments)
-
-    def test_run_bench_tool_forwards_compare_perf_options(self) -> None:
-        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
-        observed: dict[str, object] = {}
-
-        def fake_run_subcommand(
-            subcommand: str,
-            arguments: list[str],
-            *,
-            leased_device: Optional[str] = None,
-            workspace: Path,
-        ):
-            observed["leased_device"] = leased_device
-            observed["subcommand"] = subcommand
-            observed["arguments"] = arguments
-            observed["workspace"] = workspace
-            return {
-                "return_code": 0,
-                "stdout": "Perf file: /tmp/opt_kernel_perf.txt\n",
-                "stderr": "",
-                "perf_path": "/tmp/opt_kernel_perf.txt",
-            }
-
-        async def _call_tool():
-            with (
-                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
-                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
-            ):
-                return await server.call_tool(
-                    "run-bench",
-                    {
-                        "bench_file": "/tmp/bench_kernel.py",
-                        "operator_file": "/tmp/opt_kernel.py",
-                        "baseline_operator_file": "/tmp/kernel.py",
-                        "skip_latency_errors": True,
-                        "metric_source": "all",
-                    },
-                )
-
-        asyncio.run(_call_tool())
-
-        arguments = cast(list[str], observed["arguments"])
-        self.assertIn("--skip-latency-errors", arguments)
-        self.assertIn("--metric-source", arguments)
-        self.assertIn("all", arguments)
-
     def test_run_test_tools_reuse_released_slot(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
         seen_devices: list[Optional[str]] = []
@@ -270,63 +183,6 @@ class RunEvalMCPServerTests(unittest.TestCase):
         asyncio.run(_call_tools())
 
         self.assertEqual(seen_devices, ["0", "0"])
-
-    def test_run_test_tool_leaves_accuracy_controls_in_parent_env(self) -> None:
-        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
-        observed: dict[str, object] = {}
-
-        def fake_run_subcommand(
-            subcommand: str,
-            arguments: list[str],
-            *,
-            leased_device: Optional[str] = None,
-            workspace: Path,
-        ):
-            observed["subcommand"] = subcommand
-            observed["arguments"] = arguments
-            observed["leased_device"] = leased_device
-            observed["workspace"] = workspace
-            observed["accuracy_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_ACCURACY_MODE")
-            observed["atol_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_ATOL")
-            observed["rtol_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_RTOL")
-            return {
-                "return_code": 0,
-                "stdout": "Archived result: /tmp/kernel_result.pt\n",
-                "stderr": "",
-                "archived_result": "/tmp/kernel_result.pt",
-            }
-
-        async def _call_tool() -> None:
-            with (
-                patch.dict(
-                    os.environ,
-                    {
-                        "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
-                        "TRITON_AGENT_RUN_TEST_ATOL": "0.0",
-                        "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
-                    },
-                    clear=False,
-                ),
-                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
-                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
-            ):
-                await server.call_tool(
-                    "run-test-optimize",
-                    {
-                        "test_file": "/tmp/differential_test_kernel.py",
-                        "operator_file": "/tmp/opt_kernel.py",
-                        "test_mode": "differential",
-                        "ref_result": "/tmp/kernel_result.pt",
-                    },
-                )
-
-        asyncio.run(_call_tool())
-
-        self.assertEqual(observed["subcommand"], "run-test-optimize")
-        self.assertNotIn("--accuracy-mode", cast(list[str], observed["arguments"]))
-        self.assertEqual(observed["accuracy_env"], "dtype-close")
-        self.assertEqual(observed["atol_env"], "0.0")
-        self.assertEqual(observed["rtol_env"], "0.01")
 
     def test_compare_perf_tool_does_not_lease_device(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))

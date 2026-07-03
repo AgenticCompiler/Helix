@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Optional, cast
 
 from triton_agent.optimize.naming import resolve_batch_optimize_operator_file
-from triton_agent.optimize.skill_contract import optimize_state_round_module
+from triton_agent.optimize.skill_contract import optimize_submit_round_module
 from triton_agent.optimize_upload.models import CollectedUpload
 
-_OPTIMIZE_ROUND = optimize_state_round_module()
+_OPTIMIZE_ROUND = optimize_submit_round_module()
 
 
 _EXCLUDED_DIRS = frozenset({

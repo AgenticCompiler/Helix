@@ -53,7 +53,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_staged_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
 
@@ -82,7 +82,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
 
@@ -99,7 +99,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
@@ -112,7 +112,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             result = _evaluate_plugin(
                 _policy(workspace),
                 "bash",
-                "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
+                "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
                 "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
                 "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
                 "--bench-mode msprof 2>&1",
@@ -159,7 +159,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script = workspace / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
             workspace.mkdir()
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
@@ -293,50 +293,27 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
-    def test_baseline_phase_allows_native_write_to_regular_workspace_file(self) -> None:
+    def test_baseline_phase_allows_native_write_to_source_operator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            notes_file = workspace / "notes.md"
-            notes_file.write_text("draft\n", encoding="utf-8")
+            operator_file = workspace / "kernel.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
             _write_workflow_state(
                 workspace,
                 phase="baseline",
                 baseline_status="pending",
+                source_operator="kernel.py",
             )
 
             result = _evaluate_plugin_args(
                 _policy(workspace),
                 "write",
-                {"filePath": str(notes_file), "content": "updated\n", "cwd": str(workspace)},
+                {"filePath": str(operator_file), "content": "updated\n", "cwd": str(workspace)},
                 workspace,
             )
 
             self.assertEqual(result, {"allowed": True})
-
-    @_skip_if_no_node
-    def test_baseline_phase_blocks_native_write_to_hidden_runtime_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "workspace"
-            workspace.mkdir()
-            runtime_state = workspace / ".triton-agent" / "state.json"
-            runtime_state.parent.mkdir(parents=True)
-            _write_workflow_state(
-                workspace,
-                phase="baseline",
-                baseline_status="pending",
-            )
-
-            result = _evaluate_plugin_args(
-                _policy(workspace),
-                "write",
-                {"filePath": str(runtime_state), "content": "updated\n", "cwd": str(workspace)},
-                workspace,
-            )
-
-            self.assertFalse(result["allowed"])
-            self.assertIn("protected", str(result["message"]))
-            self.assertIn(".triton-agent/", str(result["message"]))
 
     @_skip_if_no_node
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
@@ -349,6 +326,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="awaiting_round_start",
                 baseline_status="passed",
+                source_operator="kernel.py",
             )
 
             result = _evaluate_plugin_args(
@@ -360,8 +338,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertFalse(result["allowed"])
             self.assertIn("awaiting_round_start", str(result["message"]))
-            self.assertIn("ascend-npu-optimize-state", str(result["message"]))
-            self.assertIn("start-round", str(result["message"]))
+            self.assertIn("ascend-npu-optimize-start-round", str(result["message"]))
 
     @_skip_if_no_node
     def test_round_active_allows_native_write_inside_current_round(self) -> None:
@@ -374,6 +351,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
+                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -395,41 +373,6 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
-    def test_round_active_allows_native_write_to_top_level_progress_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "workspace"
-            workspace.mkdir()
-            _write_workflow_state(
-                workspace,
-                phase="round_active",
-                baseline_status="passed",
-                current_round=2,
-                rounds={
-                    "2": {
-                        "status": "active",
-                        "round_dir": "opt-round-2",
-                        "started_at": "2026-06-23T08:00:00Z",
-                        "ended_at": None,
-                    }
-                },
-            )
-
-            for file_name in ("opt-note.md", "learned_lessons.md", "supervisor-report.md"):
-                with self.subTest(file_name=file_name):
-                    result = _evaluate_plugin_args(
-                        _policy(workspace),
-                        "write",
-                        {
-                            "filePath": str(workspace / file_name),
-                            "content": "updated\n",
-                            "cwd": str(workspace),
-                        },
-                        workspace,
-                    )
-
-                    self.assertEqual(result, {"allowed": True})
-
-    @_skip_if_no_node
     def test_round_active_blocks_native_write_outside_current_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -440,6 +383,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
                 phase="round_active",
                 baseline_status="passed",
+                source_operator="kernel.py",
                 current_round=2,
                 rounds={
                     "2": {
@@ -461,9 +405,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertFalse(result["allowed"])
             self.assertIn("Current active round is opt-round-2", str(result["message"]))
             self.assertIn("must stay inside `opt-round-2/`", str(result["message"]))
-            self.assertIn("ascend-npu-optimize-state", str(result["message"]))
-            self.assertIn("set-current-round-state", str(result["message"]))
-            self.assertIn("submit-round", str(result["message"]))
+            self.assertIn("ascend-npu-optimize-submit-round", str(result["message"]))
             self.assertNotIn("First-version scope", str(result["message"]))
 
     @_skip_if_no_node
@@ -519,7 +461,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 _policy(workspace),
                 "bash",
                 {
-                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
+                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
                     "run-bench --bench-file bench_kernel.py --bench-mode msprof",
                     "cwd": str(workspace),
                 },
@@ -532,7 +474,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(tool_event["summary"], "bash: benchmark")
             self.assertEqual(
                 command_event["command"],
-                "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
+                "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
                 "run-bench --bench-file bench_kernel.py --bench-mode msprof",
             )
 
@@ -546,7 +488,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 _policy(workspace),
                 "bash",
                 {
-                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/cli.py "
+                    "command": "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py "
                     "run-bench --bench-file bench_kernel.py --bench-mode msprof",
                     "cwd": str(workspace),
                 },
@@ -780,6 +722,7 @@ def _write_workflow_state(
     *,
     phase: str,
     baseline_status: str,
+    source_operator: str,
     current_round: Optional[int] = None,
     rounds: Optional[dict[str, object]] = None,
 ) -> None:
@@ -789,6 +732,7 @@ def _write_workflow_state(
         "schema_version": 1,
         "run_id": "optimize-20260623-guard",
         "phase": phase,
+        "source_operator": source_operator,
         "current_round": current_round,
         "baseline": {
             "status": baseline_status,

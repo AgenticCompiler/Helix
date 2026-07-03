@@ -6,21 +6,16 @@ import sys
 from pathlib import Path
 
 from bench_contract import resolve_bench_kernel_resolution
-from env_registry import (
-    TRITON_AGENT_BENCH_TIMEOUT_SECONDS,
-    TRITON_AGENT_SIMULATOR_SOC_VERSION,
-    TRITON_ALWAYS_COMPILE,
-)
 from result_payload import ResultPayload
 from run_runtime import env_int, local_python_executable, run_streaming_process
 
 
 def _simulator_timeout() -> int:
-    return env_int(TRITON_AGENT_BENCH_TIMEOUT_SECONDS, 900)
+    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
 
 
 def _simulator_soc_version() -> str:
-    return os.environ.get(TRITON_AGENT_SIMULATOR_SOC_VERSION, "Ascend950PR_9599")
+    return os.environ.get("TRITON_AGENT_SIMULATOR_SOC_VERSION", "Ascend950PR_9599")
 
 
 def _bench_runtime_script_path() -> Path:
@@ -111,5 +106,5 @@ def run_local_simulator(
         command,
         str(bench_file.parent),
         stall_timeout_seconds=_simulator_timeout(),
-        extra_env={TRITON_ALWAYS_COMPILE: "1"},
+        extra_env={"TRITON_ALWAYS_COMPILE": "1"},
     )

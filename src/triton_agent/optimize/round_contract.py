@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from triton_agent.optimize.models import RoundArtifactsInspection, RoundState
-from triton_agent.optimize.skill_contract import optimize_state_round_module
+from triton_agent.optimize.skill_contract import optimize_submit_round_module
 
 
-_OPTIMIZE_ROUND_MODULE = optimize_state_round_module()
+_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
 
 
 def load_round_state(round_dir: Path) -> RoundState:

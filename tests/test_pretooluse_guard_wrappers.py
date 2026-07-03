@@ -126,13 +126,12 @@ def _run_wrapper(
     payload: dict[str, object],
 ) -> subprocess.CompletedProcess[str]:
     templates_root = Path(__file__).resolve().parents[1] / "hooks"
-    runtime_source = Path(__file__).resolve().parents[1] / "src" / "hook_runtime"
     with tempfile.TemporaryDirectory() as staged_tmp:
         staged_dir = Path(staged_tmp)
         wrapper_path = staged_dir / "pretooluse_guard.py"
-        runtime_path = staged_dir / "hook_runtime"
+        policy_engine_path = staged_dir / "tool_use_guard_policy.py"
         shutil.copy2(templates_root / backend / "pretooluse_guard.py", wrapper_path)
-        shutil.copytree(runtime_source, runtime_path)
+        shutil.copy2(templates_root / "shared" / "tool_use_guard_policy.py", policy_engine_path)
 
         policy_path = staged_dir / "policy.json"
         policy_path.write_text(json.dumps(_policy(workspace, backend_root=f".{backend}")) + "\n", encoding="utf-8")

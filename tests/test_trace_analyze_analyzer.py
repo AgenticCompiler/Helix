@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.trace.analyze import build_summary
+from triton_agent.trace_analyze.analyzer import build_summary
 
 
 class TraceAnalysisAnalyzerTests(unittest.TestCase):
@@ -15,12 +15,12 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/ascend-npu-run-eval/scripts/cli.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
             },
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/ascend-npu-run-eval/scripts/cli.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
             },
             {
                 "type": "command",
@@ -53,7 +53,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         self.assertTrue(summary["capabilities"]["command_events"])
         self.assertEqual(
             summary["file_access"]["repeated_file_reads"],
-            {".codex/skills/ascend-npu-run-eval/scripts/cli.py": 2},
+            {".codex/skills/ascend-npu-run-eval/scripts/run-command.py": 2},
         )
         self.assertEqual(
             summary["commands"]["full_msprof_benchmark_commands"],

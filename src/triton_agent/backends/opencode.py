@@ -10,9 +10,9 @@ from typing import Optional, TextIO
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.hook_common import cleanup_hook_stage, describe_cleanup, describe_prepare
 from triton_agent.backends.opencode_hooks import prepare_opencode_hooks
-from triton_agent.eval.mcp import resolve_managed_mcp_servers
+from triton_agent.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest
-from triton_agent.terminal.verbose import emit_verbose_lines
+from triton_agent.verbose import emit_verbose_lines
 
 
 _OPENCODE_CONFIG_PATH = Path(".opencode") / "opencode.json"

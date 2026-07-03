@@ -4,7 +4,6 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from dataclasses import fields
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 import triton_agent.commands.comparison as comparison_module
 from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
 
 
@@ -38,18 +37,9 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             stdout = io.StringIO()
             with redirect_stdout(stdout):
                 exit_code = compare_perf_files(baseline, compare)
+
             self.assertEqual(exit_code, 0)
             self.assertIn("latency-a", stdout.getvalue())
-
-
-class PerfArtifactsStructureTests(unittest.TestCase):
-    def test_metric_source_section_result_has_named_fields(self) -> None:
-        module = load_perf_artifacts_module()
-
-        self.assertEqual(
-            [field.name for field in fields(module.MetricSourceSectionResult)],
-            ["metric_source", "rendered_output"],
-        )
 
     def test_compare_perf_files_forwards_skip_latency_errors_flag(self) -> None:
         module = comparison_module._load_compare_perf()
@@ -117,14 +107,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         new = Path("/tmp/new.pt")
 
         with patch.object(module, "compare_result_files", return_value=0) as mocked:
-            exit_code = comparison_module.compare_result_files(
-                oracle,
-                new,
-                accuracy_mode="dtype-close",
-            )
+            exit_code = comparison_module.compare_result_files(oracle, new)
 
         self.assertEqual(exit_code, 0)
-        mocked.assert_called_once_with(oracle, new, accuracy_mode="dtype-close")
+        mocked.assert_called_once_with(oracle, new)
 
     def test_compare_remote_result_files_runs_via_skill_wrapper(self) -> None:
         module = comparison_module._load_compare_result()
@@ -137,7 +123,6 @@ class PerfArtifactsStructureTests(unittest.TestCase):
                 new,
                 "alice@example.com",
                 "/tmp/remote-workdir",
-                accuracy_mode="dtype-close",
                 verbose=True,
                 stderr=sys.stderr,
             )
@@ -148,7 +133,6 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             new,
             "alice@example.com",
             "/tmp/remote-workdir",
-            accuracy_mode="dtype-close",
             verbose=True,
             stderr=sys.stderr,
         )
@@ -181,39 +165,6 @@ class PerfArtifactsStructureTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             mocked.assert_called_once()
-
-    def test_handle_compare_result_forwards_accuracy_mode_to_local_comparison(self) -> None:
-        parser = build_parser()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            oracle = root / "oracle.pt"
-            new = root / "new.pt"
-            oracle.write_text("oracle", encoding="utf-8")
-            new.write_text("new", encoding="utf-8")
-            args = parser.parse_args(
-                [
-                    "compare-result",
-                    "--ref-result",
-                    str(oracle),
-                    "--new-result",
-                    str(new),
-                    "--accuracy-mode",
-                    "dtype-close",
-                ]
-            )
-
-            with patch(
-                "triton_agent.commands.comparison.compare_result_files",
-                return_value=0,
-            ) as mocked:
-                exit_code = handle_compare_result(parser, args)
-
-            self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(
-                oracle.resolve(),
-                new.resolve(),
-                accuracy_mode="dtype-close",
-            )
 
     def test_handle_compare_result_uses_remote_env_when_flag_missing(self) -> None:
         parser = build_parser()
@@ -253,7 +204,6 @@ class PerfArtifactsStructureTests(unittest.TestCase):
                 new.resolve(),
                 "alice@example.com",
                 "/tmp/triton-agent",
-                accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
             )

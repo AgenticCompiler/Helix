@@ -7,7 +7,7 @@ from typing import TextIO
 
 from triton_agent.backends.factory import create_runner
 
-from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
@@ -15,11 +15,11 @@ from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsMana
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
 from triton_agent.paths import default_generated_output_path
-from triton_agent.remote.env import merge_remote_execution_env
-from triton_agent.paths import skills_root
-from triton_agent.skills.selection import resolve_staged_skills
-from triton_agent.skills.staging import SkillLinkManager
-from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.remote_execution_env import merge_remote_execution_env
+from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.skills import SkillLinkManager
+from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
 def count_completed_round_directories(workdir: Path) -> int:

@@ -12,16 +12,10 @@ from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, Optional, TextIO, TypedDict, cast
 
-from env_registry import (
-    TRITON_AGENT_EVAL_TIMEOUT_SECONDS,
-    TRITON_AGENT_PYTHON,
-    TRITON_AGENT_SCP_TIMEOUT_SECONDS,
-    TRITON_AGENT_SSH_TIMEOUT_SECONDS,
-    TRITON_ALL_BLOCKS_PARALLEL,
-)
 from result_payload import ResultPayload, make_result
 
 _IS_WINDOWS = sys.platform == "win32"
+_BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
 _BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
 _BLOCKS_PARALLEL_SAFE_VALUE = "0"
 
@@ -38,7 +32,7 @@ class RemoteSpec(TypedDict):
 
 
 def local_python_executable() -> str:
-    configured = os.environ.get(TRITON_AGENT_PYTHON, "").strip()
+    configured = os.environ.get("TRITON_AGENT_PYTHON", "").strip()
     if configured:
         return configured
     if getattr(sys, "frozen", False):
@@ -59,15 +53,15 @@ def env_int(name: str, default: int) -> int:
 
 
 def _ssh_timeout() -> int:
-    return env_int(TRITON_AGENT_SSH_TIMEOUT_SECONDS, 120)
+    return env_int("TRITON_AGENT_SSH_TIMEOUT_SECONDS", 120)
 
 
 def _scp_timeout() -> int:
-    return env_int(TRITON_AGENT_SCP_TIMEOUT_SECONDS, 300)
+    return env_int("TRITON_AGENT_SCP_TIMEOUT_SECONDS", 300)
 
 
 def eval_stall_timeout_seconds() -> int:
-    return env_int(TRITON_AGENT_EVAL_TIMEOUT_SECONDS, 300)
+    return env_int("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", 300)
 
 
 def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
@@ -476,14 +470,11 @@ def _resolved_returncode(returncode: int | None) -> int:
 
 def _normalized_execution_extra_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     normalized = {} if extra_env is None else dict(extra_env)
-    blocks_parallel = normalized.get(TRITON_ALL_BLOCKS_PARALLEL)
+    blocks_parallel = normalized.get(_BLOCKS_PARALLEL_ENV)
     if blocks_parallel == _BLOCKS_PARALLEL_UNSAFE_VALUE:
-        normalized[TRITON_ALL_BLOCKS_PARALLEL] = _BLOCKS_PARALLEL_SAFE_VALUE
-    elif (
-        blocks_parallel is None
-        and os.environ.get(TRITON_ALL_BLOCKS_PARALLEL) == _BLOCKS_PARALLEL_SAFE_VALUE
-    ):
-        normalized[TRITON_ALL_BLOCKS_PARALLEL] = _BLOCKS_PARALLEL_SAFE_VALUE
+        normalized[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    elif blocks_parallel is None and os.environ.get(_BLOCKS_PARALLEL_ENV) == _BLOCKS_PARALLEL_SAFE_VALUE:
+        normalized[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
     return normalized
 
 

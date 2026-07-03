@@ -23,14 +23,14 @@ def _resolve_skill_source_dir(skill_name: str) -> Path:
 
 
 BASELINE_CONTRACT_PATH = (
-    _resolve_skill_source_dir("ascend-npu-optimize-state")
+    _resolve_skill_source_dir("ascend-npu-optimize-submit-baseline")
     / "references"
-    / "baseline-contract.json"
+    / "contract.json"
 )
 ROUND_CONTRACT_PATH = (
-    _resolve_skill_source_dir("ascend-npu-optimize-state")
+    _resolve_skill_source_dir("ascend-npu-optimize-submit-round")
     / "references"
-    / "round-contract.json"
+    / "contract.json"
 )
 ARTIFACTS_PATH = SKILL_ROOT / "references" / "artifacts.md"
 

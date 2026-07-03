@@ -334,11 +334,11 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         self.assertEqual(parser._classify_command("python run-bench --bench-mode msprof"), "benchmark")
         self.assertEqual(parser._classify_command("ssh user@host python run-bench"), "remote_bench")
         self.assertEqual(parser._classify_command("pytest test.py"), "correctness_test")
-        self.assertEqual(parser._classify_command("python cli.py run-test-baseline --test-file test.py"), "correctness_test")
-        self.assertEqual(parser._classify_command("python cli.py run-test-optimize --test-file differential_test.py"), "correctness_test")
+        self.assertEqual(parser._classify_command("python run-command.py run-test-baseline --test-file test.py"), "correctness_test")
+        self.assertEqual(parser._classify_command("python run-command.py run-test-optimize --test-file differential_test.py"), "correctness_test")
         self.assertEqual(parser._classify_command("compare-perf"), "compare_perf")
-        self.assertEqual(parser._classify_command("submit-round"), "check_round")
-        self.assertEqual(parser._classify_command("submit-baseline"), "check_baseline")
+        self.assertEqual(parser._classify_command("check-round"), "check_round")
+        self.assertEqual(parser._classify_command("check-baseline"), "check_baseline")
         self.assertEqual(parser._classify_command("compare-result"), "compare_result")
 
     def test_flush_writes_pending_events(self) -> None:

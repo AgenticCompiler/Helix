@@ -10,8 +10,7 @@ Rules:
 - `run-test-baseline` must be used to validate the correctness of a baseline operator.
 - `run-test-optimize` must be used to validate the correctness of an optimized operator.
 - In optimize differential mode, `run-test-optimize` requires `ref_operator_file`.
-- The comparison policy is controlled by the execution environment; invoke the run-test tool normally.
-- There is no compare-level option.
+- Differential result comparison always uses the shared NPU accuracy comparison contract. There is no compare-level option.
 - Remote execution uses `remote`, `remote_workdir`, and `keep_remote_workdir` when needed.
 
 Argument examples:

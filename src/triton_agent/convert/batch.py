@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
 
-from triton_agent.batch.discovery import (
+from triton_agent.batch_utils import (
     NO_CANDIDATE_OPERATOR_FILE,
     PrefixedTextStream,
     discover_batch_workspaces,
@@ -19,16 +19,16 @@ from triton_agent.batch.discovery import (
 )
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
-from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentResult, CommandKind
-from triton_agent.batch.affinity import (
+from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
     configured_batch_npu_slots,
     validate_batch_affinity_capacity,
 )
-from triton_agent.skills.selection import resolve_staged_skills
+from triton_agent.skill_staging import resolve_staged_skills
 
 _BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_", "tilelang_")
 _BATCH_CONVERT_EXCLUDED_NAMES = {"__init__.py"}
