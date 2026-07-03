@@ -824,6 +824,8 @@ def _run_bench_once(
     remote: str | None,
     remote_workdir: str | None,
     *,
+    extract_dest_dir: Path | None = None,
+    simulator_case_idx: int = 1,
     npu_devices: str | None,
     keep_remote_workdir: bool,
     verbose: bool,
@@ -848,10 +850,10 @@ def _run_bench_once(
         bench_file,
         operator_file,
         resolved_bench_mode,
-        args.npu_devices,
-        simulator_case_idx=args.simulator_case_idx,
+        npu_devices,
+        simulator_case_idx=simulator_case_idx,
         extract_dest_dir=extract_dest_dir,
-        output=args.output,
+        output=output,
     )
     return result, perf_path, None
 
