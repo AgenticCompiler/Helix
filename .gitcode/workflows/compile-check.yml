@@ -1,0 +1,15 @@
+name: compile-check
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  install:
+    runs-on: euleros-2.10.1
+    steps:
+      - uses: checkout-action@0.0.1
+      - name: Set up Python
+        uses: setup-python@0.0.1
+        with:
+          python-version: '3.9'
+      - name: Install check
+        run: pip install --no-cache-dir -e . -i https://mirrors.huaweicloud.com/repository/pypi/simple --trusted-host mirrors.huaweicloud.com
