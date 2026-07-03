@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
+from env_registry import (
+    TORCH_DEVICE_BACKEND_AUTOLOAD,
+    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    TRITON_ALWAYS_COMPILE,
+)
 from perf_artifacts import (
     PerfCaseRecord,
     PerfMetrics,
@@ -47,8 +52,6 @@ PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler kernel view"
-_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
-_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
 
 
 @dataclass(frozen=True)
@@ -245,8 +248,8 @@ def profile_all_bench_cases(
     output: str | None = None,
     preloaded: LoadedBenchCases | None = None,
 ) -> RuntimeBenchResult:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
         cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -286,9 +289,9 @@ def profile_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +360,8 @@ def time_all_bench_cases(
     bench_mode: str = "perf-counter",
     output: str | None = None,
 ) -> RuntimeBenchResult:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get(TRITON_ALWAYS_COMPILE)
+    os.environ[TRITON_ALWAYS_COMPILE] = "1"
     try:
         cases, resolution = load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -393,9 +396,9 @@ def time_all_bench_cases(
         )
     finally:
         if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
+            del os.environ[TRITON_ALWAYS_COMPILE]
         else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+            os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
 # ---------------------------------------------------------------------------
@@ -617,10 +620,10 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
 
 
 def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
-    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
+    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
 
 
 def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
@@ -675,8 +678,8 @@ def _bootstrap_torch_npu() -> None:
     # can race with torch_npu initialization and later leave Triton with no
     # active NPU driver. torch is mandatory for this runtime, so its import
     # failure should still surface immediately.
-    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
-    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    previous = os.environ.get(TORCH_DEVICE_BACKEND_AUTOLOAD)
+    os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = "0"
     try:
         importlib.import_module("torch")
         try:
@@ -685,9 +688,9 @@ def _bootstrap_torch_npu() -> None:
             pass
     finally:
         if previous is None:
-            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+            os.environ.pop(TORCH_DEVICE_BACKEND_AUTOLOAD, None)
         else:
-            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
+            os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = previous
 
 
 def _cleanup_local_bench_extra_info(workdir: Path) -> None:

@@ -22,6 +22,12 @@ from bench_contract import (  # noqa: F401
     resolve_bench_kernel_names,
     resolve_bench_kernel_resolution,
 )
+from env_registry import (
+    ASCEND_RT_VISIBLE_DEVICES,
+    TRITON_AGENT_BENCH_COPY_FILES,
+    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    TRITON_ALWAYS_COMPILE,
+)
 from npu_affinity import NpuDevicePool, affinity_env_for_device, parse_npu_devices
 from debug_device import maybe_print_visible_devices
 from perf_artifacts import (
@@ -65,9 +71,6 @@ ResolvedProfileOutputRoot = tuple[str | None, str]
 PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
 CaseWorkspaceRoots = tuple[Path, Path]
 CaseWorkspace = tuple[Path, Callable[[], None]]
-
-_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
-_BENCH_COPY_FILES_ENV = "TRITON_AGENT_BENCH_COPY_FILES"
 _bench_runtime_module_cache = None
 _bench_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
@@ -86,7 +89,7 @@ class _MsprofCaseOutcome:
 
 
 def _collect_env_copy_files(search_dir: Path) -> list[Path]:
-    patterns_str = os.environ.get(_BENCH_COPY_FILES_ENV, "")
+    patterns_str = os.environ.get(TRITON_AGENT_BENCH_COPY_FILES, "")
     if not patterns_str.strip():
         return []
     patterns = [p.strip() for p in patterns_str.split(",") if p.strip()]
@@ -486,7 +489,7 @@ def _run_remote_bench_perf_counter(
         stderr=stderr,
     )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
-    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
+    extra_env: dict[str, str] | None = {TRITON_ALWAYS_COMPILE: "1"}
     with stream_target_for_verbosity(verbose) as stream_target:
         result = run_remote_command_streaming(
             spec,
@@ -644,9 +647,9 @@ def _run_remote_bench_torch_npu_profiler(
         )
     else:
         script = _build_remote_torch_npu_profiler_run_all_script(verbose=verbose)
-    extra_env: dict[str, str] = {"TRITON_ALWAYS_COMPILE": "1"}
+    extra_env: dict[str, str] = {TRITON_ALWAYS_COMPILE: "1"}
     if devices is not None:
-        extra_env["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(devices)
+        extra_env[ASCEND_RT_VISIBLE_DEVICES] = ",".join(devices)
     with stream_target_for_verbosity(verbose) as stream_target:
         result = run_remote_command_streaming(
             spec,
@@ -890,7 +893,7 @@ def _run_local_bench_msprof(
                     str(bench_file.parent),
                     stall_timeout_seconds=eval_stall_timeout_seconds(),
                     stdout=stream_target,
-                    extra_env={"TRITON_ALWAYS_COMPILE": "1"},
+                    extra_env={TRITON_ALWAYS_COMPILE: "1"},
                 )
             elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -1213,10 +1216,10 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
 
 
 def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
-    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
+    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
 
 
 def _create_local_msprof_output_dir(
@@ -1697,8 +1700,10 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = _resolve_local_bench_profile_output_root()
     if configured_profile_root:
-        extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
-    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+        extra_env[TRITON_AGENT_BENCH_OUTPUT_DIR] = str(
+            Path(configured_profile_root).expanduser().resolve()
+        )
+    extra_env[TRITON_ALWAYS_COMPILE] = "1"
     command = [
         local_python_executable(),
         "-c",
@@ -1746,7 +1751,7 @@ def _run_local_perf_counter_case_in_subprocess(
     verbose: bool = False,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
-    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    extra_env[TRITON_ALWAYS_COMPILE] = "1"
     command = [
         local_python_executable(),
         "-c",
@@ -1818,7 +1823,7 @@ def _run_remote_torch_npu_profiler_case(
     stderr: TextIO | None = None,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
-    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    extra_env[TRITON_ALWAYS_COMPILE] = "1"
     result = run_remote_command_streaming(
         spec,
         case_workspace,
@@ -1856,7 +1861,7 @@ def _run_remote_perf_counter_case(
     stderr: TextIO | None = None,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
-    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    extra_env[TRITON_ALWAYS_COMPILE] = "1"
     result = run_remote_command_streaming(
         spec,
         case_workspace,
@@ -2018,7 +2023,7 @@ def _run_local_msprof_case_parallel(
     try:
         with pool.acquire() as device:
             extra_env = affinity_env_for_device(device)
-            extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+            extra_env[TRITON_ALWAYS_COMPILE] = "1"
             command = [
                 "msprof",
                 f"--output={output_dir}",
@@ -2090,7 +2095,7 @@ def _run_remote_msprof_case_parallel(
     try:
         with pool.acquire() as device:
             extra_env = affinity_env_for_device(device)
-            extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+            extra_env[TRITON_ALWAYS_COMPILE] = "1"
             t0 = time.monotonic()
             result = run_remote_command_streaming(
                 spec,
