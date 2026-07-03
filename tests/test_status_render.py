@@ -1,11 +1,13 @@
 import json
 import sys
 import unittest
+from unittest import mock
 from io import StringIO
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import triton_agent.status.render as status_render
 from triton_agent.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.status.render import render_optimize_status_results
 
@@ -16,6 +18,44 @@ class _TTYStringIO(StringIO):
 
 
 class OptimizeRenderTests(unittest.TestCase):
+    def test_render_optimize_status_best_view_dispatches_to_best_renderer(self) -> None:
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/alpha"),
+                state="ok",
+                avg_improvement=0.2,
+                geomean_speedup=1.25,
+                best_round="round-2",
+                logged_best="round-2",
+                warnings=(),
+            )
+        ]
+
+        with mock.patch.object(status_render, "render_optimize_status_best_results", return_value=5) as render_best:
+            exit_code = render_optimize_status_results(results, stdout=StringIO(), output_format="text", view="best")
+
+        self.assertEqual(exit_code, 5)
+        render_best.assert_called_once_with(results, stdout=mock.ANY, output_format="text")
+
+    def test_render_optimize_status_best_text_dispatches_to_text_renderer(self) -> None:
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/alpha"),
+                state="ok",
+                avg_improvement=0.2,
+                geomean_speedup=1.25,
+                best_round="round-2",
+                logged_best="round-2",
+                warnings=(),
+            )
+        ]
+
+        with mock.patch.object(status_render, "render_optimize_status_text", return_value=7) as render_text:
+            exit_code = render_optimize_status_results(results, stdout=StringIO(), output_format="text", view="best")
+
+        self.assertEqual(exit_code, 7)
+        render_text.assert_called_once_with(results, stdout=mock.ANY)
+
     def test_render_optimize_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
         stream = StringIO()
         results = [
@@ -378,6 +418,74 @@ class OptimizeRenderTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_render_optimize_status_trend_html_renders_static_report(self) -> None:
+        stream = StringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/beta"),
+                state="ok",
+                avg_improvement=0.3,
+                geomean_speedup=1.3,
+                best_round="round-3",
+                logged_best=None,
+                warnings=(),
+                rounds=(
+                    OptimizeStatusRound("round-1", "auto", 0.1, 1.1, 9.0),
+                    OptimizeStatusRound("round-3", "auto", 0.3, 1.3, 7.0),
+                ),
+            ),
+        ]
+
+        render_optimize_status_results(results, stdout=stream, output_format="html", view="trend")
+
+        rendered = stream.getvalue()
+        self.assertIn("<!doctype html>", rendered.lower())
+        self.assertIn("Operator Speedup Trends", rendered)
+        self.assertIn("beta", rendered)
+        self.assertIn("<svg", rendered)
+
+    def test_render_optimize_status_trend_html_dispatches_results_to_html_builder(self) -> None:
+        stream = StringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/beta"),
+                state="ok",
+                avg_improvement=0.3,
+                geomean_speedup=1.3,
+                best_round="round-3",
+                logged_best=None,
+                warnings=(),
+                rounds=(
+                    OptimizeStatusRound("round-1", "auto", 0.1, 1.1, 9.0),
+                    OptimizeStatusRound("round-3", "auto", 0.3, 1.3, 7.0),
+                ),
+            ),
+        ]
+
+        with mock.patch.object(status_render, "_build_optimize_status_trend_html", return_value="<html></html>") as build_html:
+            exit_code = status_render.render_optimize_status_trend_html(results, stdout=stream)
+
+        self.assertEqual(exit_code, 0)
+        build_html.assert_called_once_with(results)
+        self.assertEqual(stream.getvalue(), "<html></html>\n")
+
+    def test_render_optimize_status_best_html_is_unsupported(self) -> None:
+        stream = StringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/beta"),
+                state="ok",
+                avg_improvement=0.2,
+                geomean_speedup=1.25,
+                best_round="round-2",
+                logged_best="round-2",
+                warnings=(),
+            ),
+        ]
+
+        with self.assertRaisesRegex(ValueError, "HTML format only supports --view trend"):
+            render_optimize_status_results(results, stdout=stream, output_format="html", view="best")
 
 
 if __name__ == "__main__":

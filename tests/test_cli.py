@@ -1942,6 +1942,11 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["status", "-i", "kernels", "--format", "json"])
         self.assertEqual(args.format, "json")
 
+    def test_status_accepts_html_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--format", "html"])
+        self.assertEqual(args.format, "html")
+
     def test_status_accepts_view_option(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["status", "-i", "kernels", "--view", "trend"])
@@ -2652,6 +2657,65 @@ class PathResolutionTests(unittest.TestCase):
                     },
                 ],
             )
+
+    def test_main_status_renders_trend_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "html"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("<!doctype html>", rendered.lower())
+            self.assertIn("Operator Speedup Trends", rendered)
+            self.assertIn("matmul", rendered)
+            self.assertIn("<svg", rendered)
+
+    def test_main_status_rejects_best_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["status", "-i", str(root), "--format", "html"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("HTML format only supports --view trend", stderr.getvalue())
 
     def test_main_status_renders_markdown_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
