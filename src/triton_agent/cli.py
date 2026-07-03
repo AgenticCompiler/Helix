@@ -41,7 +41,8 @@ from triton_agent.remote.ssh_preflight import ensure_remote_ssh_ready
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _LANGUAGE_CHOICES = ("triton", "tilelang")
-_FORMAT_CHOICES = ("text", "markdown")
+_FORMAT_CHOICES = ("text", "markdown", "json")
+_STATUS_VIEW_CHOICES = ("best", "trend")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
@@ -89,6 +90,18 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             (
                 "TRITON_AGENT_DEBUG",
                 "When set to true, print NPU device diagnostics before run-test and run-bench execution.",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE",
+                "Run-test comparison mode: npu-contract or dtype-close (default: npu-contract).",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_ATOL",
+                "Optional dtype-close absolute tolerance override. Only used when accuracy mode is dtype-close.",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_RTOL",
+                "Optional dtype-close relative tolerance override. Only used when accuracy mode is dtype-close.",
             ),
             (
                 remote_target_env_name(),
@@ -610,6 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if command_kind == CommandKind.STATUS:
+            subparser.add_argument("--view", default="best", choices=_STATUS_VIEW_CHOICES)
         if spec.has_language:
             subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:

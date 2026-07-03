@@ -55,6 +55,7 @@ uv run triton-agent gen-eval --input operators_root --concurrency 4
 uv run triton-agent gen-eval-batch --input .
 uv run triton-agent status --input operators_root
 uv run triton-agent status --input operators_root --format markdown
+uv run triton-agent status --input operators_root --view trend --format json
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent verify --input operators_root --concurrency 1
@@ -565,6 +566,9 @@ Common options:
 uv run triton-agent status --input operators_root
 uv run triton-agent status --input .
 uv run triton-agent status --input operators_root --format markdown
+uv run triton-agent status --input operators_root --format json
+uv run triton-agent status --input operators_root --view trend
+uv run triton-agent status --input operators_root --view trend --format json
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
@@ -574,14 +578,15 @@ It keeps baseline perf files strict, but round `perf.txt` artifacts may include 
 When multiple top-level perf files exist, baseline selection prefers `<original-operator>_perf.txt`,
 then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 
-`--format markdown` emits a compact table with:
+`--view best` is the default view. It reports each workspace's best numeric round,
+average improvement, geomean speedup, logged best round, verification status, and warnings.
+
+`--format markdown` with the default best view emits a compact table with:
 
 - `名称`
 - `Geomean speedup`
-- `Total speedup`
 - `Verified`
 - `Verified Geomean speedup`
-- `Verified Total speedup`
 - `Notes`
 
 The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
@@ -593,6 +598,13 @@ The verified speedup columns use the same latest successful verify state and sta
 workspace has no verified result.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
+
+`--view trend` emits a wide per-round geomean speedup table. Each row is one operator workspace,
+and each `round-N` column is that round's geomean speedup relative to the selected baseline.
+Trend output filters `NO-SESSION` workspaces. Missing round values render as `-` in text and Markdown.
+
+`--format json` is available for both views. JSON output uses a top-level `operators` array and raw
+float speedup values. In trend JSON, missing round values are `null`.
 
 ### Verify The Best Round
 
