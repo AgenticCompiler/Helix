@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from triton_agent.otel_trace import utc_timestamp
+from triton_agent.trace.core import utc_timestamp
 
 
 def write_agent_exit_log(
