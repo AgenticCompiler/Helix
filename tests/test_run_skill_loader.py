@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skill_loader import (
+from triton_agent.skills.loader import (
     load_operator_eval_script_module,
     load_skill_script_module,
     operator_eval_script_path,
@@ -35,9 +35,9 @@ class RunSkillLoaderTests(unittest.TestCase):
     def test_bench_runner_wrapper_module_has_been_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("triton_agent.bench_runner"))
 
-    def test_operator_eval_script_path_points_to_run_scripts(self) -> None:
-        path = operator_eval_script_path("run-command")
-        self.assertEqual(path.name, "run-command.py")
+    def test_operator_eval_script_path_points_to_run_eval_cli(self) -> None:
+        path = operator_eval_script_path("cli")
+        self.assertEqual(path.name, "cli.py")
         self.assertEqual(path.parent.name, "scripts")
         self.assertEqual(path.parent.parent.name, "ascend-npu-run-eval")
 
@@ -297,7 +297,7 @@ class RunSkillLoaderTests(unittest.TestCase):
     def test_run_command_and_runtime_use_shared_result_payload_helper(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
         self.assertTrue((scripts_dir / "result_payload.py").is_file())
-        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run-command.py"))
+        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "cli.py"))
         self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run_runtime.py"))
         self.assertNotIn("make_result", _top_level_defined_names(scripts_dir / "run_runtime.py"))
 

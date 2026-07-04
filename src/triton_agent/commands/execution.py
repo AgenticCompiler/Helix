@@ -7,7 +7,7 @@ from typing import TextIO
 
 from triton_agent.commands.comparison import compare_perf_files
 from triton_agent.commands.comparison import compare_remote_result_files, compare_result_files
-from triton_agent.execution import (
+from triton_agent.eval.runners import (
     AgentResult,
     resolve_bench_mode_default,
     resolve_test_mode_from_metadata,
@@ -19,8 +19,11 @@ from triton_agent.execution import (
     run_remote_probe_bench,
     run_remote_test,
 )
-from triton_agent.output import render_result
-from triton_agent.remote_execution_env import resolve_remote_execution
+from triton_agent.optimize.pt_cleanup import (
+    cleanup_run_test_pt_files,
+)
+from triton_agent.terminal.render import render_result
+from triton_agent.remote.env import resolve_remote_execution
 
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
@@ -43,6 +46,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         remote=remote,
         remote_workdir=remote_workdir,
     )
+    accuracy_mode = args.accuracy_mode
     remote_workspace: str | None = None
     try:
         if remote is not None:
@@ -52,6 +56,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                accuracy_mode=accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -61,6 +66,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 test_file,
                 operator_file,
                 resolved_test_mode,
+                accuracy_mode=accuracy_mode,
                 verbose=args.verbose,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -77,9 +83,11 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 archived_result,
                 remote,
                 remote_workdir,
+                accuracy_mode=accuracy_mode,
                 verbose=args.verbose,
             )
-        else:
+        cleaned_pt = cleanup_run_test_pt_files((archived_result,))
+        if ref_result is None and resolved_test_mode == "differential" and not cleaned_pt:
             print(_RUN_TEST_HINT)
     elif ref_result is not None:
         print(
@@ -98,16 +106,22 @@ def _compare_run_test_result(
     remote: str | None,
     remote_workdir: str | None,
     *,
+    accuracy_mode: str,
     verbose: bool,
 ) -> int:
     if remote is None:
-        return compare_result_files(ref_result, archived_result)
+        return compare_result_files(
+            ref_result,
+            archived_result,
+            accuracy_mode=accuracy_mode,
+        )
     try:
         return compare_remote_result_files(
             ref_result,
             archived_result,
             remote,
             remote_workdir,
+            accuracy_mode=accuracy_mode,
             verbose=verbose,
             stderr=sys.stderr,
         )
@@ -311,6 +325,7 @@ def resolve_run_test_comparison_inputs(
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                accuracy_mode=args.accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -326,6 +341,7 @@ def resolve_run_test_comparison_inputs(
                 test_file,
                 ref_operator_file,
                 resolved_test_mode,
+                accuracy_mode=args.accuracy_mode,
                 verbose=args.verbose,
             )
             render_result(ref_run_result, skip_stdout=False)

@@ -2,19 +2,35 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Protocol, cast
+from typing import Callable, Optional, Protocol, cast
 
 HOOKS_ROOT = Path(__file__).resolve().parents[1] / "hooks" / "claude_plugin"
 
 
 class BootstrapResultLike(Protocol):
     additional_context: str | None
+
+
+class RunGitLike(Protocol):
+    def __call__(self, args: list[str], cwd: Optional[Path] = None) -> str: ...
+
+
+class BootstrapRuntimeStateLike(Protocol):
+    def __call__(
+        self,
+        workspace: Path,
+        *,
+        compiler_source_enabled: bool | None = None,
+        compiler_source_cache_dir: Path | None = None,
+        run_git: RunGitLike | None = None,
+    ) -> BootstrapResultLike: ...
 
 
 def _load_state_bootstrap_module() -> ModuleType:
@@ -33,7 +49,7 @@ def _load_state_bootstrap_module() -> ModuleType:
 
 _STATE_BOOTSTRAP = _load_state_bootstrap_module()
 bootstrap_runtime_state = cast(
-    Callable[[Path], BootstrapResultLike],
+    BootstrapRuntimeStateLike,
     getattr(_STATE_BOOTSTRAP, "bootstrap_runtime_state"),
 )
 validate_existing_state = cast(
@@ -47,7 +63,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
 
-            result = bootstrap_runtime_state(workspace)
+            result = bootstrap_runtime_state(workspace, compiler_source_enabled=False)
 
             self.assertTrue((workspace / ".triton-agent").is_dir())
             state_path = workspace / ".triton-agent" / "state.json"
@@ -95,7 +111,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = bootstrap_runtime_state(workspace)
+            result = bootstrap_runtime_state(workspace, compiler_source_enabled=False)
 
             state_path = workspace / ".triton-agent" / "state.json"
             self.assertTrue(state_path.exists())
@@ -131,12 +147,81 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
             (workspace / "opt-round-1").mkdir()
 
-            result = bootstrap_runtime_state(workspace)
+            result = bootstrap_runtime_state(workspace, compiler_source_enabled=False)
 
             self.assertIsNotNone(result.additional_context)
             assert result.additional_context is not None
             self.assertIn("cannot determine source operator from baseline/state.json", result.additional_context)
             self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
+
+    def test_bootstrap_runtime_state_prepares_compiler_source_on_first_session_start(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            cache_dir = root / "cache"
+            checkout = cache_dir / "compiler-sources" / "AscendNPU-IR"
+            calls: list[list[str]] = []
+
+            def fake_run(args: list[str], cwd: Optional[Path] = None) -> str:
+                calls.append(args)
+                if args[:2] == ["git", "clone"]:
+                    target = Path(args[-1])
+                    target.mkdir(parents=True)
+                    (target / ".git").mkdir()
+                    return ""
+                if args == ["git", "rev-parse", "HEAD"]:
+                    self.assertEqual(cwd, checkout)
+                    return "abc123\n"
+                raise AssertionError(args)
+
+            result = bootstrap_runtime_state(
+                workspace,
+                compiler_source_enabled=True,
+                compiler_source_cache_dir=cache_dir,
+                run_git=fake_run,
+            )
+
+            self.assertTrue((workspace / ".triton-agent" / "state.json").exists())
+            self.assertTrue(checkout.is_dir())
+            self.assertIn(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "https://gitcode.com/Ascend/AscendNPU-IR.git",
+                    str(checkout),
+                ],
+                calls,
+            )
+            self.assertIsNotNone(result.additional_context)
+            assert result.additional_context is not None
+            self.assertIn("Compiler source analysis is enabled", result.additional_context)
+            self.assertIn(str(checkout), result.additional_context)
+            self.assertIn("abc123", result.additional_context)
+
+    def test_bootstrap_runtime_state_reports_compiler_source_failure_without_raising(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+
+            def fake_run(args: list[str], cwd: Optional[Path] = None) -> str:
+                del args, cwd
+                raise ValueError("network unavailable")
+
+            result = bootstrap_runtime_state(
+                workspace,
+                compiler_source_enabled=True,
+                compiler_source_cache_dir=Path(tmp) / "cache",
+                run_git=fake_run,
+            )
+
+            self.assertTrue((workspace / ".triton-agent" / "state.json").exists())
+            self.assertIsNotNone(result.additional_context)
+            assert result.additional_context is not None
+            self.assertIn("Compiler source analysis is unavailable", result.additional_context)
+            self.assertIn("network unavailable", result.additional_context)
 
     def test_session_start_returns_repair_guidance_for_namespaced_agent_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -235,14 +320,55 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
                 payload["hookSpecificOutput"]["permissionDecisionReason"],
             )
 
+    def test_pretooluse_guard_allows_read_from_existing_compiler_source_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            checkout = root / "cache" / "compiler-sources" / "AscendNPU-IR"
+            source_file = checkout / "bishengir" / "lib" / "pass.cc"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("// source\n", encoding="utf-8")
+            (checkout / ".git").mkdir()
 
-def _run_hook(script_name: str, payload: dict[str, object]) -> subprocess.CompletedProcess[str]:
+            result = _run_hook(
+                "pretooluse_guard.py",
+                {
+                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "cwd": str(workspace),
+                    "tool_name": "Read",
+                    "tool_input": {
+                        "file_path": str(source_file),
+                    },
+                },
+                env={
+                    "TRITON_AGENT_CLAUDE_PLUGIN_COMPILER_SOURCE": "auto",
+                    "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR": str(root / "cache"),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(result.stdout, "")
+
+
+def _run_hook(
+    script_name: str,
+    payload: dict[str, object],
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    hook_env = os.environ.copy()
+    hook_env.setdefault("TRITON_AGENT_CLAUDE_PLUGIN_COMPILER_SOURCE", "off")
+    if env is not None:
+        hook_env.update(env)
     return subprocess.run(
         [sys.executable, str(HOOKS_ROOT / script_name)],
         input=json.dumps(payload),
         text=True,
         capture_output=True,
         check=False,
+        env=hook_env,
     )
 
 

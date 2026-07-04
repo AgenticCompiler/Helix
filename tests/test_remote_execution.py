@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent import remote_execution_env as remote_env_module
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.remote import env as remote_env_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
     load_bench_runner_module,
@@ -223,7 +223,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path.cwd() / "src"))
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 module = load_operator_eval_script_module("bench_runner")
 result = {
     "return_code": 0,
@@ -645,6 +645,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         new,
                         "alice@example.com",
                         None,
+                        accuracy_mode="dtype-close",
                     )
 
         compare_script = copy_to_remote.call_args_list[0].args[1]
@@ -666,6 +667,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "oracle result.pt",
                 "--new-result",
                 "new result.pt",
+                "--accuracy-mode",
+                "dtype-close",
             ],
         )
 

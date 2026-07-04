@@ -8,7 +8,7 @@ from typing import Any, cast
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import triton_agent.optimize.workflow_state as workflow_state_module
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 
 
 def load_state_machine_module():

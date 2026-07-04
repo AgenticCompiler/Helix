@@ -2,7 +2,7 @@
 
 ## Goal
 
-Remove ambiguous `./scripts/run-command.py` guidance from the live
+Remove ambiguous `./scripts/cli.py` guidance from the live
 `ascend-npu-run-eval` skill docs so agents stop resolving the helper script
 relative to the current working directory instead of the staged skill root.
 
@@ -10,7 +10,7 @@ relative to the current working directory instead of the staged skill root.
 
 - Live `ascend-npu-run-eval` skill instructions and examples should refer to the
   helper entrypoint as
-  `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py ...`.
+  `python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py ...`.
 - The docs should describe `<ascend-npu-run-eval-skill-path>` as the staged path
   of the `ascend-npu-run-eval` skill for the active backend, rather than
   implying that `./scripts/` exists under the agent's current working
@@ -23,18 +23,18 @@ relative to the current working directory instead of the staged skill root.
 The current live skill text still documents commands like:
 
 ```bash
-python3 ./scripts/run-command.py run-bench ...
+python3 ./scripts/cli.py run-bench ...
 ```
 
 That shape is only valid when the shell happens to be running from the skill
 root itself. In real agent runs, the working directory is usually the operator
 workspace, so the same command incorrectly targets a workspace-local
-`./scripts/run-command.py` path or fails with a missing-file error.
+`./scripts/cli.py` path or fails with a missing-file error.
 
 The repository already documents staged helper execution as an explicit
 skill-owned path in other places, and the backend guard design explicitly allows
-commands shaped like `python3 .codex/skills/.../scripts/run-command.py ...` or
-`python3 .opencode/skills/.../scripts/run-command.py ...`.
+commands shaped like `python3 .codex/skills/.../scripts/cli.py ...` or
+`python3 .opencode/skills/.../scripts/cli.py ...`.
 
 ## Design
 
@@ -42,7 +42,7 @@ Update the live `skills/common/ascend-npu-run-eval/` documentation set so every
 agent-facing helper invocation uses the backend-neutral placeholder form:
 
 ```bash
-python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py <subcommand> ...
 ```
 
 Apply that wording to:
@@ -53,8 +53,11 @@ Apply that wording to:
 - `references/probe-bench.md`
 - `references/profile-bench.md`
 - `references/profile-report.md`
-- `references/compare-result.md`
 - `references/compare-perf.md`
+
+The staged skill `cli.py` no longer exposes an agent-facing `compare-result`
+subcommand, so the live run-eval skill docs should not include a
+`references/compare-result.md` guide.
 
 The top-level skill doc should also explain what
 `<ascend-npu-run-eval-skill-path>` means in one short sentence so dependent
@@ -66,8 +69,8 @@ hard-coded staged paths.
 Extend `tests/test_generation_contracts.py` so it asserts the live
 `ascend-npu-run-eval` docs:
 
-- contain `<ascend-npu-run-eval-skill-path>/scripts/run-command.py`
-- do not contain `python3 ./scripts/run-command.py`
+- contain `<ascend-npu-run-eval-skill-path>/scripts/cli.py`
+- do not contain `python3 ./scripts/cli.py`
 
 This keeps future doc edits from regressing to current-directory-relative helper
 paths.

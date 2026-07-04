@@ -11,12 +11,12 @@ from triton_agent.convert.batch import resolve_batch_convert_operator_file, run_
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.convert.outputs import prepare_convert_target
-from triton_agent.execution import parse_test_metadata, run_local_test, run_remote_test
+from triton_agent.eval.runners import parse_test_metadata, run_local_test, run_remote_test
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.npu_affinity import resolve_batch_concurrency
-from triton_agent.output import render_result
+from triton_agent.batch.affinity import resolve_batch_concurrency
+from triton_agent.terminal.render import render_result
 from triton_agent.paths import default_generated_output_path
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.terminal.verbose import emit_verbose_lines
 
 _MAX_CONVERT_AGENT_ATTEMPTS = 2
 
@@ -40,6 +40,8 @@ class _ConvertVerificationResult:
 
 
 def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_convert_batch(parser, args)
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")

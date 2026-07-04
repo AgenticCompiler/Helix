@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 
 
 def optimize_state_baseline_module() -> ModuleType:

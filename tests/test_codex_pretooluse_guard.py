@@ -86,7 +86,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_staged_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -116,7 +116,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -131,7 +131,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_staged_claude_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -146,7 +146,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_python_entrypoint_for_staged_claude_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".claude" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -161,7 +161,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            script = workspace / ".codex" / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('helper')\n", encoding="utf-8")
             bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
@@ -176,7 +176,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _policy(workspace),
                 _payload(
                     workspace,
-                    "python3 .codex/skills/ascend-npu-run-eval/scripts/run-command.py "
+                    "python3 .codex/skills/ascend-npu-run-eval/scripts/cli.py "
                     "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
                     "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
                     "--bench-mode msprof 2>&1",

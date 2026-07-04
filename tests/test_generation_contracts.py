@@ -219,7 +219,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Use the `ascend-npu-run-eval` skill to validate generated tests.", test_gen)
         self.assertIn("run `run-test-baseline`", test_gen)
         self.assertIn("run `run-test-optimize`", test_gen)
-        self.assertIn("keep `compare-result` for reruns", test_gen)
+        self.assertNotIn("compare-result", test_gen)
         self.assertIn("focused run-eval guide", test_gen)
         self.assertNotIn("--ref-operator-file", test_gen)
 
@@ -235,14 +235,13 @@ class GenerationContractTests(unittest.TestCase):
         run_test = _read("skills/common/ascend-npu-run-eval/references/run-test.md")
         run_bench = _read("skills/common/ascend-npu-run-eval/references/run-bench.md")
         profile_bench = _read("skills/common/ascend-npu-run-eval/references/profile-bench.md")
-        compare_result = _read("skills/common/ascend-npu-run-eval/references/compare-result.md")
         compare_perf = _read("skills/common/ascend-npu-run-eval/references/compare-perf.md")
 
         self.assertIn("# Run-Eval Router", skill)
         self.assertIn("references/run-test.md", skill)
         self.assertIn("references/run-bench.md", skill)
         self.assertIn("references/profile-bench.md", skill)
-        self.assertIn("references/compare-result.md", skill)
+        self.assertNotIn("references/compare-result.md", skill)
         self.assertIn("references/compare-perf.md", skill)
         self.assertIn("do not read unrelated command guides", skill)
         self.assertIn(
@@ -259,6 +258,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "profile-bench.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "compare-result.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "compare-perf.md").exists())
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "common"
+                / "ascend-npu-run-eval"
+                / "references"
+                / "compare-result.md"
+            ).exists()
+        )
 
         self.assertIn("run-test-baseline", run_test)
         self.assertIn("run-test-optimize", run_test)
@@ -279,12 +288,6 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("always uses `torch_npu.profiler`", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
-        self.assertIn("rerun or inspect the comparison separately from `run-test-optimize`", compare_result)
-        self.assertIn("Prefer `run-test-optimize --ref-operator-file ...`", compare_result)
-        self.assertIn("shared NPU accuracy comparison contract", compare_result)
-        self.assertIn("prints detailed diagnostics", compare_result)
-        self.assertNotIn("--compare-level", compare_result)
-
         self.assertIn("Avg improvement", compare_perf)
         self.assertIn("Geomean speedup", compare_perf)
         self.assertIn("authority for claimed benchmark deltas and speedups", compare_perf)
@@ -296,7 +299,6 @@ class GenerationContractTests(unittest.TestCase):
         probe_bench = _read("skills/common/ascend-npu-run-eval/references/probe-bench.md")
         profile_bench = _read("skills/common/ascend-npu-run-eval/references/profile-bench.md")
         profile_report = _read("skills/common/ascend-npu-run-eval/references/profile-report.md")
-        compare_result = _read("skills/common/ascend-npu-run-eval/references/compare-result.md")
         compare_perf = _read("skills/common/ascend-npu-run-eval/references/compare-perf.md")
 
         self.assertIn("Use the bundled helper script in this skill", skill)
@@ -304,9 +306,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("run-test-optimize", skill)
         self.assertIn("run-bench", skill)
         self.assertIn("profile-bench", skill)
-        self.assertIn("<ascend-npu-run-eval-skill-path>/scripts/run-command.py", skill)
+        self.assertIn("<ascend-npu-run-eval-skill-path>/scripts/cli.py", skill)
         self.assertIn(
-            "call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly",
+            "call `python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py <subcommand> ...` directly",
             skill,
         )
         self.assertNotIn("use the corresponding MCP tool", skill)
@@ -318,10 +320,9 @@ class GenerationContractTests(unittest.TestCase):
             probe_bench,
             profile_bench,
             profile_report,
-            compare_result,
             compare_perf,
         ):
-            self.assertNotIn("python3 ./scripts/run-command.py", doc)
+            self.assertNotIn("python3 ./scripts/cli.py", doc)
 
     def test_run_eval_mcp_skill_is_tool_first_and_omits_compare_result(self) -> None:
         skill = _read("skills/common/ascend-npu-run-eval-mcp/SKILL.md")
@@ -330,7 +331,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("profile-report", skill)
         self.assertIn("compare-perf", skill)
         self.assertNotIn("compare-result", skill)
-        self.assertNotIn("python3 ./scripts/run-command.py", skill)
+        self.assertNotIn("python3 ./scripts/cli.py", skill)
         self.assertFalse(
             (
                 REPO_ROOT
@@ -420,7 +421,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("submit-round", optimize)
         self.assertIn("start-round", optimize)
         self.assertIn("set-current-round-state", optimize)
-        self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", optimize)
+        self.assertNotIn("../ascend-npu-run-eval/scripts/cli.py", optimize)
         self.assertIn("submit-baseline", state_skill)
         self.assertIn("submit-round", state_skill)
         self.assertIn("start-round", state_skill)
@@ -821,8 +822,8 @@ class GenerationContractTests(unittest.TestCase):
         script = _read("scripts/update-optimize-knowledge-indices.sh")
 
         self.assertIn("bash scripts/update-optimize-knowledge-indices.sh", skill)
-        self.assertIn("build_pattern_index.py", script)
-        self.assertIn("build_symptom_index.py", script)
+        self.assertIn("triton_agent.optimize_knowledge.pattern_index", script)
+        self.assertIn("triton_agent.optimize_knowledge.symptom_index", script)
         self.assertIn(
             "skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md",
             script,
@@ -849,14 +850,14 @@ class GenerationContractTests(unittest.TestCase):
             pattern_note,
         )
         self.assertIn(
-            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py",
+            "triton_agent.optimize_knowledge.pattern_index",
             pattern_note,
         )
         self.assertIn(
             "skills/triton/triton-npu-optimize-knowledge/references/symptoms/",
             symptom_note,
         )
-        self.assertIn("build_symptom_index.py", symptom_note)
+        self.assertIn("triton_agent.optimize_knowledge.symptom_index", symptom_note)
 
     def test_pattern_authoring_note_describes_priority_contract(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
@@ -884,7 +885,7 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("Treat the compiler source checkout as read-only", content)
         self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
-        self.assertIn("CLI-provided compiler source path and commit", content)
+        self.assertIn("CLI/plugin-provided compiler source path and commit", content)
         self.assertNotIn("compiler error", content.lower())
 
     def test_compiler_source_navigation_references_exist_and_capture_expected_sections(self) -> None:
@@ -1147,7 +1148,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("--case-id <id>", profiler)
         self.assertIn("profile one selected `--case-id <id>` case", profiler)
         self.assertIn("must not receive `--bench` or `--num-bench`", profiler)
-        self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", profiler)
+        self.assertNotIn("../ascend-npu-run-eval/scripts/cli.py", profiler)
         self.assertNotIn("first query `--num-bench`", profiler)
         self.assertNotIn("profile one selected `--bench <N>` case", profiler)
         self.assertNotIn("msprof python3 bench_<op>.py --operator-file <operator-file>", profiler)
@@ -1158,7 +1159,7 @@ class GenerationContractTests(unittest.TestCase):
             "skills/common/ascend-npu-analyze-round-performance/SKILL.md",
             "skills/common/ascend-npu-gen-eval-suite/SKILL.md",
             "skills/common/ascend-npu-profile-operator/SKILL.md",
-            "skills/common/ascend-npu-kernel-bench-logs/SKILL.md",
+            "skills/common/ascend-npu-distill-patterns/SKILL.md",
             "skills/triton/triton-npu-optimize/SKILL.md",
             "skills/triton/triton-npu-optimize/references/artifacts.md",
         )

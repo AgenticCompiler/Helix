@@ -26,7 +26,7 @@ from triton_agent.commands.optimize import optimize_run_options_from_args
 from triton_agent.generation.outputs import prepare_generation_target
 from triton_agent.models import AgentResult
 from triton_agent.models import CommandKind
-from triton_agent.output import render_result
+from triton_agent.terminal.render import render_result
 from triton_agent.paths import (
     default_generated_output_path,
     resolve_execution_target,
@@ -41,8 +41,8 @@ from triton_agent.optimize.prompts import (
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
 )
-from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
-from triton_agent.execution import _normalize_agent_result as normalize_agent_result
+from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from triton_agent.eval.runners import _normalize_agent_result as normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
@@ -85,15 +85,35 @@ class CliParserTests(unittest.TestCase):
     def test_concurrency_short_alias_is_parseable_for_supported_commands(self) -> None:
         parser = build_parser()
         for argv, expected in (
+            (["gen-eval", "-i", "kernels", "-c", "max"], "max"),
             (["gen-eval-batch", "-i", "kernels", "-c", "max"], "max"),
+            (["convert", "-i", "kernels", "-c", "2"], 2),
             (["convert-batch", "-i", "kernels", "-c", "2"], 2),
+            (["log-check", "-i", "kernels", "-c", "4"], 4),
             (["log-check-batch", "-i", "kernels", "-c", "4"], 4),
+            (["optimize", "-i", "kernels", "-c", "3"], 3),
             (["optimize-batch", "-i", "kernels", "-c", "3"], 3),
-            (["diff-skills-update", "-i", "operators", "-c", "2"], 2),
+            (["report", "-i", "kernels", "-c", "2"], 2),
+            (["verify", "-i", "kernels", "-c", "2"], 2),
+            (["distill", "-i", "operators", "-c", "2"], 2),
         ):
             with self.subTest(argv=argv):
                 args = parser.parse_args(argv)
                 self.assertEqual(args.concurrency, expected)
+
+    def test_single_commands_do_not_default_to_batch_mode(self) -> None:
+        parser = build_parser()
+        for command, input_value in (
+            ("gen-eval", "kernel.py"),
+            ("convert", "kernel.py"),
+            ("log-check", "workspace"),
+            ("optimize", "kernel.py"),
+            ("report", "workspace"),
+            ("verify", "workspace"),
+        ):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value])
+                self.assertIsNone(args.concurrency)
 
     def test_gen_eval_batch_accepts_operator_filter(self) -> None:
         parser = build_parser()
@@ -126,6 +146,71 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.concurrency, 4)
         self.assertTrue(args.verbose)
         self.assertFalse(args.stream_output)
+
+    def test_log_check_with_explicit_concurrency_accepts_batch_result_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "log-check",
+                "-i",
+                "kernels",
+                "--check-result-file",
+                "custom_check.txt",
+                "--summary-file",
+                "custom_summary.txt",
+                "--concurrency",
+                "4",
+            ]
+        )
+        self.assertEqual(args.command, "log-check")
+        self.assertEqual(args.command_kind, CommandKind.LOG_CHECK)
+        self.assertEqual(args.check_result_file, "custom_check.txt")
+        self.assertEqual(args.summary_file, "custom_summary.txt")
+        self.assertEqual(args.concurrency, 4)
+
+    def test_log_check_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_log_check_batch(
+                root_path,
+                *,
+                output_file,
+                summary_file,
+                agent_name,
+                verbose,
+                show_output,
+                log_tools,
+                language,
+                max_concurrency,
+            ):
+                del output_file, agent_name, verbose, show_output, log_tools, language
+                captured["root"] = root_path
+                captured["summary_file"] = summary_file
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch(
+                "triton_agent.commands.log_check.run_log_check_batch",
+                side_effect=_fake_run_log_check_batch,
+            ):
+                exit_code = main(
+                    [
+                        "log-check",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "4",
+                        "--summary-file",
+                        "custom_summary.md",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["summary_file"], "custom_summary.md")
+            self.assertEqual(captured["max_concurrency"], 4)
 
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()
@@ -581,6 +666,48 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
         self.assertTrue(args.keep_remote_workdir)
 
+    def test_verify_with_explicit_concurrency_accepts_batch_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "verify",
+                "-i",
+                "workspace-root",
+                "--concurrency",
+                "4",
+                "--force-verify",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.VERIFY)
+        self.assertEqual(args.concurrency, 4)
+        self.assertTrue(args.force_verify)
+
+    def test_verify_with_explicit_concurrency_uses_batch_handler_and_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+            stderr = StringIO()
+
+            def _fake_run_verify_batch(root_path, *, force_verify, options):
+                del options
+                captured["root"] = root_path
+                captured["force_verify"] = force_verify
+                return 0
+
+            with patch(
+                "triton_agent.commands.verify.run_verify_batch",
+                side_effect=_fake_run_verify_batch,
+            ):
+                with redirect_stderr(stderr):
+                    exit_code = main(
+                        ["verify", "-i", str(root), "--concurrency", "4", "--force-verify"]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertTrue(captured["force_verify"])
+            self.assertIn("ignores --concurrency", stderr.getvalue())
+
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -623,7 +750,42 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
         self.assertEqual(args.test_file, "test_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
+        self.assertEqual(args.accuracy_mode, "npu-contract")
         self.assertFalse(hasattr(args, "agent"))
+
+    def test_run_test_accepts_accuracy_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--accuracy-mode",
+                "dtype-close",
+            ]
+        )
+
+        self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
+        self.assertEqual(args.accuracy_mode, "dtype-close")
+
+    def test_compare_result_accepts_accuracy_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-result",
+                "--ref-result",
+                "ref_result.pt",
+                "--new-result",
+                "new_result.pt",
+                "--accuracy-mode",
+                "dtype-close",
+            ]
+        )
+
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
+        self.assertEqual(args.accuracy_mode, "dtype-close")
 
     def test_run_bench_requires_bench_and_operator_files(self) -> None:
         parser = build_parser()
@@ -1775,6 +1937,27 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["status", "-i", "kernels", "--format", "markdown"])
         self.assertEqual(args.format, "markdown")
 
+    def test_status_accepts_json_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--format", "json"])
+        self.assertEqual(args.format, "json")
+
+    def test_status_accepts_html_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--format", "html"])
+        self.assertEqual(args.format, "html")
+
+    def test_status_accepts_view_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--view", "trend"])
+        self.assertEqual(args.command_kind, CommandKind.STATUS)
+        self.assertEqual(args.view, "trend")
+
+    def test_status_defaults_to_best_view(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels"])
+        self.assertEqual(args.view, "best")
+
     def test_optimize_status_no_longer_parses(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
@@ -2327,6 +2510,213 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("Warning: found multiple baseline perf files", rendered)
 
+    def test_main_status_renders_best_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--format", "json"])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual([item["name"] for item in payload["operators"]], ["fresh", "matmul"])
+            self.assertEqual(payload["operators"][0]["state"], "no-session")
+            self.assertEqual(payload["operators"][1]["state"], "ok")
+            self.assertEqual(payload["operators"][1]["best_round"], "round-1")
+            self.assertAlmostEqual(payload["operators"][1]["geomean_speedup"], 1.25)
+
+    def test_main_status_renders_trend_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            alpha = root / "alpha"
+            alpha.mkdir()
+            (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (alpha / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            alpha_round = alpha / "opt-round-2"
+            alpha_round.mkdir()
+            (alpha_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            beta = root / "beta"
+            beta.mkdir()
+            (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (beta / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            beta_round_one = beta / "opt-round-1"
+            beta_round_three = beta / "opt-round-3"
+            beta_round_one.mkdir()
+            beta_round_three.mkdir()
+            (beta_round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (beta_round_three / "opt_kernel_perf.txt").write_text(
+                "latency-a: 4\nlatency-b: 8\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "markdown"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("| Name | round-1 | round-2 | round-3 |", rendered)
+            self.assertIn("| alpha | - | 2.00x | - |", rendered)
+            self.assertIn("| beta | 1.25x | - | 2.50x |", rendered)
+            self.assertNotIn("fresh", rendered)
+
+    def test_main_status_renders_trend_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            alpha = root / "alpha"
+            alpha.mkdir()
+            (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (alpha / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            alpha_round = alpha / "opt-round-2"
+            alpha_round.mkdir()
+            (alpha_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            beta = root / "beta"
+            beta.mkdir()
+            (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (beta / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            beta_round_one = beta / "opt-round-1"
+            beta_round_three = beta / "opt-round-3"
+            beta_round_one.mkdir()
+            beta_round_three.mkdir()
+            (beta_round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (beta_round_three / "opt_kernel_perf.txt").write_text(
+                "latency-a: 4\nlatency-b: 8\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "json"])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(
+                payload["operators"],
+                [
+                    {
+                        "name": "alpha",
+                        "round_speedups": {
+                            "round-1": None,
+                            "round-2": 2.0,
+                            "round-3": None,
+                        },
+                    },
+                    {
+                        "name": "beta",
+                        "round_speedups": {
+                            "round-1": 1.25,
+                            "round-2": None,
+                            "round-3": 2.5,
+                        },
+                    },
+                ],
+            )
+
+    def test_main_status_renders_trend_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "latency-a: 5\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--view", "trend", "--format", "html"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("<!doctype html>", rendered.lower())
+            self.assertIn("Operator Speedup Trends", rendered)
+            self.assertIn("matmul", rendered)
+            self.assertIn("<svg", rendered)
+
+    def test_main_status_rejects_best_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["status", "-i", str(root), "--format", "html"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("HTML format only supports --view trend", stderr.getvalue())
+
     def test_main_status_renders_markdown_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2650,6 +3040,42 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["root"], root.resolve())
             self.assertEqual(captured["max_concurrency"], 1)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
+
+    def test_main_optimize_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_optimize_batch(root, options, max_concurrency, operator_filter=None):
+                captured["root"] = root
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                captured["post_optimize_command"] = options.post_optimize_command
+                return 0
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_batch",
+                side_effect=_fake_run_optimize_batch,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "2",
+                        "--operator-filter",
+                        "kernel*.py",
+                        "--post-optimize-command",
+                        "echo done",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+            self.assertEqual(captured["post_optimize_command"], "echo done")
 
     def test_main_optimize_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2989,6 +3415,31 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["max_concurrency"], 1)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
+    def test_main_gen_eval_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.generation.run_gen_eval_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["gen-eval", "-i", str(root), "--concurrency", "2", "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+
     def test_main_convert_batch_forwards_operator_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3012,6 +3463,31 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["root"], root.resolve())
             self.assertEqual(captured["max_concurrency"], 1)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+
+    def test_main_convert_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.convert.run_convert_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["convert", "-i", str(root), "--concurrency", "2", "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
     def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:
@@ -3120,6 +3596,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                accuracy_mode="npu-contract",
                 verbose=False,
             )
 
@@ -3148,6 +3625,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                accuracy_mode="npu-contract",
                 verbose=False,
             )
 
@@ -3352,7 +3830,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -4832,6 +5310,7 @@ class PathResolutionTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
                 archive,
+                accuracy_mode="npu-contract",
             )
             self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
             self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
@@ -4870,6 +5349,7 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com:2200",
                 "/tmp/runs",
+                accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
@@ -5059,7 +5539,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",
@@ -5230,7 +5710,11 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(oracle.resolve(), new.resolve())
+            mocked.assert_called_once_with(
+                oracle.resolve(),
+                new.resolve(),
+                accuracy_mode="npu-contract",
+            )
 
     def test_main_compare_result_uses_remote_comparison_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -5261,6 +5745,7 @@ class PathResolutionTests(unittest.TestCase):
                 new.resolve(),
                 "alice@example.com:2200",
                 None,
+                accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
             )
@@ -5875,6 +6360,12 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("repair or establish `baseline/` before `opt-round-1`", prompt)
         self.assertIn("Do not rely on a separate baseline-preflight invocation", prompt)
+        self.assertIn(
+            "You must run the staged `ascend-npu-optimize-state` skill's `submit-round` subcommand after each completed round.",
+            prompt,
+        )
+        self.assertIn("The CLI will validate the completed batch after the invocation exits.", prompt)
+        self.assertNotIn("Interactive mode will not run CLI round checks", prompt)
         self.assertNotIn("The baseline has already been validated before this worker batch.", prompt)
 
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:

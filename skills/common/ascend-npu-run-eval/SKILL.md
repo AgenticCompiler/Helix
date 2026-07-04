@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-run-eval
-description: Execute and evaluate generated operator artifacts. Use when you need to run generated test cases, run generated benchmark cases, fast-screen a candidate operator against a baseline, profile benchmark harnesses, summarize profiling data, or compare result and performance artifacts, including during optimization workflows.
+description: Execute and evaluate generated operator artifacts. Use when you need to run generated test cases, run generated benchmark cases, fast-screen a candidate operator against a baseline, profile benchmark harnesses, summarize profiling data, or compare performance artifacts, including during optimization workflows.
 ---
 
 # Run-Eval Router
@@ -10,10 +10,10 @@ Use the bundled helper script in this skill. Treat
 `ascend-npu-run-eval` skill for the active backend:
 
 ```bash
-python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py <subcommand> ...
 ```
 
-For `probe-bench`, use the surface that actually exposes that subcommand in the current workspace. If the staged `run-command.py` in this skill has not been updated yet, use the workspace's public `triton-agent probe-bench` command instead of guessing helper internals.
+For `probe-bench`, use the surface that actually exposes that subcommand in the current workspace. If the staged `cli.py` in this skill has not been updated yet, use the workspace's public `triton-agent probe-bench` command instead of guessing helper internals.
 
 Read only the focused guide for the subcommand you are about to run:
 
@@ -22,11 +22,10 @@ Read only the focused guide for the subcommand you are about to run:
 - `probe-bench`: [references/probe-bench.md](references/probe-bench.md)
 - `profile-bench`: [references/profile-bench.md](references/profile-bench.md)
 - `profile-report`: [references/profile-report.md](references/profile-report.md)
-- `compare-result`: [references/compare-result.md](references/compare-result.md)
 - `compare-perf`: [references/compare-perf.md](references/compare-perf.md)
 
 During normal use:
 
-- call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly
+- call `python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py <subcommand> ...` directly
 - do not read unrelated command guides
 - do not reread Python files under `<ascend-npu-run-eval-skill-path>/scripts/` unless you need to debug, patch, or verify helper behavior

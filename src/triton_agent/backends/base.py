@@ -12,20 +12,20 @@ from typing import Callable, Optional, TextIO
 from triton_agent.backends.hook_common import HookStageOptions
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
-from triton_agent.otel_trace import (
+from triton_agent.trace.core import (
     TRACE_RUN_ID_ENV,
     append_trace_event,
     build_code_agent_event,
     trace_path_from_request,
     utc_timestamp,
 )
-from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
-from triton_agent.show_output_log import (
+from triton_agent.backends.process_runner import InterruptPolicy, OutputFilter, run_process
+from triton_agent.terminal.logs import (
     open_show_output_log,
     write_show_output_chunk,
 )
 from triton_agent.transient_failures import is_transient_agent_failure
-from triton_agent.verbose import emit_command_block
+from triton_agent.terminal.verbose import emit_command_block
 
 
 class AgentRunner(ABC):

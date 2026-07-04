@@ -56,7 +56,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_sys_path", script)
         if spec is None or spec.loader is None:
@@ -75,7 +75,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -104,7 +104,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_baseline_flag", script)
         if spec is None or spec.loader is None:
@@ -133,7 +133,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_bench_compare_flags", script)
         if spec is None or spec.loader is None:
@@ -166,7 +166,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -260,7 +260,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_output", script)
         if spec is None or spec.loader is None:
@@ -331,7 +331,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_baseline_compare", script)
         if spec is None or spec.loader is None:
@@ -424,7 +424,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_compare", script)
         if spec is None or spec.loader is None:
@@ -534,7 +534,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_failure", script)
         if spec is None or spec.loader is None:
@@ -622,7 +622,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_compare_flags", script)
         if spec is None or spec.loader is None:
@@ -701,7 +701,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_remote_bench", script)
         if spec is None or spec.loader is None:
@@ -791,7 +791,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -819,7 +819,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -848,7 +848,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -911,7 +911,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -950,7 +950,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_profile_path", script)
         if spec is None or spec.loader is None:
@@ -965,14 +965,14 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertTrue(callable(run_local_profile_bench))
         self.assertTrue(callable(run_remote_profile_bench))
 
-    def test_script_run_test_prints_hint_for_differential_result(self) -> None:
+    def test_script_run_test_baseline_preserves_differential_archive(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -999,6 +999,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 self.assertEqual(operator_path, operator.resolve())
                 self.assertEqual(test_mode, "differential")
                 self.assertFalse(verbose)
+                archive.write_text("payload\n", encoding="utf-8")
                 return (
                     {
                         "return_code": 0,
@@ -1028,7 +1029,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ):
                     exit_code = module.main(
                         [
-                            "run-test",
+                            "run-test-baseline",
                             "--test-file",
                             str(test_file),
                             "--operator-file",
@@ -1040,6 +1041,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             finally:
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
+            archive_exists_after_run = archive.exists()
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(
@@ -1047,9 +1049,9 @@ class SkillCommandScriptTests(unittest.TestCase):
             (
                 "Return code: 0\n"
                 f"Archived result: {archive}\n"
-                "Hint: use `compare-result` to inspect this archived result instead of reading it directly.\n"
             ),
         )
+        self.assertTrue(archive_exists_after_run)
         self.assertEqual(stderr.getvalue(), "")
 
     def test_script_run_test_forces_blocks_parallel_to_zero_and_restores_env(self) -> None:
@@ -1059,7 +1061,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1122,7 +1124,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     ):
                         exit_code = module.main(
                             [
-                                "run-test",
+                                "run-test-baseline",
                                 "--test-file",
                                 str(test_file),
                                 "--operator-file",
@@ -1138,6 +1140,172 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(observed_env_values, ["0"])
         self.assertEqual(restored_value, "1")
 
+    def test_script_run_test_optimize_deletes_pt_files_when_run_test_cleanup_policy_enabled(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_pt_cleanup", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            archived_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+            archived_result.write_text("payload\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archived_result,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    clear=False,
+                ), patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "standalone"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+                self.assertEqual(exit_code, 0)
+                self.assertFalse(archived_result.exists())
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+    def test_script_run_test_baseline_preserves_pt_files_when_run_test_cleanup_policy_enabled(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_pt_cleanup_hint", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archived_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            archived_result.write_text("payload\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archived_result,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    clear=False,
+                ), patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-baseline",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(archived_result.exists())
+                self.assertEqual(
+                    stdout.getvalue(),
+                    f"Return code: 0\nArchived result: {archived_result}\n",
+                )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
     def test_script_run_test_rejects_removed_oracle_result_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1145,7 +1313,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1172,7 +1340,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as exc:
                     module.main(
                         [
-                            "run-test",
+                            "run-test-optimize",
                             "--test-file",
                             str(test_file),
                             "--operator-file",
@@ -1197,7 +1365,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1267,7 +1435,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     ):
                         exit_code = module.main(
                             [
-                                "run-test",
+                                "run-test-optimize",
                                 "--test-file",
                                 str(test_file),
                                 "--operator-file",
@@ -1291,7 +1459,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_ref_flag_parser_test", script)
         if spec is None or spec.loader is None:
@@ -1301,7 +1469,7 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         ref_args = module.build_parser().parse_args(
             [
-                "run-test",
+                "run-test-optimize",
                 "--test-file",
                 "differential_test_kernel.py",
                 "--operator-file",
@@ -1314,7 +1482,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         alias_args = module.build_parser().parse_args(
             [
-                "run-test",
+                "run-test-optimize",
                 "--test-file",
                 "differential_test_kernel.py",
                 "--operator-file",
@@ -1338,7 +1506,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1412,7 +1580,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     ):
                         exit_code = module.main(
                             [
-                                "run-test",
+                                "run-test-optimize",
                                 "--test-file",
                                 str(test_file),
                                 "--operator-file",
@@ -1437,7 +1605,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1521,7 +1689,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     ):
                         exit_code = module.main(
                             [
-                                "run-test",
+                                "run-test-optimize",
                                 "--test-file",
                                 str(test_file),
                                 "--operator-file",
@@ -1553,7 +1721,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1585,7 +1753,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1629,7 +1797,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1671,7 +1839,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1721,7 +1889,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1815,7 +1983,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -1950,7 +2118,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -2049,7 +2217,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -2165,7 +2333,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test", script)
         if spec is None or spec.loader is None:
@@ -2220,7 +2388,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ):
                     exit_code = module.main(
                         [
-                            "run-test",
+                            "run-test-baseline",
                             "--test-file",
                             str(test_file),
                             "--operator-file",
@@ -2244,7 +2412,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         completed = subprocess.run(
             [sys.executable, str(script), "--help"],
@@ -2253,20 +2421,21 @@ class SkillCommandScriptTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("run-command.py", completed.stdout)
+        self.assertIn("cli.py", completed.stdout)
         self.assertNotIn("usage: triton-agent", completed.stdout)
-        self.assertIn("run-test", completed.stdout)
+        self.assertNotRegex(completed.stdout, r"(?<![-\w])run-test(?![-\w])")
         self.assertIn("run-test-baseline", completed.stdout)
         self.assertIn("run-test-optimize", completed.stdout)
+        self.assertNotIn("compare-result", completed.stdout)
         self.assertIn("compare-perf", completed.stdout)
         self.assertIn("profile-bench", completed.stdout)
-        self.assertNotIn("usage: run-command.py optimize", completed.stdout)
+        self.assertNotIn("usage: cli.py optimize", completed.stdout)
         self.assertNotIn("gen-test", completed.stdout)
 
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         source_skills = repo_root / "skills"
-        source_script = source_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+        source_script = source_skills / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -2276,7 +2445,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 symlinked_skills.symlink_to(source_skills, target_is_directory=True)
             except OSError as exc:
                 self.skipTest(f"directory symlinks are unavailable: {exc}")
-            symlinked_script = symlinked_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
+            symlinked_script = symlinked_skills / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
 
             completed = subprocess.run(
                 [sys.executable, str(symlinked_script), "--help"],
@@ -2288,16 +2457,17 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertTrue(source_script.exists())
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("compare-result", completed.stdout)
+        self.assertNotRegex(completed.stdout, r"(?<![-\w])run-test(?![-\w])")
+        self.assertNotIn("compare-result", completed.stdout)
 
-    def test_script_exposes_standalone_run_test_help(self) -> None:
+    def test_script_rejects_removed_run_test_command(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         completed = subprocess.run(
             [sys.executable, str(script), "run-test", "--help"],
@@ -2305,11 +2475,30 @@ class SkillCommandScriptTests(unittest.TestCase):
             text=True,
             check=False,
         )
-        self.assertEqual(completed.returncode, 0)
-        self.assertIn("usage: run-command.py run-test", completed.stdout)
-        self.assertIn("--test-file", completed.stdout)
-        self.assertIn("--operator-file", completed.stdout)
-        self.assertIn("--keep-remote-workdir", completed.stdout)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("invalid choice", completed.stderr)
+        self.assertIn("run-test", completed.stderr)
+        self.assertEqual(completed.stdout, "")
+
+    def test_script_rejects_removed_compare_result_command(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "compare-result", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("invalid choice", completed.stderr)
+        self.assertIn("compare-result", completed.stderr)
+        self.assertEqual(completed.stdout, "")
 
     def test_script_exposes_run_test_optimize_help(self) -> None:
         script = (
@@ -2318,7 +2507,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         completed = subprocess.run(
             [sys.executable, str(script), "run-test-optimize", "--help"],
@@ -2327,7 +2516,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("usage: run-command.py run-test-optimize", completed.stdout)
+        self.assertIn("usage: cli.py run-test-optimize", completed.stdout)
         self.assertNotIn("--oracle-result", completed.stdout)
         self.assertIn("--baseline-result", completed.stdout)
         self.assertIn("--baseline-operator-file", completed.stdout)
@@ -2340,7 +2529,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         completed = subprocess.run(
             [sys.executable, str(script), "profile-bench", "--help"],
@@ -2364,7 +2553,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_profile_hint", script)
         if spec is None or spec.loader is None:
@@ -2430,6 +2619,77 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_script_profile_bench_preserves_prof_artifacts_after_report(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_profile_cleanup", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            profile_dir = root / "PROF_000001"
+            stale_profile_dir = root / "PROF_000000"
+            profile_dir.mkdir()
+            stale_profile_dir.mkdir()
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
+
+            def build_profile_report(profile_path: Path, *_args: object, **_kwargs: object) -> str:
+                self.assertEqual(profile_path, profile_dir)
+                self.assertTrue(profile_dir.exists())
+                return "profile summary"
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_profile_functions",
+                    return_value=(
+                        lambda *_args, **_kwargs: (
+                            {
+                                "return_code": 0,
+                                "stdout": "",
+                                "stderr": "",
+                                "stalled": False,
+                                "session_id": None,
+                            },
+                            profile_dir,
+                        ),
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("remote runner should not be used")),
+                    ),
+                ), patch.object(module, "_build_profile_report", side_effect=build_profile_report):
+                    exit_code = module.main(
+                        [
+                            "profile-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(profile_dir.exists())
+                self.assertTrue(stale_profile_dir.exists())
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
     def test_script_exposes_run_bench_help(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -2437,7 +2697,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         completed = subprocess.run(
             [sys.executable, str(script), "run-bench", "--help"],
@@ -2460,7 +2720,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_compare_perf_test", script)
         if spec is None or spec.loader is None:
@@ -2480,7 +2740,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_compare_result_test", script)
         if spec is None or spec.loader is None:
@@ -2502,7 +2762,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "run-command.py"
+            / "cli.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_compare_result_protocol_test", script)
         if spec is None or spec.loader is None:

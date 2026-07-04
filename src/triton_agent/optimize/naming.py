@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from triton_agent.batch_utils import (
+from triton_agent.batch.discovery import (
     NO_CANDIDATE_OPERATOR_FILE,
     is_batch_operator_candidate,
     resolve_batch_operator_file,

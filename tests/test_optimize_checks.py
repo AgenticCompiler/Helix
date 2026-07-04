@@ -154,7 +154,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.kind, "round")
             self.assertEqual(result.issues, ())
 
-    def test_check_round_preserves_pt_files_by_default(self) -> None:
+    def test_check_round_deletes_pt_files_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
@@ -162,26 +162,83 @@ class OptimizeCheckTests(unittest.TestCase):
             pt_file = round_dir / "test_result.pt"
             pt_file.write_text("stub\n", encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir)
-
-            self.assertEqual(result.status, "pass")
-            self.assertEqual(result.kind, "round")
-            self.assertTrue(pt_file.exists())
-
-    def test_check_round_deletes_pt_files_when_env_var_enabled(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workdir = Path(tmp)
-            self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1")
-            pt_file = round_dir / "test_result.pt"
-            pt_file.write_text("stub\n", encoding="utf-8")
-
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", None)
                 result = optimize_checks.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
             self.assertFalse(pt_file.exists())
+
+    def test_check_round_deletes_pt_files_when_round_cleanup_policy_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1")
+            pt_file = round_dir / "test_result.pt"
+            pt_file.write_text("stub\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
+                result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertEqual(result.kind, "round")
+            self.assertFalse(pt_file.exists())
+
+    def test_check_round_deletes_pt_files_for_legacy_truthy_cleanup_values(self) -> None:
+        for value in ("1", "true", "yes", "on"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                workdir = Path(tmp)
+                self._write_baseline(workdir)
+                round_dir = self._write_round(workdir, "opt-round-1")
+                pt_file = round_dir / "test_result.pt"
+                pt_file.write_text("stub\n", encoding="utf-8")
+
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": value},
+                    clear=False,
+                ):
+                    result = optimize_checks.check_round(round_dir)
+
+                self.assertEqual(result.status, "pass")
+                self.assertFalse(pt_file.exists())
+
+    def test_check_round_preserves_pt_files_for_legacy_falsey_cleanup_values(self) -> None:
+        for value in ("0", "false", "no", "off"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                workdir = Path(tmp)
+                self._write_baseline(workdir)
+                round_dir = self._write_round(workdir, "opt-round-1")
+                pt_file = round_dir / "test_result.pt"
+                pt_file.write_text("stub\n", encoding="utf-8")
+
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": value},
+                    clear=False,
+                ):
+                    result = optimize_checks.check_round(round_dir)
+
+                self.assertEqual(result.status, "pass")
+                self.assertTrue(pt_file.exists())
+
+    def test_check_round_deletes_prof_artifacts_after_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1")
+            profile_dir = round_dir / "PROF_000001"
+            profile_dir.mkdir()
+            (profile_dir / "trace.json").write_text("{}\n", encoding="utf-8")
+            profile_file = round_dir / "PROF_marker"
+            profile_file.write_text("profile\n", encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertFalse(profile_dir.exists())
+            self.assertFalse(profile_file.exists())
 
     def test_check_round_allows_missing_perf_analysis_when_not_declared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

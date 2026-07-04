@@ -8,7 +8,9 @@ changing existing semantics.
 
 ## User-Visible Semantics
 
-- Commands that already accept `--concurrency` also accept `-c`.
+- Commands that already accept `--concurrency` also accept `-c` (including the
+  `report-batch` command, whose former `--report-workers` flag has been unified
+  into `--concurrency`).
 - `-c` and `--concurrency` are exact aliases for the same parsed value.
 - Existing validation rules stay unchanged:
   - commands that accept `max` continue accepting it with `-c max`
@@ -27,7 +29,7 @@ Out of scope:
 
 - changing concurrency defaults
 - changing validation rules
-- adding short aliases for unrelated numeric flags such as `--report-workers`
+- adding short aliases for unrelated numeric flags
 
 ## Design
 

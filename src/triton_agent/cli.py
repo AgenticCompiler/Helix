@@ -7,11 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional, TextIO
 
-from triton_agent import help_style
+from triton_agent.terminal.help import style_help_text
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
-from triton_agent.commands.diff_skills_update import handle_diff_skills_update
+from triton_agent.commands.distill import handle_distill
 from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
@@ -30,18 +30,19 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
-from triton_agent.remote_execution_env import (
+from triton_agent.remote.env import (
     apply_remote_execution_env,
     remote_target_env_name,
     remote_workdir_env_name,
 )
-from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
+from triton_agent.remote.ssh_preflight import ensure_remote_ssh_ready
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _LANGUAGE_CHOICES = ("triton", "tilelang")
-_FORMAT_CHOICES = ("text", "markdown")
+_FORMAT_CHOICES = ("text", "markdown", "json", "html")
+_STATUS_VIEW_CHOICES = ("best", "trend")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
@@ -62,7 +63,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex -l triton",
-    "triton-agent diff-skills-update -i kernels --agent codex",
+    "triton-agent distill -i kernels",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
@@ -91,6 +92,18 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "When set to true, print NPU device diagnostics before run-test and run-bench execution.",
             ),
             (
+                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE",
+                "Run-test comparison mode: npu-contract or dtype-close (default: npu-contract).",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_ATOL",
+                "Optional dtype-close absolute tolerance override. Only used when accuracy mode is dtype-close.",
+            ),
+            (
+                "TRITON_AGENT_RUN_TEST_RTOL",
+                "Optional dtype-close relative tolerance override. Only used when accuracy mode is dtype-close.",
+            ),
+            (
                 remote_target_env_name(),
                 "Injected remote target for agent child processes; remote-aware run helpers use it as a fallback when "
                 "`--remote` is omitted.",
@@ -101,7 +114,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
-                "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
+                "PT cleanup policy: never, round, or run-test. Default round; --reset-optimize still deletes reset artifacts.",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
@@ -176,6 +189,7 @@ class _CommandSpec:
     has_remote: bool = False
     keep_remote_workdir: bool = False
     has_agent: bool = False
+    agent_default: str | None = None
     has_interact: bool = False
     has_show_output: bool = False
     has_test_mode: bool = False
@@ -187,8 +201,9 @@ class _CommandSpec:
     has_optimize_options: bool = False
     has_prompt: bool = False
     concurrency_default: int | None = None
+    optional_concurrency: bool = False
     concurrency_accepts_max: bool = False
-    report_workers_default: int | None = None
+
     has_force_overwrite: bool = False
     has_format: bool = False
     has_language: bool = False
@@ -196,7 +211,7 @@ class _CommandSpec:
     has_force_verify: bool = False
     has_log_tools: bool = False
     has_url: bool = False
-    has_diff_skills_update_options: bool = False
+    has_distill_options: bool = False
     has_operator_filter: bool = False
 
 
@@ -217,6 +232,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
         handler=handle_gen_eval_batch,
@@ -252,6 +270,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
         handler=handle_convert_batch,
@@ -380,6 +401,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_language=True,
         has_log_tools=True,
+        optional_concurrency=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
         handler=handle_log_check_batch,
@@ -422,6 +444,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         has_bench_mode=True,
         has_verify_phase=True,
+        has_force_verify=True,
+        optional_concurrency=True,
     ),
     CommandKind.VERIFY_BATCH: _CommandSpec(
         handler=handle_verify_batch,
@@ -448,6 +472,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_optimize_options=True,
         has_prompt=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -468,17 +495,18 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_log_tools=True,
         has_operator_filter=True,
     ),
-    CommandKind.DIFF_SKILLS_UPDATE: _CommandSpec(
-        handler=handle_diff_skills_update,
+    CommandKind.DISTILL: _CommandSpec(
+        handler=handle_distill,
         help_group="Optimization",
-        help_summary="Update optimize skills from baseline/opt diffs and simulate regeneration.",
-        description="Scan operator directories, update optimize skills from opt diffs, and run a simulate loop.",
+        help_summary="Distill optimization evidence into reusable pattern skills.",
+        description="Scan optimization evidence, update optimize knowledge, and run a simulate loop.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_show_output=True,
         has_language=True,
         concurrency_default=1,
-        has_diff_skills_update_options=True,
+        has_distill_options=True,
     ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
         handler=handle_upload_optimize,
@@ -496,9 +524,11 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Launch an agent to read workspace artifacts and render report.md.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_interact=True,
         has_show_output=True,
         has_prompt=True,
+        optional_concurrency=True,
     ),
     CommandKind.REPORT_BATCH: _CommandSpec(
         handler=handle_report_batch,
@@ -508,8 +538,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
                     "and generate per-workspace report.md via agent.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_show_output=True,
-        report_workers_default=4,
+        concurrency_default=1,
     ),
     CommandKind.CLEAN: _CommandSpec(
         handler=handle_clean,
@@ -537,7 +568,7 @@ class TritonArgumentParser(argparse.ArgumentParser):
         stream: TextIO = sys.stdout if file is None else file
         text = self.format_help()
         option_tokens = {option for action in self._actions for option in action.option_strings}
-        styled = help_style.style_help_text(
+        styled = style_help_text(
             text,
             stream,
             option_tokens=option_tokens,
@@ -592,6 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if command_kind == CommandKind.STATUS:
+            subparser.add_argument("--view", default="best", choices=_STATUS_VIEW_CHOICES)
         if spec.has_language:
             subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
@@ -622,7 +655,8 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_log_tools:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
-            subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
+            agent_default = spec.agent_default if spec.agent_default is not None else "codex"
+            subparser.add_argument("--agent", default=agent_default, choices=_AGENT_CHOICES)
             if command_kind in mcp_enabled_commands:
                 subparser.add_argument(
                     "--enable-mcp",
@@ -692,7 +726,7 @@ def build_parser() -> argparse.ArgumentParser:
                                    help="Skip uploading optimization artifacts after the run.")
             subparser.add_argument("--enable-report", action="store_true", default=False,
                                    help="Generate an optimization report after the run.")
-            if command_kind == CommandKind.OPTIMIZE_BATCH:
+            if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
                 subparser.add_argument(
                     "--post-optimize-command",
                     help="Run this shell command inside each workspace after a successful optimize run.",
@@ -704,26 +738,22 @@ def build_parser() -> argparse.ArgumentParser:
                 "--operator-filter",
                 help="Shell-style glob matched against the selected operator filename basename after built-in exclusions.",
             )
-        if spec.has_diff_skills_update_options:
+        if spec.has_distill_options:
             subparser.add_argument(
                 "--source",
-                choices=("code-diff", "optimize-process", "git-repo"),
-                default="code-diff",
+                choices=("diff", "optimize", "git"),
+                default="diff",
                 help=(
-                    "Input source: code-diff uses opt_*.py pairs; "
-                    "optimize-process uses optimize workspaces with learned_lessons.md; "
-                    "git-repo extracts operator workspaces from git commit history."
+                    "Input source: diff uses opt_*.py pairs; "
+                    "optimize uses optimize workspaces with learned_lessons.md; "
+                    "git extracts operator workspaces from git commit history."
                 ),
             )
             subparser.add_argument(
-                "--skills-dir",
-                help="Editable skills workspace. Defaults to <input>/skills.",
+                "--output-dir",
+                help="Output directory for updated pattern cards. Defaults to <input>/distill-output.",
             )
-            subparser.add_argument(
-                "--update-skills-dir",
-                help="Export directory for updated pattern cards. Defaults to <input>/update_skills.",
-            )
-            subparser.add_argument("--max-iterations", type=_parse_positive_int_value, default=3)
+            subparser.add_argument("--max-refine-rounds", type=_parse_positive_int_value, default=3)
             subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")
             subparser.add_argument(
                 "--skip-existing",
@@ -731,9 +761,14 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Skip pairs whose existing simulate report is already aligned.",
             )
             subparser.add_argument(
-                "--promote-converged-skills",
+                "--promote-aligned",
                 action="store_true",
-                help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+                help="After a pair reaches aligned status, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+            )
+            subparser.add_argument(
+                "--skip-review",
+                action="store_true",
+                help="Skip the post-update pattern review phase after distillation completes.",
             )
             subparser.add_argument(
                 "--git-base",
@@ -752,7 +787,13 @@ def build_parser() -> argparse.ArgumentParser:
                 default="log_check_summary.md",
                 help="Root-relative batch log check summary file name.",
             )
-        if spec.concurrency_default is not None:
+        if command_kind == CommandKind.LOG_CHECK:
+            subparser.add_argument(
+                "--summary-file",
+                default="log_check_summary.md",
+                help="Root-relative batch log check summary file name used when --concurrency is provided.",
+            )
+        if spec.concurrency_default is not None or spec.optional_concurrency:
             concurrency_type = (
                 _parse_concurrency_value if spec.concurrency_accepts_max else _parse_positive_int_value
             )
@@ -760,10 +801,9 @@ def build_parser() -> argparse.ArgumentParser:
                 "-c",
                 "--concurrency",
                 type=concurrency_type,
-                default=spec.concurrency_default,
+                default=spec.concurrency_default if spec.concurrency_default is not None else None,
             )
-        if spec.report_workers_default is not None:
-            subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
+
         if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
         if command_kind == CommandKind.CLEAN:
@@ -815,6 +855,10 @@ def _build_environment_variables_section() -> list[str]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
+    tokens = argv if argv is not None else sys.argv[1:]
+    if tokens and tokens[0] == "help":
+        parser.print_help()
+        return 0
     args = parser.parse_args(_normalize_command_aliases(argv))
     try:
         _ensure_explicit_remote_ssh_ready_from_args(args)
@@ -863,6 +907,11 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--ref-result", "--baseline-result", dest="ref_result")
         subparser.add_argument("--ref-operator-file", "--baseline-operator-file", dest="ref_operator_file")
+        subparser.add_argument(
+            "--accuracy-mode",
+            choices=("npu-contract", "dtype-close"),
+            default="npu-contract",
+        )
         return
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
@@ -894,6 +943,11 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-result":
         subparser.add_argument("--ref-result", "--oracle-result", dest="ref_result", required=True)
         subparser.add_argument("--new-result", required=True)
+        subparser.add_argument(
+            "--accuracy-mode",
+            choices=("npu-contract", "dtype-close"),
+            default="npu-contract",
+        )
         return
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)
@@ -936,7 +990,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
-        "diff_skills_update": "diff-skills-update",
+        "distill": "distill",
         "report_batch": "report-batch",
         "report": "report",
         "clean": "clean",

@@ -391,6 +391,49 @@ def main(operator_api):
         self.assertEqual(result["stderr"], "")
         self.assertIsNone(archived)
 
+    def test_run_local_test_passes_accuracy_mode_to_worker_env(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            observed_env: Optional[dict[str, str]] = None
+            fake_result = {
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "worker stopped before payload",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            def fake_run_buffered_process(
+                _command: list[str],
+                _workdir: str,
+                stall_timeout_seconds: int,
+                extra_env: Optional[dict[str, str]] = None,
+            ) -> dict[str, object]:
+                del stall_timeout_seconds
+                nonlocal observed_env
+                observed_env = extra_env
+                return fake_result
+
+            with patch.object(module, "run_buffered_process", side_effect=fake_run_buffered_process):
+                result, archived = module.run_local_test(
+                    test_file,
+                    operator,
+                    "standalone",
+                    accuracy_mode="dtype-close",
+                )
+
+        self.assertEqual(result, fake_result)
+        self.assertIsNone(archived)
+        self.assertEqual(
+            observed_env,
+            {"TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close"},
+        )
+
     def test_run_local_test_reports_missing_differential_hooks_without_legacy_fallback(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -551,6 +594,60 @@ def main(operator_api):
         self.assertIsNone(archived)
         self.assertEqual(remote_workspace, "/tmp/remote")
         self.assertEqual(remote_run.call_args.kwargs["stall_timeout_seconds"], 300)
+
+    def test_run_remote_test_forwards_accuracy_env_to_remote_command(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            fake_result = {
+                "return_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.dict(
+                module.os.environ,
+                {
+                    "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                    "TRITON_AGENT_RUN_TEST_ATOL": "0",
+                    "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+                },
+                clear=False,
+            ), patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=fake_result,
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                result, archived, remote_workspace = module.run_remote_test(
+                    test_file,
+                    operator,
+                    "standalone",
+                    "user@host",
+                    None,
+                )
+
+        self.assertEqual(result, fake_result)
+        self.assertIsNone(archived)
+        self.assertEqual(remote_workspace, "/tmp/remote")
+        self.assertEqual(
+            remote_run.call_args.kwargs["extra_env"],
+            {
+                "TRITON_ALWAYS_COMPILE": "1",
+                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                "TRITON_AGENT_RUN_TEST_ATOL": "0",
+                "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+            },
+        )
 
     def test_remote_differential_generated_script_executes_successfully(self) -> None:
         module = load_test_runner_module()

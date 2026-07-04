@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Callable, Optional, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.codex_hooks import prepare_codex_hooks
 from triton_agent.backends.hook_common import cleanup_hook_stage, describe_cleanup, describe_prepare
-from triton_agent.mcp import resolve_managed_mcp_servers
+from triton_agent.eval.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest
-from triton_agent.otel_trace import trace_path_from_request
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.trace.core import trace_path_from_request
+from triton_agent.terminal.verbose import emit_verbose_lines
 
 if TYPE_CHECKING:
     from triton_agent.backends.codex_trace import CodexJsonOutputFilter

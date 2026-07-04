@@ -25,7 +25,7 @@ from triton_agent.optimize.recovery import (
     render_transient_recovery_note,
 )
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
-from triton_agent.skill_loader import load_skill_script_module
+from triton_agent.skills.loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
@@ -43,12 +43,12 @@ from triton_agent.optimize.prompts import (
     build_optimize_supervisor_prompt,
 )
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
-from triton_agent.otel_trace import (
+from triton_agent.trace.core import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
 )
-from triton_agent.verbose import emit_verbose, emit_verbose_lines
+from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
@@ -233,16 +233,6 @@ def execute_multi_invocation_optimize(
         warnings = cleanup_session(artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
-        try:
-            cleaned_pt = cleanup_workspace_pt_files(request.workdir)
-            if request.verbose and cleaned_pt:
-                emit_verbose(
-                    verbose_stream,
-                    "agents",
-                    f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
-                )
-        except Exception:
-            pass
 
 
 class MultiInvocationOptimizeController:
@@ -321,6 +311,20 @@ class MultiInvocationOptimizeController:
         batch_start = request.current_round
         batch_end = request.final_round
         previous_batch_issues: str | None = None
+
+        if request.interact:
+            worker_request = self._request_with_fresh_batch_prompt(
+                request,
+                issues=None,
+                batch_start=batch_start,
+                batch_end=batch_end,
+            )
+            return self._run_request(
+                worker_request,
+                show_output_label=(
+                    f"batch-{worker_request.current_round}-{worker_request.final_round}-r1"
+                ),
+            )
 
         while batch_start <= min_rounds:
             worker_request = self._request_with_fresh_batch_prompt(
