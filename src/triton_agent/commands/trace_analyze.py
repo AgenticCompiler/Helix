@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from triton_agent.otel_trace import trace_summary_path
-from triton_agent.trace_analyze import analyze_trace
+from triton_agent.trace.core import trace_summary_path
+from triton_agent.trace import analyze_trace
 
 
 def handle_trace_analyze(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

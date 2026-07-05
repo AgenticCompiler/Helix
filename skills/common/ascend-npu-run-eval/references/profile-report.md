@@ -3,8 +3,8 @@
 Summarize an existing `PROF_*` profiling directory without re-running the benchmark:
 
 ```bash
-python3 ./scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel
-python3 ./scripts/run-command.py profile-report --profile-dir . --target-op MatMul --format json
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py profile-report --profile-dir . --target-op MatMul --format json
 ```
 
 ## When to use

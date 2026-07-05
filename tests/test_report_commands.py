@@ -16,14 +16,14 @@ from triton_agent.models import AgentResult
 
 class ReportCommandHandlerTests(unittest.TestCase):
     def test_build_hardware_info_text_omits_target_chip(self) -> None:
-        with patch("triton_agent.hardware_info.capture_hardware_info", return_value={}):
+        with patch("triton_agent.report.hardware.capture_hardware_info", return_value={}):
             text = build_hardware_info_text()
 
         self.assertEqual(text, "")
 
     def test_build_hardware_info_text_queries_hardware_without_target_chip_argument(self) -> None:
         with patch(
-            "triton_agent.hardware_info.capture_hardware_info",
+            "triton_agent.report.hardware.capture_hardware_info",
             return_value={"chip_name": "Ascend 910B"},
         ) as mocked:
             text = build_hardware_info_text()
@@ -46,7 +46,7 @@ class ReportCommandHandlerTests(unittest.TestCase):
 
             with patch("triton_agent.commands.report.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.hardware_info.capture_hardware_info",
+                    "triton_agent.report.hardware.capture_hardware_info",
                     return_value={
                         "chip_name": "Ascend 910B",
                         "cann_version": "8.1.RC1",
@@ -84,13 +84,20 @@ class ReportCommandHandlerTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["report-batch", "-i", "workspaces", "--target-chip", "A3"])
 
+    def test_report_defaults_to_opencode_agent(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["report", "-i", "workspace"])
+
+        self.assertEqual(args.agent, "opencode")
+
     def test_handle_report_batch_uses_workspace_reports_without_target_chip(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "case0"
             workspace.mkdir()
-            args = parser.parse_args(["report-batch", "-i", str(root), "--report-workers", "1"])
+            args = parser.parse_args(["report-batch", "-i", str(root), "-c", "1"])
 
             with patch(
                 "triton_agent.commands.report_batch.write_report_batch_state",
@@ -111,4 +118,33 @@ class ReportCommandHandlerTests(unittest.TestCase):
                             exit_code = handle_report_batch(parser, args)
 
         self.assertEqual(exit_code, 0)
-        mocked.assert_called_once_with(workspace, "codex", True)
+        mocked.assert_called_once_with(workspace, "opencode", True)
+
+    def test_report_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        from triton_agent.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "case0"
+            workspace.mkdir()
+
+            with patch(
+                "triton_agent.commands.report_batch.write_report_batch_state",
+                return_value=root / "report-batch-state.json",
+            ):
+                with patch(
+                    "triton_agent.commands.report_batch.render_report_batch_file",
+                    return_value=root / "report-batch.md",
+                ):
+                    with patch(
+                        "triton_agent.commands.report_batch._discover_workspaces",
+                        return_value=[workspace],
+                    ):
+                        with patch(
+                            "triton_agent.commands.report_batch.generate_workspace_report",
+                            return_value=(True, "ok"),
+                        ) as mocked:
+                            exit_code = main(["report", "-i", str(root), "--concurrency", "2"])
+
+        self.assertEqual(exit_code, 0)
+        mocked.assert_called_once_with(workspace, "opencode", True)

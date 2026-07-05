@@ -12,7 +12,7 @@ from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.naming import resolve_round_perf_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.optimize.round_contract import load_round_state
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class BenchPerfParserModule(Protocol):
@@ -38,6 +38,14 @@ class BenchPerfParserModule(Protocol):
         *,
         metric_source: str = "auto",
     ) -> dict[str, float]: ...
+
+    def parse_perf_pair_for_comparison(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        metric_source: str = "auto",
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
 
 
 def _load_bench_perf_parser() -> BenchPerfParserModule:
@@ -106,17 +114,11 @@ def inspect_optimize_status_workspace(
             continue
         metric_source = _metric_source_for_round_status(round_dir)
         try:
-            baseline_values = baseline_values_by_source.get(metric_source)
-            if baseline_values is None:
-                baseline_values = _parse_baseline_values_for_metric_source(
-                    baseline_path,
-                    metric_source=metric_source,
-                )
-                baseline_values_by_source[metric_source] = baseline_values
-            round_values = _parse_round_values_for_metric_source(
+            baseline_values, round_values = _parse_perf_pair_for_metric_source(
+                baseline_path,
                 perf_path,
-                baseline_values,
                 metric_source=metric_source,
+                baseline_cache=baseline_values_by_source,
             )
         except (ValueError, OSError) as exc:
             warnings.append(str(exc))
@@ -202,7 +204,9 @@ def inspect_optimize_status_workspace(
 def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> list[OptimizeStatusWorkspace]:
     return [
         inspect_optimize_status_workspace(workspace, verbose=verbose)
-        for workspace in sorted(path for path in root.iterdir() if path.is_dir())
+        for workspace in sorted(
+            path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+        )
     ]
 
 
@@ -376,6 +380,38 @@ def _parse_baseline_values_for_metric_source(
         baseline_path,
         metric_source=metric_source,
     )
+
+
+def _parse_perf_pair_for_metric_source(
+    baseline_path: Path | None,
+    perf_path: Path,
+    *,
+    metric_source: str,
+    baseline_cache: dict[str, dict[str, float]],
+) -> tuple[dict[str, float], dict[str, float]]:
+    if baseline_path is None:
+        raise ValueError("missing baseline perf data")
+    parser = _load_bench_perf_parser()
+    if metric_source == "auto":
+        baseline_values, round_values, _comparison_modes = parser.parse_perf_pair_for_comparison(
+            baseline_path,
+            perf_path,
+            metric_source=metric_source,
+        )
+        return baseline_values, round_values
+    baseline_values = baseline_cache.get(metric_source)
+    if baseline_values is None:
+        baseline_values = _parse_baseline_values_for_metric_source(
+            baseline_path,
+            metric_source=metric_source,
+        )
+        baseline_cache[metric_source] = baseline_values
+    round_values = _parse_round_values_for_metric_source(
+        perf_path,
+        baseline_values,
+        metric_source=metric_source,
+    )
+    return baseline_values, round_values
 
 
 def _parse_round_values_for_metric_source(

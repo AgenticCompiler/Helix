@@ -19,6 +19,7 @@ Split exact-tile hot paths from generic masked kernels when dispatch-time shape 
 - Tail-heavy or irregular shapes dominate the workload.
 - The main bottleneck is clearly random global memory, atomics, or compute throughput and boundary control is negligible.
 - The fast path would duplicate too much complex logic and drift from the fallback.
+- **Constraint — fallback must be structurally optimized:** This pattern keeps the original masked kernel as fallback. If the fallback kernel is the original unoptimized baseline code (e.g., a multi-kernel pipeline with atomic_add, or a kernel with unreduced launch count and redundant GM transfers), splitting an exact-tile fast path from it leaves the fallback path completely unoptimized. Before applying this pattern, ensure the fallback has already received the same foundational structural optimizations (kernel fusion, multi-row batching) as the fast path. If not: first restructure the kernel to a single optimized base, then split exact-tile variants from it.
 
 ## Signals
 
@@ -126,7 +127,7 @@ tl.store(out_ptr + offs, result)  # no mask
 
 ## Evidence
 
-NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim=0, index=(2560,27648)`. Splitting an aligned/no-boundary kernel reduced about `4239us -> 3850us` (**~1.10x**). The remaining bottleneck was still random global-memory gather, so treat this as control-overhead cleanup rather than an access-pattern fix.
+Splitting an aligned/no-boundary kernel out of a masked kernel removes boundary-check control overhead. The gain is modest (roughly ~1.1x) when the dominant cost lies elsewhere — for example a rank-2 gather whose real bottleneck is random global-memory access. Treat this as control-overhead cleanup rather than an access-pattern fix.
 
 ## What To Verify After Applying
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skill_loader import load_operator_eval_script_module
+from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 def load_test_runner_module():
@@ -23,6 +23,10 @@ def load_perf_artifacts_module():
 
 def load_profile_runner_module():
     return load_operator_eval_script_module("profile_runner")
+
+
+def load_probe_runner_module():
+    return load_operator_eval_script_module("probe_runner")
 
 
 def load_simulator_runner_module():
