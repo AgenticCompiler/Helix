@@ -1550,6 +1550,24 @@ def _set_directory_owner_only(path: Path) -> None:
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
 _LAUNCH_COUNT = 500  # msprof op simulator: per-kernel max launches; last sample (idx=N-1) is post-warmup
+_SIMULATOR_LD_LIBRARY_PATH_DIRS = (
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/simulator/Ascend910B3/lib",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/simulator/Ascend910B4/lib",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/simulator/Ascend910B2/lib",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/simulator/Ascend910B1/lib",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/simulator/Ascend910B/lib",
+)
+
+
+def _simulator_extra_env() -> dict[str, str]:
+    """Return extra_env that prepends Ascend910B-compatible simulator lib dirs to LD_LIBRARY_PATH."""
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    prepend = ":".join(d for d in _SIMULATOR_LD_LIBRARY_PATH_DIRS if Path(d).is_dir())
+    if existing:
+        merged = f"{prepend}:{existing}"
+    else:
+        merged = prepend
+    return {"LD_LIBRARY_PATH": merged}
 
 
 def _iter_msprof_opprof_roots(output_dir: Path) -> list[Path]:
@@ -1737,6 +1755,7 @@ def _run_local_bench_msprof_simulator(
                 str(bench_file.parent),
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
+                extra_env=_simulator_extra_env(),
             )
         elapsed = time.monotonic() - t0
         stdout_chunks.append(str(result["stdout"]))
@@ -1863,6 +1882,7 @@ def _run_local_bench_msprof_simulator_standalone(
                 str(bench_file.parent),
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
+                extra_env=_simulator_extra_env(),
             )
         elapsed = time.monotonic() - t0
         stdout_text = str(result["stdout"])
