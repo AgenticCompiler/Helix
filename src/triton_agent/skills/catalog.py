@@ -140,6 +140,11 @@ _TRITON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         source_group="triton",
         physical_path="skills/triton/torch-npu-optimize-knowledge",
     ),
+    SkillCatalogEntry(
+        logical_name="triton-npu-pattern-signal",
+        source_group="triton",
+        physical_path="skills/triton/triton-npu-pattern-signal",
+    ),
 )
 
 _TILELANG_SKILLS: tuple[SkillCatalogEntry, ...] = (
