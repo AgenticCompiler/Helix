@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -19,6 +20,34 @@ from triton_agent.eval.runners import (
     run_remote_probe_bench,
     run_remote_test,
 )
+from triton_agent.optimize.pt_cleanup import (
+    cleanup_run_test_pt_files,
+)
+from triton_agent.terminal.render import render_result
+
+
+_OPT_ROUND_DIR_RE = re.compile(r"^opt-round-\d+$")
+
+
+def _standard_optimize_artifact_dir(path: Path) -> Path | None:
+    """Return path if its final component is 'baseline' or 'opt-round-N'."""
+    if path.name == "baseline" or _OPT_ROUND_DIR_RE.match(path.name):
+        return path.resolve()
+    return None
+
+
+def _resolve_extract_dest_dir(
+    *,
+    raw_extract_dest_dir: Path | None,
+    output: str | None,
+    operator_file: Path,
+) -> Path | None:
+    if raw_extract_dest_dir:
+        return raw_extract_dest_dir.expanduser().resolve()
+    output_parent = _standard_optimize_artifact_dir(Path(output).expanduser().resolve().parent) if output else None
+    if output_parent is not None:
+        return output_parent
+    return _standard_optimize_artifact_dir(operator_file.parent)
 from triton_agent.optimize.pt_cleanup import (
     cleanup_run_test_pt_files,
 )
@@ -143,8 +172,14 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     baseline_perf_path = _derived_perf_path(baseline_operator_file) if baseline_operator_file is not None else None
     if baseline_perf_path is not None and baseline_perf_path.exists():
         print(f"Baseline perf file: {baseline_perf_path}")
+    raw_extract = Path(args.extract_dest_dir) if getattr(args, "extract_dest_dir", None) else None
     try:
         if baseline_operator_file is not None and baseline_perf_path is not None and not baseline_perf_path.exists():
+            baseline_extract = _resolve_extract_dest_dir(
+                raw_extract_dest_dir=raw_extract,
+                output=None,
+                operator_file=baseline_operator_file,
+            )
             baseline_result, baseline_generated_perf, baseline_remote_workspace = _run_bench_once(
                 bench_file,
                 baseline_operator_file,
@@ -156,7 +191,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 verbose=args.verbose,
                 stderr=sys.stderr,
                 output=None,
-                extract_dest_dir=Path(args.extract_dest_dir).expanduser().resolve() if getattr(args, "extract_dest_dir", None) else None,
+                extract_dest_dir=baseline_extract,
                 simulator_case_idx=getattr(args, "simulator_case_idx", 1),
             )
             if args.verbose or baseline_result.return_code != 0:
@@ -171,6 +206,11 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
                 print(f"Remote workspace: {baseline_remote_workspace}")
 
+        op_extract = _resolve_extract_dest_dir(
+            raw_extract_dest_dir=raw_extract,
+            output=output,
+            operator_file=operator_file,
+        )
         result, perf_path, remote_workspace = _run_bench_once(
             bench_file,
             operator_file,
@@ -182,7 +222,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             verbose=args.verbose,
             stderr=sys.stderr,
             output=output,
-            extract_dest_dir=Path(args.extract_dest_dir).expanduser().resolve() if getattr(args, "extract_dest_dir", None) else None,
+            extract_dest_dir=op_extract,
             simulator_case_idx=getattr(args, "simulator_case_idx", 1),
         )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
