@@ -127,7 +127,7 @@ def run_local_bench(
     extract_dest_dir: Path | None = None,
     simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
-    bench_mode = _normalize_bench_mode(bench_mode)
+    bench_mode = normalize_bench_mode(bench_mode)
     if bench_mode in ("msprof", "msprof-simulator"):
         bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
