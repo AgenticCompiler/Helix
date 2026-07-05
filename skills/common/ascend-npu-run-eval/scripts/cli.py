@@ -485,11 +485,12 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 return int(baseline_result["return_code"]) or 1
             if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
                 print(f"Remote workspace: {baseline_remote_workspace}")
-            extract_dest_dir = _resolve_run_bench_extract_dest_dir(
-                raw_extract_dest_dir=getattr(args, "extract_dest_dir", None),
-                output=getattr(args, "output", None),
-                operator_file=operator_file,
-            )
+
+        extract_dest_dir = _resolve_run_bench_extract_dest_dir(
+            raw_extract_dest_dir=getattr(args, "extract_dest_dir", None),
+            output=getattr(args, "output", None),
+            operator_file=operator_file,
+        )
         result, perf_path, remote_workspace = _run_bench_once(
             run_local_bench,
             run_remote_bench,
