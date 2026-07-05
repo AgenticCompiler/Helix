@@ -156,6 +156,8 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 verbose=args.verbose,
                 stderr=sys.stderr,
                 output=None,
+                extract_dest_dir=Path(args.extract_dest_dir).expanduser().resolve() if getattr(args, "extract_dest_dir", None) else None,
+                simulator_case_idx=getattr(args, "simulator_case_idx", 1),
             )
             if args.verbose or baseline_result.return_code != 0:
                 render_result(baseline_result, skip_stdout=remote is not None and args.verbose)
@@ -180,6 +182,8 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             verbose=args.verbose,
             stderr=sys.stderr,
             output=output,
+            extract_dest_dir=Path(args.extract_dest_dir).expanduser().resolve() if getattr(args, "extract_dest_dir", None) else None,
+            simulator_case_idx=getattr(args, "simulator_case_idx", 1),
         )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
@@ -391,6 +395,8 @@ def _run_bench_once(
     verbose: bool,
     stderr: TextIO | None,
     output: str | None,
+    extract_dest_dir: Path | None = None,
+    simulator_case_idx: int = 1,
 ) -> tuple[AgentResult, Path | None, str | None]:
     if remote is not None:
         result, perf_path, remote_workspace = run_remote_bench(
@@ -413,6 +419,8 @@ def _run_bench_once(
         npu_devices,
         verbose=verbose,
         output=output,
+        extract_dest_dir=extract_dest_dir,
+        simulator_case_idx=simulator_case_idx,
     )
     return result, perf_path, None
 

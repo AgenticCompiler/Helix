@@ -68,6 +68,8 @@ class BenchRunnerModule(Protocol):
         npu_devices: str | None = None,
         verbose: bool = False,
         output: str | None = None,
+        extract_dest_dir: Path | None = None,
+        simulator_case_idx: int = 1,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
     def run_remote_bench(
@@ -173,10 +175,13 @@ def run_local_bench(
     npu_devices: str | None = None,
     verbose: bool = False,
     output: str | None = None,
+    extract_dest_dir: Path | None = None,
+    simulator_case_idx: int = 1,
 ) -> tuple[AgentResult, Path | None]:
     result, perf_path = _load_bench_runner().run_local_bench(
         bench_file, operator_file, bench_mode, npu_devices, verbose=verbose,
-        output=output,
+        output=output, extract_dest_dir=extract_dest_dir,
+        simulator_case_idx=simulator_case_idx,
     )
     return _normalize_agent_result(result), perf_path
 
