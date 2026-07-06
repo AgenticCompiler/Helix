@@ -902,6 +902,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--baseline-operator-file")
+        subparser.add_argument("--extract-dest-dir")
+        subparser.add_argument("--simulator-case-idx", type=int, default=1)
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
             "--metric-source",

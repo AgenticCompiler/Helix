@@ -127,7 +127,7 @@ def run_local_bench(
     extract_dest_dir: Path | None = None,
     simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
-    bench_mode = _normalize_bench_mode(bench_mode)
+    bench_mode = normalize_bench_mode(bench_mode)
     if bench_mode in ("msprof", "msprof-simulator"):
         bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
@@ -1550,8 +1550,6 @@ def _set_directory_owner_only(path: Path) -> None:
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
 _LAUNCH_COUNT = 500  # msprof op simulator: per-kernel max launches; last sample (idx=N-1) is post-warmup
-
-
 def _iter_msprof_opprof_roots(output_dir: Path) -> list[Path]:
     if not output_dir.is_dir():
         return []
