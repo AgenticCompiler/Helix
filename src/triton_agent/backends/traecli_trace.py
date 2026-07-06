@@ -103,6 +103,7 @@ class TraeCliJsonLineParser:
         "stream_event": "_handle_stream_event",
         "assistant": "_handle_assistant",
         "result": "_handle_result",
+        "user": "_handle_user",
     }
 
     def __init__(self, extra_env: dict[str, str] | None = None) -> None:
@@ -155,6 +156,9 @@ class TraeCliJsonLineParser:
         if not details:
             return None
         return f"[event:{event_type}] {'; '.join(details)}\n"
+
+    def _handle_user(self, _event: dict[str, Any]) -> str | None:
+        return None
 
     def _handle_system(self, event: dict[str, Any]) -> str | None:
         if event.get("subtype") != "init" or self._banner_emitted:
