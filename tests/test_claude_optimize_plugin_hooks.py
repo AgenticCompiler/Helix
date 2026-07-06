@@ -230,7 +230,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "session_start.py",
                 {
-                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
                     "cwd": str(workspace),
                 },
             )
@@ -244,6 +244,47 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
             self.assertEqual(result.stdout, "")
 
+    def test_subagent_start_bootstraps_baseline_state_for_optimize_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+
+            result = _run_hook(
+                "subagent_start.py",
+                {
+                    "hook_event_name": "SubagentStart",
+                    "subagent_type": "triton-agent-optimizer",
+                    "agent_id": "agent-opt-1",
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            owner_payload = json.loads(
+                (workspace / ".triton-agent" / "plugin-owner.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"})
+
+    def test_subagent_start_ignores_unrelated_subagent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+
+            result = _run_hook(
+                "subagent_start.py",
+                {
+                    "hook_event_name": "SubagentStart",
+                    "subagent_type": "researcher",
+                    "agent_id": "agent-other-1",
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertFalse((workspace / ".triton-agent").exists())
+
     def test_session_end_removes_runtime_dir_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -254,7 +295,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "session_end.py",
                 {
-                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
                     "cwd": str(workspace),
                 },
             )
@@ -263,7 +304,57 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertFalse((workspace / ".triton-agent").exists())
             self.assertTrue((workspace / "baseline").exists())
 
-    def test_pretooluse_guard_denies_edit_when_workflow_state_is_missing(self) -> None:
+    def test_subagent_stop_removes_runtime_dir_only_for_matching_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runtime_dir = workspace / ".triton-agent"
+            runtime_dir.mkdir()
+            (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
+            (runtime_dir / "plugin-owner.json").write_text(
+                json.dumps({"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"}),
+                encoding="utf-8",
+            )
+            (workspace / "baseline").mkdir()
+
+            result = _run_hook(
+                "subagent_stop.py",
+                {
+                    "hook_event_name": "SubagentStop",
+                    "subagent_type": "triton-agent-optimizer",
+                    "agent_id": "agent-opt-1",
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertFalse(runtime_dir.exists())
+            self.assertTrue((workspace / "baseline").exists())
+
+    def test_subagent_stop_ignores_non_owner_agent_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runtime_dir = workspace / ".triton-agent"
+            runtime_dir.mkdir()
+            (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
+            (runtime_dir / "plugin-owner.json").write_text(
+                json.dumps({"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"}),
+                encoding="utf-8",
+            )
+
+            result = _run_hook(
+                "subagent_stop.py",
+                {
+                    "hook_event_name": "SubagentStop",
+                    "subagent_type": "triton-agent-optimizer",
+                    "agent_id": "agent-opt-2",
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(runtime_dir.exists())
+
+    def test_pretooluse_guard_allows_edit_when_workflow_state_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
@@ -271,7 +362,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "pretooluse_guard.py",
                 {
-                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
                     "cwd": str(workspace),
                     "tool_name": "Edit",
                     "tool_input": {
@@ -281,15 +372,8 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0)
-            payload = json.loads(result.stdout)
-            self.assertEqual(
-                payload["hookSpecificOutput"]["permissionDecision"],
-                "deny",
-            )
-            reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
-            self.assertIn("submit-baseline", reason)
-            self.assertIn("start-round", reason)
-            self.assertNotIn(".triton-agent/state.json", reason)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(result.stdout, "")
 
     def test_pretooluse_guard_falls_back_to_shared_policy_in_source_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -299,7 +383,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "pretooluse_guard.py",
                 {
-                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
                     "cwd": str(workspace),
                     "tool_name": "Read",
                     "tool_input": {
@@ -334,7 +418,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "pretooluse_guard.py",
                 {
-                    "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
                     "cwd": str(workspace),
                     "tool_name": "Read",
                     "tool_input": {

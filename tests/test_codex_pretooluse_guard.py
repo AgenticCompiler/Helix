@@ -526,7 +526,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             self.assertIn("set-current-round-state", reason)
             self.assertIn("submit-round", reason)
 
-    def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:
+    def test_missing_workflow_state_allows_native_write_after_runtime_path_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -536,10 +536,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
-            assert reason is not None
-            self.assertIn("temporary optimize workflow state", reason)
-            self.assertIn("restart the optimize session", reason)
-            self.assertNotIn(".triton-agent/state.json", reason)
+            self.assertIsNone(reason)
 
     def test_blocks_runtime_state_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,7 +14,6 @@ from typing import Any
 
 from state_bootstrap import (
     compiler_source_read_root,
-    missing_state_denial_reason,
     resolve_workspace,
     should_manage_payload,
 )
@@ -35,7 +34,7 @@ def _bootstrap_support_import() -> None:
 
 _bootstrap_support_import()
 
-from hook_runtime.pretooluse_adapter import build_denial_output, run_with_policy  # noqa: E402
+from hook_runtime.pretooluse_adapter import run_with_policy  # noqa: E402
 
 
 _DENY_MESSAGE = (
@@ -56,13 +55,6 @@ def main() -> int:
     workspace = resolve_workspace(payload)
     if workspace is None:
         return 0
-
-    tool_name = payload.get("tool_name")
-    if tool_name in {"Edit", "MultiEdit", "Write"}:
-        state_reason = missing_state_denial_reason(workspace)
-        if state_reason is not None:
-            json.dump(build_denial_output(state_reason), sys.stdout)
-            return 0
 
     return run_with_policy(
         policy=_policy(workspace),

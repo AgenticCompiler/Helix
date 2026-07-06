@@ -485,7 +485,7 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
 
   const state = await loadWorkflowState(workspaceRoot);
   if (!state) {
-    return builtInEditMissingStateDenial();
+    return null;
   }
 
   if (state.phase === "baseline") {

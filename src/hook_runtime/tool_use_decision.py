@@ -179,7 +179,7 @@ def _deny_reason_for_built_in_edit_path(path_text: str, context: PathAccessConte
 
     workflow_state = _workflow_state_or_none(context.workspace_root)
     if workflow_state is None:
-        return _built_in_edit_missing_state_denial()
+        return None
 
     phase = _require_state_string(workflow_state, "phase")
 
