@@ -43,7 +43,7 @@ class OptimizeRunOptions:
     round_batch_size: int = 5
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
-    optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"
+    optimize_knowledge: Literal["v1", "v2", "v3", "distill"] = "v1"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
     enable_subagent: bool = False

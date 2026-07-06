@@ -225,6 +225,38 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertFalse((target / "triton-npu-optimize-knowledge-v3").exists())
             manager.cleanup(links)
 
+    def test_prepare_skills_can_stage_distill_alternate_source_under_stable_target_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "triton" / "triton-npu-optimize-knowledge-distill").mkdir(parents=True)
+            (source / "triton" / "triton-npu-optimize-knowledge-distill" / "SKILL.md").write_text(
+                "distill knowledge\n",
+                encoding="utf-8",
+            )
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills(
+                "codex",
+                workspace,
+                skill_names=("triton-npu-optimize-knowledge",),
+                skill_sources={
+                    "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-distill",
+                },
+            )
+
+            target = self._skills_target(workspace, "codex")
+            staged_dir = target / "triton-npu-optimize-knowledge"
+            self.assertTrue(staged_dir.is_dir())
+            self.assertEqual(
+                (staged_dir / "SKILL.md").read_text(encoding="utf-8"),
+                "distill knowledge\n",
+            )
+            self.assertFalse((target / "triton-npu-optimize-knowledge-distill").exists())
+            manager.cleanup(links)
+
     def test_prepare_skills_preserves_temporary_git_repo_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"

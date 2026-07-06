@@ -407,7 +407,7 @@ Common options:
 - `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
 - `--resume auto|continue|fresh`: default is `auto`. `auto` resumes when a complete session exists, starts fresh otherwise. `continue` requires an existing resumable session. `fresh` requires a clean workspace. Both `auto` and `continue` validate explicit `--test-mode` and `--bench-mode` against existing harness metadata.
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
-- `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton/triton-npu-optimize-knowledge-v3/`).
+- `--optimize-knowledge v1|v2|v3|distill`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton/triton-npu-optimize-knowledge-v3/`, `distill` uses `skills/triton/triton-npu-optimize-knowledge-distill/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--enable-agent-hooks`: enable the workspace-local agent hook guard for this optimize run. Agent hooks are disabled by default.
@@ -430,6 +430,7 @@ uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
 uv run triton-agent optimize --input a.py --optimize-knowledge v2
 uv run triton-agent optimize --input a.py --optimize-knowledge v3
+uv run triton-agent optimize --input a.py --optimize-knowledge distill
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
 uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
@@ -437,7 +438,7 @@ uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing
 uv run triton-agent optimize --input a.py --optimize-target operator
 ```
 
-Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
+Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates). `--optimize-knowledge distill` stages `triton-npu-optimize-knowledge-distill` (working copy forked from `triton-npu-optimize-knowledge` for distillation-driven knowledge updates).
 
 Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` (or `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/` if `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` is set) before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 

@@ -1762,6 +1762,15 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.optimize_knowledge, "v3")
 
+    def test_optimize_command_accepts_optimize_knowledge_distill(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize", "-i", "kernel.py", "--optimize-knowledge", "distill"]
+        )
+        self.assertEqual(args.optimize_knowledge, "distill")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "distill")
+
     def test_optimize_batch_defaults_optimize_knowledge_to_v1(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
@@ -1786,6 +1795,15 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.optimize_knowledge, "v3")
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.optimize_knowledge, "v3")
+
+    def test_optimize_batch_accepts_optimize_knowledge_distill(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--optimize-knowledge", "distill"]
+        )
+        self.assertEqual(args.optimize_knowledge, "distill")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "distill")
 
     def test_optimize_command_defaults_optimize_target_to_kernel(self) -> None:
         parser = build_parser()

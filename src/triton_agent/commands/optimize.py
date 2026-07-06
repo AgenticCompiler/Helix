@@ -154,7 +154,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         getattr(args, "optimize_target", "kernel"),
     )
     optimize_knowledge = cast(
-        Literal["v1", "v2", "v3"],
+        Literal["v1", "v2", "v3", "distill"],
         getattr(args, "optimize_knowledge", "v1"),
     )
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))

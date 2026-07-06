@@ -182,4 +182,6 @@ def _resolve_skill_sources(
             sources[knowledge_name] = knowledge_name + "-v2"
         if optimize_knowledge == "v3":
             sources[knowledge_name] = knowledge_name + "-v3"
+        if optimize_knowledge == "distill":
+            sources[knowledge_name] = knowledge_name + "-distill"
     return sources or None
