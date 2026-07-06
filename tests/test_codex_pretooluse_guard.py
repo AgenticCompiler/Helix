@@ -185,6 +185,45 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertIsNone(reason)
 
+    def test_allows_non_read_python_entrypoint_piped_to_head(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = Path(tmp) / "dist" / "triton-optimizer" / "skills" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace),
+                _payload(workspace, f"python3 {script} --help 2>&1 | head -60"),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_allows_chained_non_read_commands_before_grep_and_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            cache_path = Path(tmp) / ".triton" / "cache" / "cache-key"
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace),
+                _payload(
+                    workspace,
+                    "rm -rf "
+                    f"{cache_path} "
+                    "2>/dev/null; "
+                    "python3 -c \"from importlib.machinery import SourceFileLoader; "
+                    "SourceFileLoader('triton_mod', 'triton_16_Repeat.py').load_module()\" "
+                    "> /tmp/test_out.txt 2>&1; "
+                    "grep -c 'CASE0:OK' /tmp/test_out.txt; "
+                    "tail -5 /tmp/test_out.txt",
+                ),
+            )
+
+            self.assertIsNone(reason)
+
     def test_blocks_nested_bash_lc_read_of_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"

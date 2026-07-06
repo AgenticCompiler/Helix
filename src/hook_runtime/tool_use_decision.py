@@ -52,12 +52,7 @@ ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = frozenset(
     }
 )
 
-PATH_FRAGMENT_RE = re.compile(
-    r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.triton-agent/|\.codex/|\.claude/|\.opencode/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
-)
-WINDOWS_PATH_FRAGMENT_RE = re.compile(
-    r"(?P<path>[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+)"
-)
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/].+")
 
 
 class PathAccessContext:
@@ -329,68 +324,73 @@ def _collect_command_path_references_inner(
     if command in seen_commands:
         return []
 
-    tokens = _split_command(command)
-    path_texts: list[str] = []
-    next_seen_commands = seen_commands | {command}
-    for nested_command in _collect_shell_wrapper_commands(tokens):
-        path_texts.extend(
-            _collect_command_path_references_inner(nested_command, seen_commands=next_seen_commands)
-        )
-
     scan_command = _strip_heredoc_payload(command)
-    scan_tokens = _filter_tokens_for_read_scan(_split_command(scan_command))
-    if not _contains_read_command(scan_tokens):
-        return path_texts
+    first_command = _first_simple_command_text(scan_command)
+    tokens = _split_command(first_command)
+    if not tokens:
+        return []
 
-    explicit_path_tokens = {token for token in scan_tokens if _looks_like_path(token)}
-    for token in scan_tokens:
-        if _is_read_command_token(token):
-            continue
+    next_seen_commands = seen_commands | {command}
+    nested_command = _first_shell_wrapper_command(tokens)
+    if nested_command is not None:
+        return _collect_command_path_references_inner(nested_command, seen_commands=next_seen_commands)
+
+    scan_tokens = _filter_tokens_for_read_scan(tokens)
+    if not scan_tokens or not _is_read_command_token(scan_tokens[0]):
+        return []
+
+    path_texts: list[str] = []
+    for token in scan_tokens[1:]:
         if _looks_like_path(token):
             path_texts.append(token)
-
-    for path_text in _path_fragments_from_command(" ".join(scan_tokens), explicit_path_tokens):
-        path_texts.append(path_text)
-
     return path_texts
 
 
-def _path_fragments_from_command(command: str, explicit_path_tokens: set[str]) -> list[str]:
-    path_texts: list[str] = []
-    for match in PATH_FRAGMENT_RE.finditer(command):
-        path_text = match.group("path")
-        if (
-            not _is_read_command_token(path_text)
-            and not _is_nested_path_fragment(path_text, explicit_path_tokens)
-        ):
-            path_texts.append(path_text)
-    for match in WINDOWS_PATH_FRAGMENT_RE.finditer(command):
-        path_text = match.group("path").rstrip("'\"),")
-        if (
-            not _is_read_command_token(path_text)
-            and not _is_nested_path_fragment(path_text, explicit_path_tokens)
-        ):
-            path_texts.append(path_text)
-    return path_texts
-
-
-def _collect_shell_wrapper_commands(tokens: list[str]) -> list[str]:
-    commands: list[str] = []
-    for index, token in enumerate(tokens):
-        if Path(token).name not in SHELL_WRAPPERS:
-            continue
-        if index + 2 >= len(tokens):
-            continue
-        if tokens[index + 1] not in SHELL_WRAPPER_FLAGS:
-            continue
-        commands.append(tokens[index + 2].strip("\"'"))
-    return commands
+def _first_shell_wrapper_command(tokens: list[str]) -> str | None:
+    if not tokens:
+        return None
+    if Path(tokens[0]).name not in SHELL_WRAPPERS:
+        return None
+    if len(tokens) < 3:
+        return None
+    if tokens[1] not in SHELL_WRAPPER_FLAGS:
+        return None
+    return tokens[2]
 
 
 def _strip_heredoc_payload(command: str) -> str:
     if "<<" not in command or "\n" not in command:
         return command
     return command.splitlines()[0]
+
+
+def _first_simple_command_text(command: str) -> str:
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char in {";", "\n", "|", "&"}:
+            return command[:index]
+        index += 1
+    return command
 
 
 def _filter_tokens_for_read_scan(tokens: list[str]) -> list[str]:
@@ -456,21 +456,20 @@ def _split_command(command: str) -> list[str]:
         return []
 
 
-def _contains_read_command(tokens: list[str]) -> bool:
-    return any(_is_read_command_token(token) for token in tokens)
-
-
 def _is_read_command_token(token: str) -> bool:
     return Path(token).name in READ_COMMANDS
 
 
 def _looks_like_path(token: str) -> bool:
+    if not token:
+        return False
     if token.startswith("-"):
         return False
-    path = Path(token)
     return (
         token == ".triton-agent"
-        or path.is_absolute()
+        or token == "triton-agent-logs"
+        or token == "~"
+        or token.startswith("~/")
         or token.startswith("/")
         or token.startswith("./")
         or token.startswith("../")
@@ -478,13 +477,8 @@ def _looks_like_path(token: str) -> bool:
         or token.startswith(".claude/")
         or token.startswith(".opencode/")
         or token.startswith(PROTECTED_RELATIVE_PATH_PREFIXES)
-        or "\\" in token
-        or path.suffix != ""
+        or bool(WINDOWS_ABSOLUTE_PATH_RE.match(token))
     )
-
-
-def _is_nested_path_fragment(path_text: str, explicit_path_tokens: set[str]) -> bool:
-    return any(path_text != token and path_text in token for token in explicit_path_tokens)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
