@@ -18,7 +18,7 @@ from triton_agent.skills.selection import resolve_staged_skills
 
 _PLUGIN_NAME = "triton-optimizer"
 _PLUGIN_VERSION = "0.1.0"
-_OPTIMIZE_AGENT_NAME = "triton-agent-optimize"
+_OPTIMIZE_AGENT_NAME = "triton-agent-optimizer"
 _CONVERT_AGENT_NAME = "triton-agent-convert"
 _PLUGIN_TEST_MODE = "differential"
 _PLUGIN_BENCH_MODE = "torch-npu-profiler"
@@ -60,7 +60,7 @@ def build_claude_optimize_plugin_assets(
     convert_agent_text = _render_claude_convert_agent(skill_names=convert_skill_names)
     return ClaudeOptimizePluginAssets(
         text_files={
-            "agents/triton-agent-optimize.md": optimize_agent_text,
+            "agents/triton-agent-optimizer.md": optimize_agent_text,
             "agents/triton-agent-convert.md": convert_agent_text,
             "README.md": _render_plugin_readme(),
         },

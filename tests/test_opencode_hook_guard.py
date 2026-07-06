@@ -507,7 +507,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertNotIn("First-version scope", str(result["message"]))
 
     @_skip_if_no_node
-    def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:
+    def test_missing_workflow_state_allows_native_write_after_runtime_path_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -521,10 +521,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 workspace,
             )
 
-            self.assertFalse(result["allowed"])
-            self.assertIn("temporary optimize workflow state", str(result["message"]))
-            self.assertIn("restart the optimize session", str(result["message"]))
-            self.assertNotIn(".triton-agent/state.json", str(result["message"]))
+            self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
     def test_blocks_runtime_state_read_tool(self) -> None:
