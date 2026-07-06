@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+import shutil
 
 from hook_runtime.optimize.baseline import baseline_dir, load_baseline_state
 from hook_runtime.optimize.resume import classify_optimize_workspace
@@ -94,7 +95,11 @@ def render_optimize_phase_summary(state_path: Path | None) -> str | None:
 def archive_round_timings_from_state(state_path: Path | None, archive_path: Path) -> bool:
     if state_path is None or not state_path.exists():
         return False
-    return bool(_state_machine_module().write_round_timings_archive(state_path, archive_path))
+    timing_dir = state_path.parent / "round-timings"
+    if not timing_dir.is_dir():
+        return False
+    shutil.copytree(timing_dir, archive_path, dirs_exist_ok=True)
+    return True
 
 
 def _resolve_source_operator_hint(

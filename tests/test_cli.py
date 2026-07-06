@@ -533,6 +533,24 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(exit_code, 7)
         mocked.assert_called_once_with(port=8765)
 
+    def test_main_prints_build_commit_for_long_version_flag(self) -> None:
+        stdout = StringIO()
+        with patch("triton_agent.cli.get_build_info_display", return_value="deadbeefcafe"):
+            with redirect_stdout(stdout):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["--version"])
+        self.assertEqual(exc.exception.code, 0)
+        self.assertEqual(stdout.getvalue(), "deadbeefcafe\n")
+
+    def test_main_prints_build_commit_for_short_version_flag(self) -> None:
+        stdout = StringIO()
+        with patch("triton_agent.cli.get_build_info_display", return_value="deadbeefcafe"):
+            with redirect_stdout(stdout):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["-v"])
+        self.assertEqual(exc.exception.code, 0)
+        self.assertEqual(stdout.getvalue(), "deadbeefcafe\n")
+
     def test_top_level_help_groups_commands_and_examples(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()

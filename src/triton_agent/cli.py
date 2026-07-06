@@ -593,12 +593,18 @@ def _collect_command_names() -> tuple[str, ...]:
 def build_parser() -> argparse.ArgumentParser:
     parser = TritonArgumentParser(
         prog="triton-agent",
-        usage="triton-agent [-h] COMMAND ...",
+        usage="triton-agent [-h] [-v] COMMAND ...",
         description=_TOP_LEVEL_DESCRIPTION,
         epilog=_build_top_level_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         env_var_names=_collect_env_var_names(),
         command_names=_collect_command_names(),
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=get_build_info_display(),
     )
     subparsers = parser.add_subparsers(
         dest="command", required=True, metavar="COMMAND", parser_class=TritonArgumentParser

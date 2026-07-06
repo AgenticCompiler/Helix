@@ -46,7 +46,7 @@ class OptimizeSessionArtifactsState:
 
     @property
     def round_timings_archive_path(self) -> Path:
-        return self.archive.run_archive_dir / "round-timings.json"
+        return self.archive.run_archive_dir / "round-timings"
 
     def agent_session_path(self, label: str) -> Path:
         return self.archive.agent_session_path(label)
