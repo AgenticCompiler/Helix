@@ -15,6 +15,14 @@ def load_state_machine_module():
     return load_skill_script_module("ascend-npu-optimize-state", "state_manage/state_machine")
 
 
+def _load_jsonl(path: Path) -> list[dict[str, object]]:
+    return [
+        cast(dict[str, object], json.loads(line))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def _write_resumable_optimize_workspace(workspace: Path, operator: Path) -> None:
     baseline_dir = workspace / "baseline"
     baseline_dir.mkdir()
@@ -279,6 +287,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             state_path = workspace / ".triton-agent" / "state.json"
             round_dir = workspace / "opt-round-1"
             attempts_path = round_dir / "attempts.md"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-1.jsonl"
             state_path.parent.mkdir()
             round_dir.mkdir()
             module.bootstrap_state(
@@ -296,12 +305,18 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             )
             payload = json.loads(state_path.read_text(encoding="utf-8"))
             attempts_exists = attempts_path.is_file()
+            timing_events = _load_jsonl(timing_path)
 
         strategy_state = payload["rounds"]["1"]["strategy_state"]
         self.assertEqual(strategy_state["round_strategy"], "exploration")
         self.assertEqual(strategy_state["analysis_policy"], "pattern_entry")
         self.assertEqual(strategy_state["updated_by"], "start-round")
         self.assertTrue(attempts_exists)
+        self.assertNotIn("started_at", payload["rounds"]["1"])
+        self.assertNotIn("ended_at", payload["rounds"]["1"])
+        self.assertEqual([event["event"] for event in timing_events], ["round_start"])
+        self.assertEqual(timing_events[0]["round"], "opt-round-1")
+        self.assertEqual(timing_events[0]["run_id"], "optimize-20260627-123456-abcdef")
 
     def test_start_round_keeps_state_when_attempts_mirror_write_fails(self) -> None:
         module = load_state_machine_module()
@@ -453,7 +468,9 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
     def test_complete_round_records_end_time_and_resets_phase(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            workspace = Path(tmp)
+            state_path = workspace / ".triton-agent" / "state.json"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-1.jsonl"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -469,50 +486,50 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             )
             module.complete_round(state_path, "opt-round-1", current_round_arg=1)
             payload = json.loads(state_path.read_text(encoding="utf-8"))
+            timing_events = _load_jsonl(timing_path)
 
         self.assertEqual(payload["phase"], "awaiting_round_start")
         self.assertIsNone(payload["current_round"])
         self.assertEqual(payload["rounds"]["1"]["status"], "passed")
-        self.assertIsNotNone(payload["rounds"]["1"]["ended_at"])
+        self.assertNotIn("started_at", payload["rounds"]["1"])
+        self.assertNotIn("ended_at", payload["rounds"]["1"])
+        self.assertEqual(
+            [event["event"] for event in timing_events],
+            ["round_start", "round_end"],
+        )
+        self.assertEqual(timing_events[1]["round"], "opt-round-1")
+        self.assertEqual(timing_events[1]["run_id"], "optimize-20260622-123456-abcdef")
 
-    def test_write_round_timings_archive_only_includes_passed_rounds(self) -> None:
+    def test_load_state_accepts_legacy_round_timestamps(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            state_path = root / ".triton-agent" / "state.json"
-            archive_path = root / "triton-agent-logs" / "optimize-20260622" / "round-timings.json"
+            state_path = Path(tmp) / ".triton-agent" / "state.json"
             state_path.parent.mkdir()
-            module.bootstrap_state(
-                state_path,
-                run_id="optimize-20260622-123456-abcdef",
-                baseline_reused=True,
-            )
-            module.start_round(
-                state_path,
-                "opt-round-1",
-                round_strategy="exploration",
-                analysis_policy="pattern_entry",
-                reason="Need to narrow the first promising direction.",
-            )
-            module.complete_round(state_path, "opt-round-1", current_round_arg=1)
-            module.start_round(
-                state_path,
-                "opt-round-2",
-                round_strategy="focused_tuning",
-                analysis_policy="profile_required",
-                reason="Round 1 narrowed the next tuning target.",
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260706-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-06T12:34:56Z"},
+                        "rounds": {
+                            "1": {
+                                "status": "passed",
+                                "round_dir": "opt-round-1",
+                                "started_at": "2026-07-06T12:40:00Z",
+                                "ended_at": "2026-07-06T12:55:00Z",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
             )
 
-            wrote = module.write_round_timings_archive(state_path, archive_path)
-            payload = json.loads(archive_path.read_text(encoding="utf-8"))
+            payload = module.load_state(state_path)
 
-        self.assertTrue(wrote)
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["round"], 1)
-        self.assertIn("started_at", payload[0])
-        self.assertIn("ended_at", payload[0])
-        self.assertNotIn("run_id", payload[0])
-        self.assertNotIn("round_dir", payload[0])
+        self.assertEqual(payload["phase"], "awaiting_round_start")
+        self.assertEqual(payload["rounds"]["1"]["status"], "passed")
 
     def test_load_state_rejects_unknown_schema_version(self) -> None:
         module = load_state_machine_module()

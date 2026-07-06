@@ -48,6 +48,10 @@ _REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
 _REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
 
 
+def _load_jsonl(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 class SkillCommandScriptTests(unittest.TestCase):
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
         script = (
@@ -1498,6 +1502,210 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(ref_args.ref_operator_file, "ref_kernel.py")
         self.assertEqual(alias_args.ref_result, "baseline_result.pt")
         self.assertEqual(alias_args.ref_operator_file, "baseline_kernel.py")
+
+    def test_script_run_test_optimize_appends_active_round_timing_events(self) -> None:
+        script = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_test_round_timing_run_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-3"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260706-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 3,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-06T12:34:56Z"},
+                        "rounds": {
+                            "3": {
+                                "status": "active",
+                                "round_dir": "opt-round-3",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            test_file = workspace / "differential_test_kernel.py"
+            operator_file = round_dir / "opt_kernel.py"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-3.jsonl"
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+            operator_file.write_text("print('kernel')\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                candidate_operator_path: Path,
+                test_mode: str,
+                *,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path | None]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(candidate_operator_path, operator_file.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "standalone"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator_file),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+            timing_events = _load_jsonl(timing_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [event["event"] for event in timing_events],
+            ["run_test_start", "run_test_end"],
+        )
+        self.assertEqual(timing_events[0]["round"], "opt-round-3")
+        self.assertEqual(timing_events[0]["command"], "run-test-optimize")
+        self.assertEqual(timing_events[1]["return_code"], 0)
+
+    def test_script_run_bench_appends_active_round_timing_events(self) -> None:
+        script = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_test_round_timing_run_bench", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-4"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260706-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-06T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            bench_file = workspace / "bench_kernel.py"
+            operator_file = round_dir / "opt_kernel.py"
+            perf_path = round_dir / "opt_kernel_perf.txt"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-4.jsonl"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
+            operator_file.write_text("print('kernel')\n", encoding="utf-8")
+            perf_path.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                candidate_operator_path: Path,
+                bench_mode: str,
+                npu_devices: str | None = None,
+                verbose: bool = False,
+                output: str | None = None,
+            ) -> tuple[dict[str, object], Path | None]:
+                self.assertEqual(bench_path, bench_file.resolve())
+                self.assertEqual(candidate_operator_path, operator_file.resolve())
+                self.assertEqual(bench_mode, "torch-npu-profiler")
+                self.assertIsNone(npu_devices)
+                self.assertIsNone(output)
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    perf_path,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "torch-npu-profiler"},
+                        fake_run_local_bench,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator_file),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+            timing_events = _load_jsonl(timing_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [event["event"] for event in timing_events],
+            ["run_bench_start", "run_bench_end"],
+        )
+        self.assertEqual(timing_events[0]["round"], "opt-round-4")
+        self.assertEqual(timing_events[0]["command"], "run-bench")
+        self.assertEqual(timing_events[1]["return_code"], 0)
 
     def test_script_run_test_uses_existing_derived_baseline_result(self) -> None:
         script = (
