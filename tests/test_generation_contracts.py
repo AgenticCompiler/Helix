@@ -487,10 +487,10 @@ class GenerationContractTests(unittest.TestCase):
     def test_torch_npu_optimize_knowledge_skill_owns_operator_level_pattern_references(
         self,
     ) -> None:
-        knowledge = _read("skills/triton/torch-npu-optimize-knowledge/SKILL.md")
-        pattern_index = _read("skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md")
+        knowledge = _read("skills/torch/torch-npu-optimize-knowledge/SKILL.md")
+        pattern_index = _read("skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md")
         pattern = _read(
-            "skills/triton/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
+            "skills/torch/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
         )
 
         self.assertIn("reference-only", knowledge)
@@ -797,7 +797,7 @@ class GenerationContractTests(unittest.TestCase):
             skill,
         )
         self.assertIn(
-            "skills/triton/torch-npu-optimize-knowledge/references/patterns/",
+            "skills/torch/torch-npu-optimize-knowledge/references/patterns/",
             skill,
         )
         self.assertIn(
@@ -829,7 +829,7 @@ class GenerationContractTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            "skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md",
+            "skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md",
             script,
         )
         self.assertIn(

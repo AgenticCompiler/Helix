@@ -36,18 +36,17 @@ class ClaudeOptimizePluginAssets:
 def build_claude_optimize_plugin_assets(
     *,
     language: str = "triton",
-    optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
     enable_subagent: bool = False,
 ) -> ClaudeOptimizePluginAssets:
     optimize_skill_names, optimize_skill_sources = resolve_staged_skills(
         CommandKind.OPTIMIZE,
         language=language,
-        optimize_target=optimize_target,
         enable_cann_ext_api=enable_cann_ext_api,
     )
     if optimize_skill_names is None:
         raise RuntimeError("Optimize plugin packaging requires an explicit optimize skill list.")
+    optimize_skill_names = _select_plugin_optimize_skill_names(optimize_skill_names)
     convert_skill_names, convert_skill_sources = resolve_staged_skills(
         CommandKind.CONVERT,
         language="triton",
@@ -76,14 +75,12 @@ def build_claude_optimize_plugin(
     output_dir: Path,
     *,
     language: str = "triton",
-    optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
     enable_subagent: bool = False,
 ) -> Path:
     root = output_dir.resolve()
     assets = build_claude_optimize_plugin_assets(
         language=language,
-        optimize_target=optimize_target,
         enable_cann_ext_api=enable_cann_ext_api,
         enable_subagent=enable_subagent,
     )
@@ -300,6 +297,14 @@ def _copy_selected_skills(
 
 def _deduplicate_skill_names(skill_names: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(skill_names))
+
+
+def _select_plugin_optimize_skill_names(skill_names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        skill_name
+        for skill_name in skill_names
+        if skill_name != "torch-npu-optimize-knowledge"
+    )
 
 
 def _merge_skill_sources(*skill_source_maps: dict[str, str] | None) -> dict[str, str] | None:
