@@ -31,6 +31,7 @@ _ROUND_METADATA_FILENAMES = {
     "perf-analysis.md",
     "round-state.json",
 }
+_PROFILE_ARTIFACT_PREFIXES = ("PROF_", "OPPROF_")
 
 
 def ordinary_optimize_pt_cleanup_mode() -> OptimizePtCleanupMode:
@@ -79,23 +80,147 @@ def cleanup_dir_pt_files(directory: Path) -> list[str]:
     return cleaned
 
 
-def cleanup_dir_prof_artifacts(directory: Path) -> list[str]:
+def _is_profile_artifact_name(name: str) -> bool:
+    return any(name.startswith(prefix) for prefix in _PROFILE_ARTIFACT_PREFIXES)
+
+
+def _remove_artifact_path(path: Path) -> None:
+    if path.is_symlink():
+        path.unlink()
+        return
+    if path.is_dir():
+        shutil.rmtree(path)
+        return
+    path.unlink()
+
+
+def cleanup_dir_prof_artifacts(
+    directory: Path,
+    *,
+    preserve_paths: tuple[Path, ...] = (),
+) -> list[str]:
     cleaned: list[str] = []
+    preserved = {path.resolve(strict=False) for path in preserve_paths}
     try:
         candidates = sorted(directory.iterdir())
     except OSError:
         return cleaned
     for artifact in candidates:
-        if not artifact.name.startswith("PROF_"):
+        if not _is_profile_artifact_name(artifact.name):
+            continue
+        if artifact.resolve(strict=False) in preserved:
             continue
         try:
-            if artifact.is_dir() and not artifact.is_symlink():
-                shutil.rmtree(artifact)
-            else:
-                artifact.unlink()
+            _remove_artifact_path(artifact)
             cleaned.append(artifact.name)
         except OSError:
             pass
+    return cleaned
+
+
+def _state_relative_path(state_dir: Path, workspace: Path, relative_path: str | None) -> Path | None:
+    if relative_path is None:
+        return None
+    declared_path = Path(relative_path)
+    state_relative = state_dir / declared_path
+    if state_relative.exists():
+        return state_relative
+    workspace_relative = workspace / declared_path
+    if workspace_relative.exists():
+        return workspace_relative
+    return None
+
+
+def resolve_round_profile_dir(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    round_state_path = round_dir / "round-state.json"
+    if round_state_path.is_file():
+        try:
+            state = load_round_state(round_dir)
+        except ValueError:
+            state = None
+        if state is not None:
+            declared_profile_dir = _state_relative_path(
+                round_dir,
+                workspace,
+                state.profile_dir,
+            )
+            if declared_profile_dir is not None and declared_profile_dir.is_dir():
+                return declared_profile_dir
+
+    conventional_profile_dir = round_dir / "profile"
+    if conventional_profile_dir.is_dir():
+        return conventional_profile_dir
+    return None
+
+
+def _cleanup_profile_dir_csv_only(current_dir: Path, *, root_dir: Path) -> list[str]:
+    cleaned: list[str] = []
+    try:
+        candidates = sorted(current_dir.iterdir())
+    except OSError:
+        return cleaned
+
+    for candidate in candidates:
+        try:
+            if candidate.is_symlink():
+                _remove_artifact_path(candidate)
+                cleaned.append(str(candidate.relative_to(root_dir)))
+                continue
+            if candidate.is_dir():
+                cleaned.extend(_cleanup_profile_dir_csv_only(candidate, root_dir=root_dir))
+                try:
+                    if candidate != root_dir and not any(candidate.iterdir()):
+                        candidate.rmdir()
+                except OSError:
+                    pass
+                continue
+            if candidate.suffix.lower() == ".csv":
+                continue
+            _remove_artifact_path(candidate)
+            cleaned.append(str(candidate.relative_to(root_dir)))
+        except OSError:
+            pass
+
+    return cleaned
+
+
+def cleanup_profile_dir_csv_only(profile_dir: Path) -> list[str]:
+    if not profile_dir.is_dir():
+        return []
+    return _cleanup_profile_dir_csv_only(profile_dir, root_dir=profile_dir)
+
+
+def cleanup_round_profile_artifacts(round_dir: Path) -> list[str]:
+    cleaned: list[str] = []
+    profile_dir = resolve_round_profile_dir(round_dir)
+    if profile_dir is not None:
+        profile_dir_label = os.path.relpath(profile_dir.resolve(), round_dir.resolve())
+        for name in cleanup_profile_dir_csv_only(profile_dir):
+            cleaned.append(f"{profile_dir_label}/{name}")
+
+    preserve_paths: tuple[Path, ...] = ()
+    if profile_dir is not None:
+        try:
+            if profile_dir.parent.resolve() == round_dir.resolve():
+                preserve_paths = (profile_dir,)
+        except OSError:
+            preserve_paths = ()
+
+    for name in cleanup_dir_prof_artifacts(round_dir, preserve_paths=preserve_paths):
+        cleaned.append(name)
+    return cleaned
+
+
+def cleanup_workspace_profile_artifacts(workspace: Path) -> list[str]:
+    cleaned: list[str] = []
+    for round_dir in sorted(workspace.glob("opt-round-*")):
+        if not round_dir.is_dir():
+            continue
+        for name in cleanup_round_profile_artifacts(round_dir):
+            cleaned.append(f"{round_dir.name}/{name}")
+    for name in cleanup_dir_prof_artifacts(workspace):
+        cleaned.append(name)
     return cleaned
 
 
@@ -346,7 +471,8 @@ def check_round(
 
     if ordinary_optimize_pt_cleanup_enabled():
         cleanup_dir_pt_files(round_dir)
-    cleanup_dir_prof_artifacts(round_dir)
+    cleanup_round_profile_artifacts(round_dir)
+    cleanup_dir_prof_artifacts(round_dir.parent)
     local_optimum_warnings: tuple[str, ...] = ()
     if baseline_perf_path is not None:
         local_optimum_warnings = collect_local_optimum_warnings(

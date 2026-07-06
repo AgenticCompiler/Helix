@@ -122,7 +122,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
-                "Maximum adjacent baseline-relative geomean gain that still counts as flat for local-optimum warnings (default: 0.02).",
+                "Maximum absolute adjacent baseline-relative geomean change that still counts as flat for local-optimum warnings (default: 0.02).",
             ),
             (
                 "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR",

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
+from triton_agent.optimize.profile_cleanup import cleanup_optimize_workspace_profile_artifacts
 from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
 from triton_agent.optimize.workflow_state import (
     archive_round_timings_from_state,
@@ -270,6 +271,7 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
+        warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
         warnings.extend(self._cleanup_supervisor_report_path(state.supervisor_report_path))
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_session(state))
@@ -283,6 +285,7 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
+        warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_session(state))
         return warnings
@@ -344,6 +347,13 @@ class OptimizeSessionArtifactsManager:
                 supervisor_report_path.unlink()
         except OSError as exc:
             return [f"Failed to remove temporary optimize file {supervisor_report_path}: {exc}"]
+        return []
+
+    def _cleanup_workspace_profile_artifacts(self, workdir: Path) -> list[str]:
+        try:
+            cleanup_optimize_workspace_profile_artifacts(workdir)
+        except Exception as exc:
+            return [f"Failed to clean optimize profile artifacts under {workdir}: {exc}"]
         return []
 
     def describe_cleanup_checked_session(
