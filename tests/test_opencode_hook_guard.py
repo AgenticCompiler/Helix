@@ -122,6 +122,46 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
+    def test_allows_non_read_python_entrypoint_piped_to_head(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = Path(tmp) / "dist" / "triton-optimizer" / "skills" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                f"python3 {script} --help 2>&1 | head -60",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
+    @_skip_if_no_node
+    def test_allows_chained_non_read_commands_before_grep_and_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            cache_path = Path(tmp) / ".triton" / "cache" / "cache-key"
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                "rm -rf "
+                f"{cache_path} "
+                "2>/dev/null; "
+                "python3 -c \"from importlib.machinery import SourceFileLoader; "
+                "SourceFileLoader('triton_mod', 'triton_16_Repeat.py').load_module()\" "
+                "> /tmp/test_out.txt 2>&1; "
+                "grep -c 'CASE0:OK' /tmp/test_out.txt; "
+                "tail -5 /tmp/test_out.txt",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
+    @_skip_if_no_node
     def test_allows_heredoc_write_when_body_mentions_protected_runtime_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
