@@ -3774,7 +3774,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             kind="round",
                             status="pass",
                             issues=(
-                                "recent rounds show only marginal baseline-relative geomean speedup gains; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
+                                "recent rounds show only marginal baseline-relative geomean speedup changes; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
                             ),
                             summary="round check passed",
                         ),
@@ -3945,7 +3945,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     kind="round",
                     status="pass",
                     issues=(
-                        "recent rounds show only marginal baseline-relative geomean speedup gains; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
+                        "recent rounds show only marginal baseline-relative geomean speedup changes; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
                     ),
                     summary="round check passed",
                 ),

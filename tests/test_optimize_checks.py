@@ -478,6 +478,108 @@ class OptimizeCheckTests(unittest.TestCase):
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
 
+    def test_check_round_does_not_warn_when_recent_window_contains_a_collapse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 10.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 1.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 5.0\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 8.3\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertFalse(
+                any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
+            )
+            self.assertFalse(
+                any("may be stuck in a local optimum" in issue for issue in result.issues)
+            )
+
+    def test_check_round_warns_when_recent_rounds_stagnate_with_slight_decline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 10.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 8.3\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 8.4\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 8.5\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertTrue(
+                any("may be stuck in a local optimum" in issue for issue in result.issues)
+            )
+            self.assertTrue(
+                any("only marginal baseline-relative geomean speedup changes" in issue for issue in result.issues)
+            )
+            self.assertFalse(
+                any("only marginal baseline-relative geomean speedup gains" in issue for issue in result.issues)
+            )
+
+    def test_check_round_warns_when_recent_rounds_hit_symmetric_gain_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 100.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 100.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 98.0392156862745\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 100.0\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertTrue(
+                any("only marginal baseline-relative geomean speedup changes" in issue for issue in result.issues)
+            )
+            self.assertTrue(
+                any("+0.02x, -0.02x" in issue for issue in result.issues)
+            )
+
     def test_check_round_does_not_warn_when_recent_rounds_mix_metric_bases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
