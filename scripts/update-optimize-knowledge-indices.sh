@@ -12,8 +12,8 @@ uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --style default
 
 uv run python -m triton_agent.optimize_knowledge.pattern_index \
-  --patterns-dir skills/triton/torch-npu-optimize-knowledge/references/patterns \
-  --output skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md \
+  --patterns-dir skills/torch/torch-npu-optimize-knowledge/references/patterns \
+  --output skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md \
   --style default
 
 uv run python -m triton_agent.optimize_knowledge.pattern_index \

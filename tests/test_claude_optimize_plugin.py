@@ -1,3 +1,4 @@
+import inspect
 import importlib.util
 import json
 import subprocess
@@ -47,16 +48,23 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertIsNotNone(convert_skill_names)
 
         assets = build_claude_optimize_plugin_assets()
+        expected_optimize_skill_names = tuple(
+            skill_name
+            for skill_name in (optimize_skill_names or ())
+            if skill_name != "torch-npu-optimize-knowledge"
+        )
 
         self.assertEqual(
             tuple(sorted(assets.optimize_skill_names)),
-            tuple(sorted(optimize_skill_names or ())),
+            tuple(sorted(expected_optimize_skill_names)),
         )
         self.assertEqual(
             tuple(sorted(assets.convert_skill_names)),
             tuple(sorted(convert_skill_names or ())),
         )
-        expected_skill_names = tuple(dict.fromkeys((optimize_skill_names or ()) + (convert_skill_names or ())))
+        expected_skill_names = tuple(
+            dict.fromkeys(expected_optimize_skill_names + (convert_skill_names or ()))
+        )
         self.assertEqual(
             tuple(sorted(assets.skill_names)),
             tuple(sorted(expected_skill_names)),
@@ -67,6 +75,15 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         if convert_skill_sources:
             expected_skill_sources.update(convert_skill_sources)
         self.assertEqual(assets.skill_sources, expected_skill_sources or None)
+        self.assertNotIn("torch-npu-optimize-knowledge", assets.optimize_skill_names)
+        self.assertNotIn("torch-npu-optimize-knowledge", assets.skill_names)
+
+    def test_plugin_builder_api_does_not_expose_optimize_target(self) -> None:
+        asset_parameters = inspect.signature(build_claude_optimize_plugin_assets).parameters
+        builder_parameters = inspect.signature(build_claude_optimize_plugin).parameters
+
+        self.assertNotIn("optimize_target", asset_parameters)
+        self.assertNotIn("optimize_target", builder_parameters)
 
     def test_plugin_builder_renders_optimize_and_convert_agents_without_standalone_prompt_files(self) -> None:
         assets = build_claude_optimize_plugin_assets()
@@ -110,6 +127,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertIn("a5-force-simt-only-discrete-access", agent_text)
         self.assertIn("autotune", agent_text)
         self.assertIn("grid-flatten-and-ub-buffering", agent_text)
+        self.assertNotIn("torch-npu-optimize-knowledge", agent_text)
         self.assertNotIn("triton-npu-optimize-submit-baseline", agent_text)
         self.assertNotIn("triton-npu-optimize-start-round", agent_text)
         self.assertNotIn("triton-npu-optimize-submit-round", agent_text)
@@ -166,6 +184,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertFalse((built_dir / "python_support").exists())
             self.assertTrue((built_dir / "skills" / "ascend-npu-optimize-state").is_dir())
             self.assertTrue((built_dir / "skills" / "triton-npu-convert-pytorch-operator").is_dir())
+            self.assertFalse((built_dir / "skills" / "torch-npu-optimize-knowledge").exists())
             self.assertFalse((built_dir / "skills" / "tilelang-npu-convert-pytorch-operator").exists())
 
     def test_build_plugin_copies_latest_hook_runtime_tool_use_decision(self) -> None:
