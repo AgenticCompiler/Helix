@@ -113,7 +113,7 @@ class OptimizeBaselineTests(unittest.TestCase):
 
             inspection = inspect_baseline_artifacts(workspace)
 
-            self.assertIn("missing baseline perf artifact", inspection.issues)
+            self.assertIn("missing required path field: perf_artifact", inspection.issues)
 
     def test_inspect_baseline_artifacts_accepts_operator_named_perf_when_state_is_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -227,8 +227,14 @@ class OptimizeBaselineTests(unittest.TestCase):
 
             inspection = inspect_baseline_artifacts(workspace)
 
-            self.assertIn("missing baseline/metrics/perf.txt", inspection.issues)
-            self.assertIn("missing baseline/snapshots/chosen.py", inspection.issues)
+            self.assertIn(
+                "perf_artifact points to a missing file: baseline/metrics/perf.txt",
+                inspection.issues,
+            )
+            self.assertIn(
+                "baseline_operator points to a missing file: baseline/snapshots/chosen.py",
+                inspection.issues,
+            )
 
     def test_inspect_baseline_artifacts_resolves_paths_relative_to_state_file_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

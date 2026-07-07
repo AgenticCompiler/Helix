@@ -5,7 +5,12 @@ from pathlib import Path
 from baseline.contract import BASELINE_STATE_REQUIRED_FIELDS
 from shared.json_io import load_json_object, optional_str
 from shared.models import BaselineArtifactsInspection, BaselineState, OptimizeCheckResult
-from shared.paths import baseline_dir, declared_state_file, existing_file, missing_issue
+from shared.paths import (
+    baseline_dir,
+    declared_state_file,
+    existing_file,
+    missing_path_issue,
+)
 from shared.results import build_check_result
 
 
@@ -69,15 +74,15 @@ def inspect_baseline_artifacts(workspace: Path) -> BaselineArtifactsInspection:
     if state_path is None:
         issues.append("missing baseline/state.json")
     if perf_path is None:
-        issues.append(missing_issue(declared_perf, default_path="baseline perf artifact"))
+        issues.append(missing_path_issue("perf_artifact", declared_perf))
     if operator_path is None:
         if declared_operator is None:
             issues.append("missing baseline operator snapshot")
         else:
             issues.append(
-                missing_issue(
+                missing_path_issue(
+                    "baseline_operator",
                     declared_operator,
-                    default_path="baseline operator snapshot",
                 )
             )
 
