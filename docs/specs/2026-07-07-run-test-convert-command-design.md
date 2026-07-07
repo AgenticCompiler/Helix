@@ -6,6 +6,7 @@
 - Expose the same convert-specific entrypoint from the managed run-eval MCP server.
 - Keep `run-test-baseline` and `run-test-optimize` as the baseline/generation and optimize-round surfaces, and stop making convert guidance borrow those names.
 - Tighten run-test option validation so convert and optimize differential flows fail fast when agents omit or over-specify reference inputs.
+- Keep the baseline MCP tool intentionally narrower than the helper CLI while exposing differential reference inputs for convert and optimize MCP tools.
 
 ## Problem
 
@@ -80,8 +81,10 @@ Implications:
 
 - `run-test-convert --test-mode standalone --ref-result ...` must fail with `parser.error(...)`.
 - `run-test-convert --test-mode differential` with no reference input must fail with `parser.error(...)`.
-- `run-test-optimize` keeps its current strict differential requirement and gains the same explicit standalone rejection of reference inputs.
+- `run-test-optimize` keeps its current strict differential requirement and keeps the existing standalone rejection of reference inputs.
 - `run-test-baseline` keeps its current differential ability to run without a reference input so it can generate baseline result payloads for later reuse.
+
+The standalone rejection is not a new contract for baseline or optimize. The current helper already rejects `--ref-result` and `--ref-operator-file` whenever the resolved test mode is not `differential`. This design keeps that behavior and makes `run-test-convert` follow the same rule from day one.
 
 ### Reference Input Semantics
 
@@ -102,9 +105,17 @@ This keeps convert and optimize flows aligned with the current archived-result r
 
 Expose a new managed MCP tool named `run-test-convert`.
 
-The new tool should:
+The MCP run-test tools should not all mirror the helper CLI in the same way. Keep the tool surfaces workflow-specific:
 
-- accept the same public parameters as the convert helper CLI surface
+- `run-test-baseline` remains intentionally narrower than the helper CLI and should continue not to expose `ref_result` or `ref_operator_file`.
+- `run-test-convert` must expose both `ref_result` and `ref_operator_file`, because differential convert validation requires exactly one of them.
+- `run-test-optimize` continues exposing `ref_result` and `ref_operator_file` for the same reason.
+
+Because `run-test-baseline` stays narrow, its MCP tool description should also stay narrow. Do not describe it as accepting optional archived-result comparison inputs that the tool schema does not expose.
+
+The new `run-test-convert` tool should:
+
+- accept `test_file`, `operator_file`, `ref_result`, `ref_operator_file`, `test_mode`, `remote`, and `remote_workdir`
 - describe the workflow in convert terms rather than optimize terms
 - invoke the staged helper with `run-test-convert`
 - hide the same internal-only parameters that the existing run-test MCP tools already hide
@@ -128,6 +139,8 @@ This change should not introduce a fourth test runner implementation.
 
 `run-test-convert` should behave like convert validation, not optimize-round bookkeeping:
 
+- expand the top-level run-test dispatch gate from `{run-test-baseline, run-test-optimize}` to include `run-test-convert`
+- add `run-test-convert` to `_guard_operator_execution_env(...)` so it gets the same operator-execution environment protection as the other run-test helper commands
 - do not attach optimize round timing context
 - do not emit optimize-round timing events
 - do not inherit optimize-only immediate cleanup side effects that exist specifically for `run-test-optimize`
@@ -138,13 +151,12 @@ The optimize-only timing and cleanup behavior should remain scoped to `run-test-
 
 Keep the validation logic centralized in the skill-local helper CLI instead of scattering special cases through multiple call sites.
 
-The recommended structure is a small command-profile helper keyed by subcommand name that answers:
+There are only two validation contracts in this change:
 
-- whether reference inputs are allowed in `standalone`
-- whether a differential run may omit reference inputs
-- whether differential mode requires exactly one reference input
+- the baseline contract used only by `run-test-baseline`
+- the strict contract shared by `run-test-convert` and `run-test-optimize`
 
-`_validate_run_test_comparison_inputs(...)` should consume that profile and raise `parser.error(...)` with command-specific messages. The purpose is clarity and future maintainability, not a broad new abstraction layer.
+The implementation should reflect that small shape. A lightweight helper keyed by command name is acceptable, but a broad new profile layer is unnecessary. The important requirement is that `_validate_run_test_comparison_inputs(...)` stops hardcoding optimize-only error strings and emits command-specific messages such as `run-test-convert differential mode requires exactly one of --ref-result or --ref-operator-file`.
 
 ## Documentation Changes
 
@@ -172,6 +184,7 @@ Update the common run-eval docs:
 - `skills/common/ascend-npu-run-eval/references/run-test.md`
 
 These docs should state the stricter option rules explicitly so staged agents are guided toward valid command shapes.
+In particular, the `SKILL.md` command index line that currently lists ``run-test-baseline` / `run-test-optimize`` must be expanded to include `run-test-convert`.
 
 ## Files
 
@@ -186,8 +199,8 @@ These docs should state the stricter option rules explicitly so staged agents ar
 | `src/triton_agent/eval/mcp_server.py` | Expose the new MCP tool and route it to the staged helper |
 | `tests/test_skill_command_script.py` | Cover parser, validation, and dispatch behavior for `run-test-convert` |
 | `tests/test_run_eval_mcp_server.py` | Cover tool registration and argument forwarding |
-| `tests/test_run_eval_mcp_server_tool_metadata.py` | Lock the new MCP tool schema and hidden-parameter behavior |
-| `tests/test_generation_contracts.py` | Lock updated convert and run-eval skill wording |
+| `tests/test_run_eval_mcp_server_tool_metadata.py` | Lock the new MCP tool schema, baseline-vs-convert/optimize parameter differences, and hidden-parameter behavior |
+| `tests/test_generation_contracts.py` | Lock updated convert and run-eval skill wording, including the convert-skill `run-test-convert` assertions and the run-eval router command list |
 
 ## Verification
 
