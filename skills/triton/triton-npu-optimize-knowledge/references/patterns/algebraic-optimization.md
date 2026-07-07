@@ -10,6 +10,7 @@ Apply mathematical identities and semantics-preserving rewrites to reduce redund
 - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
 - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
 - Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
+- **Softmax / exp-normalize over bounded input**: an upstream transform (e.g. `tanh(x / C) * C`, `sigmoid`, `clamp`) bounds values to a finite range with upper bound `B` where `exp(B) < fp32_max`.
 - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ## Avoid When
@@ -61,6 +62,7 @@ Use this as a **grep-for-the-brain** over source and profiler hints. If **yes**,
 | F5 | **Symmetric** or **idempotent** math that suggests halving work (e.g. `min(a,b)+max(a,b)`) | Exploit identities to **cut evaluations** |
 | F6 | **Elementwise logical** after **broadcast** where truth tests run on **fully expanded** numeric tensors | **Truth map on original shapes**, then **broadcast bool masks**; **`bool` identity** short-circuit; **empty** `out_shape` early exit |
 | F7 | **Pairwise gated tiles** use `exp(g_i - g_j)` only as a multiplicative factor | Factor into row/column vector terms such as `exp(g_i) * exp(-g_j)` to avoid materializing the pairwise difference |
+| F8 | **Softmax** computes `row_max = tl.max(x)` and `exp(x - row_max)` after an upstream bounded transform | Remove max-subtraction only when `exp(bound)` is safe in fp32 |
 
 **Profiler corroboration (Ascend / msprof-style):** duplicate hot `tl.load` regions, high `MOV_*` / `WAIT_FLAG` in phases that differ only by a scalar derived from the same data—the workload may be **memory- or sync-bound** and a good candidate for **fewer passes**.
 
@@ -233,6 +235,40 @@ b_A *= (b_beta * exp(b_g))[:, None] * exp(-b_g)[None, :]
 
 ---
 
+### Case 4: Bounded-input softmax max-subtraction elimination
+
+**When to use**
+
+- Code uses stable softmax / exp-normalize (`row_max = tl.max(...)`, `exp(x - row_max[:, None])`), but upstream semantics bound the input to `[-B, B]` and `exp(B) < fp32_max` (e.g. softcap `tanh(logits / C) * C`; `C = 30` is safe).
+- Best fit: online-softmax (multi-tile) paths with `m_prev` tracking and per-tile rescale. Single-tile whole-row paths save less and can regress.
+
+**Rewrite**
+
+When `exp(B) < fp32_max`:
+
+```python
+# Before
+row_max = tl.max(softcapped, axis=1)
+exp_vals = tl.exp(softcapped - row_max[:, None])
+row_sum = tl.sum(exp_vals, axis=1)
+result = exp_vals / row_sum[:, None]
+
+# After: bounded input, no max needed
+exp_vals = tl.exp(softcapped)
+row_sum = tl.sum(exp_vals, axis=1)
+result = exp_vals / row_sum[:, None]
+```
+
+For multi-tile paths, replace max-tracking and rescale with direct `sum(exp)` accumulation across tiles; the second pass divides by the accumulated sum. This removes `tl.max`, `m_prev` rescale, `-m[:, None]`, and the `m` / `m_prev` live state.
+
+**Risks**
+
+- Not a generic softmax rewrite; require a semantic bound, fp32 intermediates, and correctness checks for all shapes/dtypes.
+- Do **not** replace `row_max` with a constant such as `exp(softcapped - SOFTCAP)`: the intended rewrite is direct `exp(softcapped)` with no subtraction.
+- For single-tile or autotuned paths, benchmark both variants; use deterministic configs or shape dispatch if config choice becomes unstable.
+
+---
+
 ## Relation to other patterns
 
 | Pattern | Interaction |
@@ -247,6 +283,6 @@ b_A *= (b_beta * exp(b_g))[:, None] * exp(-b_g)[None, :]
 
 ## Reading discipline
 
-- Treat this file as a **living catalog**: use **Case 1** when F1/F3 match; use **Case 2** when F6 / logical-broadcast patterns match; do not blanket-apply one formula.
+- Treat this file as a **living catalog**: use **Case 1** when F1/F3 match; use **Case 2** when F6 / logical-broadcast patterns match; use **Case 4** when F8 / bounded-input softmax matches; do not blanket-apply one formula.
 - Prefer **one** algebraic change per round, then re-profile.
 - If evidence is weak, strengthen with **profiler attribution** before rewriting math.

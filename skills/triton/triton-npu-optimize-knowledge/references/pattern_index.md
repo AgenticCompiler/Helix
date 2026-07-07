@@ -80,6 +80,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
   - Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
+  - **Softmax / exp-normalize over bounded input**: an upstream transform (e.g. `tanh(x / C) * C`, `sigmoid`, `clamp`) bounds values to a finite range with upper bound `B` where `exp(B) < fp32_max`.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ### `atomic-contention-owner-computes-store`
