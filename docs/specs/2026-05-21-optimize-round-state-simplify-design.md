@@ -51,7 +51,7 @@ Verification consistency relies solely on `geomean_speedup_delta`.
 
 - `contract.json`: removed both from `round_state_required_fields`
 - `artifacts.md`: removed both from required field list
-- Gate `comparison_target` check: changed from hardcoded string (`!= "baseline/perf.txt"`) to dynamic validation against `baseline/state.json` `perf_artifact`.  This allows both the legacy `baseline/perf.txt` and the new `baseline/<operator>_perf.txt` conventions.
+- Gate `comparison_target_path` check: changed from hardcoded string (`!= "baseline/perf.txt"`) to dynamic validation against `baseline/state.json` `perf_artifact`. This allows both the legacy `baseline/perf.txt` and the new `baseline/<operator>_perf.txt` conventions.
 
 ### OptimizeStatusWorkspace (models.py)
 

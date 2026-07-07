@@ -50,7 +50,7 @@
 - Modify: `tests/test_optimize_gate.py`
 - Modify: `tests/test_optimize_status.py`
 
-- [ ] Require round metadata to record `canonical_baseline` and `comparison_target`.
+- [ ] Require round metadata to record `canonical_baseline` and `comparison_target_path`.
 - [ ] Block benchmark-passing rounds when baseline artifacts are missing or the comparison target is not `baseline/perf.txt`.
 - [ ] Prefer `baseline/perf.txt` in optimize-status while keeping legacy fallback behavior.
 

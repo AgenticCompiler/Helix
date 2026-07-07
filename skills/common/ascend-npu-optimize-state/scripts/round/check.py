@@ -14,7 +14,15 @@ from round.kernel_continuity import analyze_triton_kernel_continuity
 from round.local_optimum import collect_local_optimum_warnings
 from shared.json_io import load_json_object, optional_str
 from shared.models import OptimizeCheckResult, RoundArtifactsInspection, RoundState
-from shared.paths import baseline_dir, declared_state_file, existing_file, missing_issue
+from shared.paths import (
+    baseline_dir,
+    declared_state_file,
+    existing_file,
+    invalid_dependency_issue,
+    missing_path_issue,
+    noncanonical_path_issue,
+    unexpected_path_name_issue,
+)
 from shared.results import append_pass_issues_to_summary, build_check_result
 from shared.round_naming import expected_round_operator_name, expected_round_perf_name, resolve_workspace_operator_file
 
@@ -224,11 +232,46 @@ def cleanup_workspace_profile_artifacts(workspace: Path) -> list[str]:
     return cleaned
 
 
+def _comparison_target_dependency_issue(round_dir: Path) -> str | None:
+    state_path = baseline_dir(round_dir.parent) / "state.json"
+    if not state_path.is_file():
+        # baseline_gate_issues() already reports a missing baseline/state.json; avoid duplicating it here.
+        return None
+    try:
+        load_baseline_state(round_dir.parent)
+    except ValueError as exc:
+        return invalid_dependency_issue(
+            "comparison_target_path",
+            "baseline/state.json",
+            str(exc),
+        )
+    return None
+
+
 def load_round_state(round_dir: Path) -> RoundState:
     round_state_path = round_dir / "round-state.json"
     data = load_json_object(round_state_path, display_name="round-state.json")
+    comparison_target_path_value = data.get("comparison_target_path")
+    legacy_comparison_target_value = data.get("comparison_target")
+    if comparison_target_path_value is None and legacy_comparison_target_value is not None:
+        comparison_target_path_value = legacy_comparison_target_value
+    elif (
+        comparison_target_path_value is not None
+        and legacy_comparison_target_value is not None
+        and str(comparison_target_path_value) != str(legacy_comparison_target_value)
+    ):
+        raise ValueError(
+            "comparison_target_path and comparison_target disagree: "
+            f"{comparison_target_path_value!r} != {legacy_comparison_target_value!r}"
+        )
     missing_fields = [
-        field_name for field_name in ROUND_STATE_REQUIRED_FIELDS if field_name not in data
+        field_name
+        for field_name in ROUND_STATE_REQUIRED_FIELDS
+        if field_name not in data
+        and not (
+            field_name == "comparison_target_path"
+            and comparison_target_path_value is not None
+        )
     ]
     if missing_fields:
         raise ValueError("missing required round-state fields: " + ", ".join(missing_fields))
@@ -251,7 +294,7 @@ def load_round_state(round_dir: Path) -> RoundState:
         correctness_status=str(data["correctness_status"]),
         benchmark_status=str(data["benchmark_status"]),
         perf_artifact=str(data["perf_artifact"]),
-        comparison_target=str(data["comparison_target"]),
+        comparison_target_path=str(comparison_target_path_value),
         effective_metric_source=str(data["effective_metric_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
@@ -297,17 +340,47 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
     if attempts_path is None:
         issues.append("missing attempts.md")
     if summary_path is None:
-        issues.append(missing_issue(declared_summary, default_path="summary.md"))
+        issues.append(
+            missing_path_issue(
+                "summary_path",
+                declared_summary,
+                expected_path="summary.md",
+            )
+        )
     elif state is not None and declared_summary is not None and Path(declared_summary).name != summary_path.name:
-        issues.append("summary_path must be summary.md")
+        issues.append(
+            unexpected_path_name_issue(
+                "summary_path",
+                declared_summary,
+                expected_name="summary.md",
+            )
+        )
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
-        issues.append(missing_issue(declared_perf, default_path=expected_perf_name_value))
+        issues.append(
+            missing_path_issue(
+                "perf_artifact",
+                declared_perf,
+                expected_path=expected_perf_name_value,
+            )
+        )
     elif state is not None and declared_perf is not None and Path(declared_perf).name != perf_path.name:
-        issues.append(f"perf_artifact must be {expected_perf_name_value}")
+        issues.append(
+            unexpected_path_name_issue(
+                "perf_artifact",
+                declared_perf,
+                expected_name=expected_perf_name_value,
+            )
+        )
     if declared_analysis is not None and perf_analysis_path is None:
-        issues.append(missing_issue(declared_analysis, default_path="perf-analysis.md"))
+        issues.append(
+            missing_path_issue(
+                "perf_analysis_path",
+                declared_analysis,
+                expected_path="perf-analysis.md",
+            )
+        )
     if operator_path is None:
         issues.append(f"missing {expected_operator_name_value}")
 
@@ -390,10 +463,14 @@ def check_round(
 
     baseline_issues = baseline_gate_issues(round_dir.parent)
     if baseline_issues:
+        issues = list(baseline_issues)
+        comparison_dependency_issue = _comparison_target_dependency_issue(round_dir)
+        if comparison_dependency_issue is not None:
+            issues.append(comparison_dependency_issue)
         return build_check_result(
             kind="round",
             status="fail",
-            issues=baseline_issues,
+            issues=tuple(issues),
         )
 
     semantic_issues: list[str] = []
@@ -408,16 +485,20 @@ def check_round(
         comparison_target_path = declared_state_file(
             round_dir,
             round_dir.parent,
-            round_state.comparison_target,
+            round_state.comparison_target_path,
         )
         expected_comparison_target = None
         if baseline_perf_path is not None:
-            expected_comparison_target = os.path.relpath(baseline_perf_path.resolve(), round_dir)
+            expected_comparison_target = os.path.relpath(
+                baseline_perf_path.resolve(),
+                round_dir.resolve(),
+            )
         if comparison_target_path is None:
             semantic_issues.append(
-                missing_issue(
-                    round_state.comparison_target,
-                    default_path=expected_comparison_target or round_state.comparison_target,
+                missing_path_issue(
+                    "comparison_target_path",
+                    round_state.comparison_target_path,
+                    expected_path=expected_comparison_target,
                 )
             )
         elif (
@@ -425,11 +506,20 @@ def check_round(
             and comparison_target_path.resolve() != baseline_perf_path.resolve()
         ):
             semantic_issues.append(
-                f"comparison_target={round_state.comparison_target} "
-                f"(expected {expected_comparison_target or baseline.perf_artifact})"
+                noncanonical_path_issue(
+                    "comparison_target_path",
+                    round_state.comparison_target_path,
+                    expected_path=expected_comparison_target or baseline.perf_artifact,
+                )
             )
-    except ValueError:
-        semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
+    except ValueError as exc:
+        semantic_issues.append(
+            invalid_dependency_issue(
+                "comparison_target_path",
+                "baseline/state.json",
+                str(exc),
+            )
+        )
     if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
         semantic_issues.append(
             f"effective_metric_source={round_state.effective_metric_source}"

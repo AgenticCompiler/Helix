@@ -36,7 +36,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True
@@ -65,6 +65,91 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
             self.assertIn("missing required round-state fields", str(ctx.exception))
             self.assertIn("effective_metric_source", str(ctx.exception))
+            self.assertIn("comparison_target_path", str(ctx.exception))
+
+    def test_load_round_state_reads_comparison_target_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target_path": "../baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            state = load_round_state(round_dir)
+
+            self.assertEqual(state.comparison_target_path, "../baseline/perf.txt")
+
+    def test_load_round_state_accepts_legacy_comparison_target_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "../baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            state = load_round_state(round_dir)
+
+            self.assertEqual(state.comparison_target_path, "../baseline/perf.txt")
+
+    def test_load_round_state_rejects_conflicting_comparison_target_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target_path": "../baseline/kernel_perf.txt",
+                        "comparison_target": "../baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "comparison_target_path and comparison_target disagree",
+            ):
+                load_round_state(round_dir)
 
     def test_inspect_round_artifacts_flags_missing_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,7 +170,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True
@@ -96,7 +181,10 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
             result = inspect_round_artifacts(round_dir)
 
-            self.assertIn("missing summary.md", result.issues)
+            self.assertIn(
+                "summary_path points to a missing file: summary.md (expected summary.md)",
+                result.issues,
+            )
 
     def test_inspect_round_artifacts_uses_state_declared_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,7 +210,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "reports/final.md",
                         "opt_note_updated": True
@@ -158,7 +246,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "benchmark_status": "passed",
                         "perf_artifact": "bench/opt_kernel_perf.txt",
                         "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "kernel",
                         "summary_path": "reports/final.md",
@@ -170,8 +258,14 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
             result = inspect_round_artifacts(round_dir)
 
-            self.assertIn("summary_path must be summary.md", result.issues)
-            self.assertIn("perf_artifact must be opt_kernel_perf.txt", result.issues)
+            self.assertIn(
+                "summary_path must use summary.md (got reports/final.md)",
+                result.issues,
+            )
+            self.assertIn(
+                "perf_artifact must use opt_kernel_perf.txt (got bench/opt_kernel_perf.txt)",
+                result.issues,
+            )
 
     def test_inspect_round_artifacts_accepts_legacy_round_perf_and_operator_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -194,7 +288,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "benchmark_status": "passed",
                         "perf_artifact": "perf.txt",
                         "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
@@ -224,7 +318,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -255,7 +349,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
                         "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "total-op",
                         "summary_path": "summary.md",
@@ -290,7 +384,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,

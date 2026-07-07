@@ -49,7 +49,7 @@ class RoundState:
     correctness_status: str
     benchmark_status: str
     perf_artifact: str
-    comparison_target: str
+    comparison_target_path: str
     effective_metric_source: str
     summary_path: str
     opt_note_updated: bool
