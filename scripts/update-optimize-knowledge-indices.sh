@@ -12,6 +12,11 @@ uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --style default
 
 uv run python -m triton_agent.optimize_knowledge.pattern_index \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge-distill/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge-distill/references/pattern_index.md \
+  --style default
+
+uv run python -m triton_agent.optimize_knowledge.pattern_index \
   --patterns-dir skills/torch/torch-npu-optimize-knowledge/references/patterns \
   --output skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md \
   --style default
@@ -24,5 +29,9 @@ uv run python -m triton_agent.optimize_knowledge.pattern_index \
 uv run python -m triton_agent.optimize_knowledge.symptom_index \
   --symptoms-dir skills/triton/triton-npu-optimize-knowledge/references/symptoms \
   --output skills/triton/triton-npu-optimize-knowledge/references/symptom_index.md
+
+uv run python -m triton_agent.optimize_knowledge.symptom_index \
+  --symptoms-dir skills/triton/triton-npu-optimize-knowledge-distill/references/symptoms \
+  --output skills/triton/triton-npu-optimize-knowledge-distill/references/symptom_index.md
 
 echo "Update optimize knowledge indices done."
