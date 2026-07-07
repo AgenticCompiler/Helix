@@ -20,7 +20,7 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
 
         self.assertEqual(
             tools["run-test-baseline"].description,
-            "Run the baseline operator against a test case and optionally compare an archived differential result.",
+            "Run the baseline operator against a test case and return any archived differential result it produces.",
         )
         self.assertEqual(
             tools["run-test-baseline"].parameters["properties"]["test_file"]["description"],
@@ -39,6 +39,24 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
         self.assertNotIn("rtol", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("compare_level", tools["run-test-baseline"].parameters["properties"])
         self.assertNotIn("ref_result", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("ref_operator_file", tools["run-test-baseline"].parameters["properties"])
+
+        self.assertEqual(
+            tools["run-test-convert"].description,
+            "Run the converted operator against a test case and compare it with reference evidence.",
+        )
+        self.assertEqual(
+            tools["run-test-convert"].parameters["properties"]["ref_operator_file"]["description"],
+            "Absolute path to the reference operator file used to produce comparison output.",
+        )
+        self.assertEqual(
+            tools["run-test-convert"].parameters["properties"]["ref_result"]["description"],
+            "Absolute path to an archived reference result used for differential comparison.",
+        )
+        self.assertNotIn("accuracy_mode", tools["run-test-convert"].parameters["properties"])
+        self.assertNotIn("atol", tools["run-test-convert"].parameters["properties"])
+        self.assertNotIn("rtol", tools["run-test-convert"].parameters["properties"])
+        self.assertNotIn("compare_level", tools["run-test-convert"].parameters["properties"])
 
         self.assertEqual(
             tools["run-test-optimize"].description,
@@ -121,6 +139,6 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
         self.assertNotIn("skip_latency_errors", tools["compare-perf"].parameters["properties"])
 
         hidden_parameters = {"verbose", "keep_remote_workdir"}
-        for tool_name in ("run-test-baseline", "run-test-optimize", "run-bench", "profile-bench"):
+        for tool_name in ("run-test-baseline", "run-test-convert", "run-test-optimize", "run-bench", "profile-bench"):
             properties = tools[tool_name].parameters["properties"]
             self.assertTrue(hidden_parameters.isdisjoint(properties), tool_name)

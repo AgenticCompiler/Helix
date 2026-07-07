@@ -10,6 +10,7 @@ Use the corresponding MCP tool for run-eval actions in this staged skill.
 Primary MCP tools:
 
 - `run-test-baseline`
+- `run-test-convert`
 - `run-test-optimize`
 - `run-bench`
 - `profile-bench`
@@ -24,7 +25,7 @@ Fast-screening note:
 
 Read only the focused guide for the MCP tool you are about to call:
 
-- `run-test-baseline` / `run-test-optimize`: [references/run-test.md](references/run-test.md)
+- `run-test-baseline` / `run-test-convert` / `run-test-optimize`: [references/run-test.md](references/run-test.md)
 - `run-bench`: [references/run-bench.md](references/run-bench.md)
 - `profile-bench`: [references/profile-bench.md](references/profile-bench.md)
 - `profile-report`: [references/profile-report.md](references/profile-report.md)
