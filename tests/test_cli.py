@@ -849,6 +849,21 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertTrue(args.skip_latency_errors)
         self.assertEqual(args.metric_source, "all")
 
+    def test_run_bench_accepts_metric_source_short_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "-m",
+                "kernel",
+            ]
+        )
+        self.assertEqual(args.metric_source, "kernel")
+
     def test_agent_commands_accept_pi_backend(self) -> None:
         parser = build_parser()
         gen_eval_batch_args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--agent", "pi"])
@@ -1156,6 +1171,22 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
         self.assertEqual(args.metric_source, "total-op")
 
+    def test_compare_perf_accepts_metric_source_short_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "-m",
+                "total-op",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
+        self.assertEqual(args.metric_source, "total-op")
+
     def test_compare_perf_defaults_metric_source_to_auto(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -1213,6 +1244,24 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "--baseline-operator-file",
                 "baseline_kernel.py",
                 "--metric-source",
+                "total-op",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.PROBE_BENCH)
+        self.assertEqual(args.metric_source, "total-op")
+
+    def test_probe_bench_accepts_metric_source_short_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "probe-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+                "-m",
                 "total-op",
             ]
         )
@@ -2109,6 +2158,35 @@ class PathResolutionTests(unittest.TestCase):
             p.stop()
         super().tearDown()
 
+    def _write_round_state(
+        self,
+        round_dir: Path,
+        *,
+        perf_artifact: str,
+        correctness_status: str = "passed",
+        benchmark_status: str = "passed",
+        effective_metric_source: str = "kernel",
+    ) -> None:
+        (round_dir / "round-state.json").write_text(
+            json.dumps(
+                {
+                    "round": round_dir.name,
+                    "parent_round": "baseline",
+                    "hypothesis": "test round",
+                    "evidence_sources": ["benchmark"],
+                    "correctness_status": correctness_status,
+                    "benchmark_status": benchmark_status,
+                    "perf_artifact": perf_artifact,
+                    "comparison_target_path": "../baseline/perf.txt",
+                    "effective_metric_source": effective_metric_source,
+                    "summary_path": "summary.md",
+                    "opt_note_updated": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_main_status_rejects_missing_root(self) -> None:
         stderr = StringIO()
         with redirect_stderr(stderr):
@@ -2175,6 +2253,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2200,6 +2279,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             previous_cwd = os.getcwd()
@@ -2345,6 +2425,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(ok_round, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2396,6 +2477,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2452,6 +2535,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2483,6 +2568,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-c: 18\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2517,6 +2603,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 15\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2546,6 +2633,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2577,6 +2665,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 5\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(alpha_round, perf_artifact="opt_kernel_perf.txt")
 
             beta = root / "beta"
             beta.mkdir()
@@ -2597,6 +2686,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 4\nlatency-b: 8\n",
                 encoding="utf-8",
             )
+            self._write_round_state(beta_round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(beta_round_three, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2627,6 +2718,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 5\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(alpha_round, perf_artifact="opt_kernel_perf.txt")
 
             beta = root / "beta"
             beta.mkdir()
@@ -2647,6 +2739,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 4\nlatency-b: 8\n",
                 encoding="utf-8",
             )
+            self._write_round_state(beta_round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(beta_round_three, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2698,6 +2792,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 5\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -2726,6 +2822,7 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             stderr = StringIO()
             with redirect_stderr(stderr):
@@ -2780,6 +2877,8 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(ok_round, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(best_round, perf_artifact="opt_kernel_perf.txt")
             verify_dir = ok_workspace / "opt-verify" / "verify-20260421-120000"
             verify_dir.mkdir(parents=True)
             (verify_dir / "verify-state.json").write_text(
