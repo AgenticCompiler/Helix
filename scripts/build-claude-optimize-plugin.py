@@ -239,7 +239,19 @@ def _render_plugin_readme() -> str:
         "This plugin packages the Claude optimize workflow and Triton convert workflow for Triton Agent.\n\n"
         "It includes one optimize agent with plugin-managed workflow state automation "
         "and first-session compiler source provisioning, plus one Triton convert agent "
-        "with the minimum Triton convert skill set.\n"
+        "with the minimum Triton convert skill set.\n\n"
+        "## Usage\n\n"
+        "### Use as a subagent\n\n"
+        "After installing the plugin, start Claude in the target workspace and ask:\n\n"
+        "`Please use the triton-optimizer:triton-agent-optimizer agent to optimize "
+        "@your_triton_operator.py in the current directory. Stop after reaching Xx speedup "
+        "over the baseline or after X rounds.`\n\n"
+        "### Start Claude with the optimize agent\n\n"
+        "Run:\n\n"
+        "`claude --agent triton-optimizer:triton-agent-optimizer`\n\n"
+        "Then ask:\n\n"
+        "`Please optimize @your_triton_operator.py in the current directory. Stop after "
+        "reaching Xx speedup over the baseline or after X rounds.`\n"
     )
 
 

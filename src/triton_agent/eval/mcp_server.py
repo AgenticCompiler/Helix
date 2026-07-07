@@ -82,7 +82,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
 
     @server.tool(
         name="run-test-baseline",
-        description="Run the baseline operator against a test case and optionally compare an archived differential result.",
+        description="Run the baseline operator against a test case and return any archived differential result it produces.",
     )
     def run_test_baseline(
         test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
@@ -109,6 +109,48 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
                 "run-test-baseline",
+                arguments,
+                leased_device=leased_device,
+                workspace=workspace,
+            )
+
+    @server.tool(
+        name="run-test-convert",
+        description="Run the converted operator against a test case and compare it with reference evidence.",
+    )
+    def run_test_convert(
+        test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the converted operator implementation file.")],
+        ref_operator_file: Annotated[
+            str | None,
+            Field(description="Absolute path to the reference operator file used to produce comparison output."),
+        ] = None,
+        ref_result: Annotated[
+            str | None,
+            Field(description="Absolute path to an archived reference result used for differential comparison."),
+        ] = None,
+        test_mode: Annotated[
+            str | None,
+            Field(description="Optional test mode override. Supported values: standalone, differential."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
+    ) -> dict[str, object]:
+        workspace = current_workspace()
+        arguments = _build_run_test_arguments(
+            test_file=test_file,
+            operator_file=operator_file,
+            test_mode=test_mode,
+            ref_result=ref_result,
+            ref_operator_file=ref_operator_file,
+            remote=remote,
+            remote_workdir=remote_workdir,
+            keep_remote_workdir=False,
+            verbose=False,
+        )
+        with _lease_device(pool) as leased_device:
+            return _run_subcommand(
+                "run-test-convert",
                 arguments,
                 leased_device=leased_device,
                 workspace=workspace,

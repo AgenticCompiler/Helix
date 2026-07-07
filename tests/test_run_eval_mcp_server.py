@@ -76,6 +76,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
                 "profile-report",
                 "run-bench",
                 "run-test-baseline",
+                "run-test-convert",
                 "run-test-optimize",
             ],
         )
@@ -233,7 +234,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
             workspace: Path,
         ):
             del workspace
-            self.assertIn(subcommand, {"run-test-baseline", "run-test-optimize"})
+            self.assertIn(subcommand, {"run-test-baseline", "run-test-convert", "run-test-optimize"})
             self.assertIn("--test-file", arguments)
             self.assertIn("--operator-file", arguments)
             seen_devices.append(leased_device)
@@ -258,6 +259,15 @@ class RunEvalMCPServerTests(unittest.TestCase):
                     },
                 )
                 await server.call_tool(
+                    "run-test-convert",
+                    {
+                        "test_file": "/tmp/differential_test_kernel.py",
+                        "operator_file": "/tmp/triton_kernel.py",
+                        "test_mode": "differential",
+                        "ref_operator_file": "/tmp/kernel.py",
+                    },
+                )
+                await server.call_tool(
                     "run-test-optimize",
                     {
                         "test_file": "/tmp/differential_test_kernel.py",
@@ -269,7 +279,52 @@ class RunEvalMCPServerTests(unittest.TestCase):
 
         asyncio.run(_call_tools())
 
-        self.assertEqual(seen_devices, ["0", "0"])
+        self.assertEqual(seen_devices, ["0", "0", "0"])
+
+    def test_run_test_convert_tool_forwards_reference_arguments(self) -> None:
+        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
+        observed: dict[str, object] = {}
+
+        def fake_run_subcommand(
+            subcommand: str,
+            arguments: list[str],
+            *,
+            leased_device: Optional[str] = None,
+            workspace: Path,
+        ):
+            observed["subcommand"] = subcommand
+            observed["arguments"] = arguments
+            observed["leased_device"] = leased_device
+            observed["workspace"] = workspace
+            return {
+                "return_code": 0,
+                "stdout": "Archived result: /tmp/triton_kernel_result.pt\n",
+                "stderr": "",
+                "archived_result": "/tmp/triton_kernel_result.pt",
+            }
+
+        async def _call_tool() -> None:
+            with (
+                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
+                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
+            ):
+                await server.call_tool(
+                    "run-test-convert",
+                    {
+                        "test_file": "/tmp/differential_test_kernel.py",
+                        "operator_file": "/tmp/triton_kernel.py",
+                        "test_mode": "differential",
+                        "ref_operator_file": "/tmp/kernel.py",
+                    },
+                )
+
+        asyncio.run(_call_tool())
+
+        self.assertEqual(observed["subcommand"], "run-test-convert")
+        self.assertEqual(observed["workspace"], Path("/tmp/ws"))
+        arguments = cast(list[str], observed["arguments"])
+        self.assertIn("--ref-operator-file", arguments)
+        self.assertIn("/tmp/kernel.py", arguments)
 
     def test_run_test_tool_leaves_accuracy_controls_in_parent_env(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
