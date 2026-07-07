@@ -845,6 +845,64 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(args.metric_source, "kernel")
 
+    def test_run_bench_parser_accepts_metric_source_short_alias(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_metric_source_short_alias_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "-m",
+                "all",
+            ]
+        )
+
+        self.assertEqual(args.metric_source, "all")
+
+    def test_compare_perf_parser_accepts_metric_source_short_alias(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_perf_short_alias_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "-m",
+                "kernel",
+            ]
+        )
+
+        self.assertEqual(args.metric_source, "kernel")
+
     def test_compare_perf_parser_accepts_metric_source_all_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]

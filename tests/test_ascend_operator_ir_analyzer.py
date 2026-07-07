@@ -29,6 +29,38 @@ def _load_capture_ir_module():
     return module
 
 
+def _load_tilelang_capture_ir_module():
+    script = (
+        REPO_ROOT
+        / "skills"
+        / "tilelang"
+        / "tilelang-npu-analyze-ir"
+        / "scripts"
+        / "capture_ir.py"
+    )
+    spec = importlib.util.spec_from_file_location("tilelang_capture_ir_test_module", script)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"Unable to load module spec for {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _run_main_with_captured_stdio(module, argv: list[str]) -> tuple[int, str, str]:
+    stdout = StringIO()
+    stderr = StringIO()
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    try:
+        sys.stdout = stdout
+        sys.stderr = stderr
+        exit_code = module.main(argv)
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+    return exit_code, stdout.getvalue(), stderr.getvalue()
+
+
 class AscendOperatorIrAnalyzerTests(unittest.TestCase):
     def test_build_parser_accepts_ir_dir_argument(self) -> None:
         module = _load_capture_ir_module()
@@ -611,6 +643,81 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     module._run_local_replay(["bishengir-compile", "kernel.ttadapter.mlir"], stderr_path)
 
             self.assertEqual(stderr_path.read_text(encoding="utf-8"), "ub overflow\n")
+
+    def test_tilelang_main_reports_missing_compilation_and_name_guidance(self) -> None:
+        module = _load_tilelang_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            operator_file = Path(tmp) / "tilelang_op.py"
+            operator_file.write_text(
+                "\n".join(
+                    [
+                        "class _HiddenKernel:",
+                        "    def get_kernel_source(self):",
+                        "        return 'kernel source'",
+                        "",
+                        "_compiled_kernel = _HiddenKernel()",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = _run_main_with_captured_stdio(
+                module,
+                ["--operator-file", str(operator_file)],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("module-level", stderr)
+        self.assertIn("does not start with `_`", stderr)
+        self.assertIn("compiled_kernel = kernel_func(...)", stderr)
+
+    def test_tilelang_main_reports_import_failure_with_cache_guidance(self) -> None:
+        module = _load_tilelang_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            operator_file = Path(tmp) / "tilelang_op.py"
+            operator_file.write_text('raise RuntimeError("Compilation Failed")\n', encoding="utf-8")
+
+            exit_code, stdout, stderr = _run_main_with_captured_stdio(
+                module,
+                ["--operator-file", str(operator_file)],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("Compilation Failed", stderr)
+        self.assertIn("__pycache__", stderr)
+        self.assertIn(".pkl_memoize_py3", stderr)
+
+    def test_tilelang_main_reports_get_kernel_source_failure_with_cache_guidance(self) -> None:
+        module = _load_tilelang_capture_ir_module()
+
+        class FailingKernel:
+            def get_kernel_source(self) -> str:
+                raise RuntimeError("Compilation Failed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            operator_file = Path(tmp) / "tilelang_op.py"
+            operator_file.write_text("compiled_kernel = object()\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "_load_operator_module",
+                return_value=SimpleNamespace(compiled_kernel=FailingKernel()),
+            ):
+                exit_code, stdout, stderr = _run_main_with_captured_stdio(
+                    module,
+                    ["--operator-file", str(operator_file)],
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("Compilation Failed", stderr)
+        self.assertIn("__pycache__", stderr)
+        self.assertIn(".pkl_memoize_py3", stderr)
 
     def test_capture_remote_archive_replay_failure_includes_remote_stdout_and_stderr(self) -> None:
         module = _load_capture_ir_module()

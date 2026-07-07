@@ -1091,6 +1091,23 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("Keep IR evidence under `opt-round-N/ir/`.", optimize)
         self.assertNotIn("Write `opt-round-N/compiler-analysis.md`.", optimize)
 
+    def test_tilelang_capture_ir_skill_documents_cache_cleanup_and_prerequisites(self) -> None:
+        skill = _read("skills/tilelang/tilelang-npu-analyze-ir/SKILL.md")
+
+        self.assertIn("module-level", skill)
+        self.assertIn("does not start with `_`", skill)
+        self.assertIn('find <workspace> -name "__pycache__" -type d -exec rm -rf {} +', skill)
+        self.assertIn(".pkl_memoize_py3", skill)
+        self.assertIn("No compiled kernels found", skill)
+        self.assertIn("Compilation Failed", skill)
+
+    def test_tilelang_optimize_artifacts_describe_ascendc_source_capture(self) -> None:
+        artifacts = _read("skills/tilelang/tilelang-npu-optimize/references/artifacts.md")
+
+        self.assertIn("ascendc_source.cpp", artifacts)
+        self.assertNotIn("bishengir_stages/", artifacts)
+        self.assertNotIn("triton_dump/", artifacts)
+
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
         self.assertIn("strict reusable optimization-knowledge log", artifacts)
