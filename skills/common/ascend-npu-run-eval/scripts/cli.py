@@ -187,6 +187,7 @@ def _append_optimize_timing_event(
 def _guard_operator_execution_env(command: str) -> Iterator[None]:
     if command not in {
         "run-test-baseline",
+        "run-test-convert",
         "run-test-optimize",
         "run-bench",
         "profile-bench",
@@ -337,6 +338,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_test_baseline = subparsers.add_parser("run-test-baseline")
     _add_run_test_arguments(run_test_baseline)
 
+    run_test_convert = subparsers.add_parser("run-test-convert")
+    _add_run_test_arguments(run_test_convert)
+
     run_test_optimize = subparsers.add_parser("run-test-optimize")
     _add_run_test_arguments(run_test_optimize)
 
@@ -424,7 +428,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             metric_source=args.metric_source,
         )
 
-    if args.command in {"run-test-baseline", "run-test-optimize"}:
+    if args.command in {"run-test-baseline", "run-test-convert", "run-test-optimize"}:
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
@@ -440,6 +444,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             parser, getattr(args, "ref_operator_file", None), "Reference operator file"
         )
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        require_reference_input = args.command in {"run-test-convert", "run-test-optimize"}
         ref_result = _resolve_run_test_comparison_inputs(
             parser,
             args,
@@ -451,7 +456,8 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             run_remote_test,
             remote,
             remote_workdir,
-            optimize_mode=args.command == "run-test-optimize",
+            command_name=args.command,
+            require_reference_input=require_reference_input,
         )
         remote_workspace: str | None = None
         _append_optimize_timing_event(
@@ -744,14 +750,16 @@ def _resolve_run_test_comparison_inputs(
     remote: str | None,
     remote_workdir: str | None,
     *,
-    optimize_mode: bool,
+    command_name: str,
+    require_reference_input: bool,
 ) -> Path | None:
     _validate_run_test_comparison_inputs(
         parser,
+        command_name,
         resolved_test_mode,
         ref_result,
         ref_operator_file,
-        optimize_mode=optimize_mode,
+        require_reference_input=require_reference_input,
     )
     if ref_operator_file is None:
         return ref_result
@@ -771,30 +779,33 @@ def _resolve_run_test_comparison_inputs(
 
 def _validate_run_test_comparison_inputs(
     parser: argparse.ArgumentParser,
+    command_name: str,
     resolved_test_mode: str,
     ref_result: Path | None,
     ref_operator_file: Path | None,
     *,
-    optimize_mode: bool,
+    require_reference_input: bool,
 ) -> None:
-    if optimize_mode:
-        if ref_result is not None and ref_operator_file is not None:
-            parser.error(
-                "run-test-optimize differential mode requires exactly one of "
-                "--ref-result or --ref-operator-file"
-            )
-        if resolved_test_mode == "differential" and ref_result is None and ref_operator_file is None:
-            parser.error(
-                "run-test-optimize differential mode requires exactly one of "
-                "--ref-result or --ref-operator-file"
-            )
-    elif ref_result is not None and ref_operator_file is not None:
-        parser.error("run-test-baseline differential mode accepts at most one of --ref-result or --ref-operator-file")
-
     if ref_result is not None and resolved_test_mode != "differential":
-        parser.error("--ref-result is supported only with --test-mode differential")
+        parser.error(f"{command_name} standalone mode does not accept --ref-result")
     if ref_operator_file is not None and resolved_test_mode != "differential":
-        parser.error("--ref-operator-file is supported only with --test-mode differential")
+        parser.error(f"{command_name} standalone mode does not accept --ref-operator-file")
+    if ref_result is not None and ref_operator_file is not None:
+        if require_reference_input:
+            parser.error(
+                f"{command_name} differential mode requires exactly one of "
+                "--ref-result or --ref-operator-file"
+            )
+        else:
+            parser.error(
+                f"{command_name} differential mode accepts at most one of "
+                "--ref-result or --ref-operator-file"
+            )
+    if require_reference_input and resolved_test_mode == "differential" and ref_result is None and ref_operator_file is None:
+        parser.error(
+            f"{command_name} differential mode requires exactly one of "
+            "--ref-result or --ref-operator-file"
+        )
 
 
 def _resolve_ref_operator_result(

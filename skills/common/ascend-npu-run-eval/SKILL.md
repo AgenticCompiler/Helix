@@ -17,7 +17,7 @@ For `probe-bench`, use the surface that actually exposes that subcommand in the 
 
 Read only the focused guide for the subcommand you are about to run:
 
-- `run-test-baseline` / `run-test-optimize`: [references/run-test.md](references/run-test.md)
+- `run-test-baseline` / `run-test-convert` / `run-test-optimize`: [references/run-test.md](references/run-test.md)
 - `run-bench`: [references/run-bench.md](references/run-bench.md)
 - `probe-bench`: [references/probe-bench.md](references/probe-bench.md)
 - `profile-bench`: [references/profile-bench.md](references/profile-bench.md)
