@@ -85,7 +85,7 @@ def _write_round(workdir: Path, *, profile_dir: Optional[str] = None) -> Path:
         "correctness_status": "passed",
         "benchmark_status": "passed",
         "perf_artifact": "opt_kernel_perf.txt",
-        "comparison_target": "../baseline/perf.txt",
+        "comparison_target_path": "../baseline/perf.txt",
         "effective_metric_source": "kernel",
         "summary_path": "summary.md",
         "opt_note_updated": True,
