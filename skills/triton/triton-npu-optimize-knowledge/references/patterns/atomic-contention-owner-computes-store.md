@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # Atomic Contention Owner-Computes Store
 
 ## Summary
@@ -38,6 +42,7 @@ Replace many-program atomic updates to a small output domain with an owner-compu
   | `scatter_add` / `index_add` (inferred) | index tensor | sum | output dim size |
   | class voting / label counting (inferred) | predicted class | count | number of classes |
   | sparse row reduction (inferred) | row index | sum / max | number of rows |
+  | GroupNorm/InstanceNorm/LayerNorm moments (inferred) | channel / group ID | sum + sum-of-squares | rows × num_groups or rows × channels |
 
   If the kernel matches this semantic shape — regardless of variable names, grid literal, or whether it literally calls `tl.atomic_*` — it is a candidate.
 - **Concrete code patterns (detection hints):**
@@ -127,6 +132,32 @@ When shape ranges are broad, keep this as a shape-dispatched path rather than re
 ### Related strategy: private-bin / private-row decomposition
 
 Owner-computes is the most aggressive atomic-elimination rewrite (zero atomics, zero contention, one writer per target). A weaker but sometimes cheaper alternative is **private-bin decomposition**: each program writes to its own disjoint output row (`out + pid * stride + bucket`) using atomics only against a private region, then a second Triton kernel uses `tl.sum` across the per-program rows to produce the final output. This eliminates *cross-program* contention while keeping per-program atomics. It is preferable when the output domain is too large for owner-computes to amortize the reread, or when the input scan per owner would exceed UB capacity.
+
+### Normalization operators: per-channel decomposition (key variant)
+
+For GroupNorm/InstanceNorm/LayerNorm/BatchNorm moments kernels, the output domain is per-group or per-row statistics (sum, sum-of-squares). The owner target can be either a **row** (one program per row, scanning all channels and spatial elements) or a **channel within a row** (one program per (row, channel), scanning only the spatial dimension).
+
+**Prefer per-channel decomposition when:**
+- `rows` is small (e.g., 8-32) — per-row owner-computes would give too few programs (8-32) to fill the NPU's cores.
+- `group_size` is moderate (4-256) — per-channel gives `rows × group_size` programs (e.g., 32×8=256), much better parallelism.
+- `spatial_size` is large enough that each program has sufficient work (e.g., ≥256 elements per channel).
+
+**Per-channel partial-sums approach (eliminates atomics entirely):**
+1. moments kernel: grid = `(rows, group_size)`, each program scans its channel's spatial tiles, writes partial sum/sq_sum to `partial_sums[row * group_size + chan]` with a plain `tl.store` (no atomics).
+2. apply kernel: grid = `(rows, group_size)`, each program reads all `group_size` partial sums for its row (contiguous load of GROUP_SIZE values), reduces with `tl.sum`, computes mean/rstd, then applies normalization to its channel's spatial tiles.
+
+This approach eliminates all atomics while maintaining high parallelism. The extra cost (reading GROUP_SIZE partial sums per program) is negligible for moderate group_size (4-32).
+
+**SPATIAL_BLOCK tuning for per-channel kernels:**
+- Start with `SPATIAL_BLOCK=8192` and increase to `16384` if UB allows.
+- Use `tl.max_contiguous(tl.multiple_of(tl.arange(0, SPATIAL_BLOCK), SPATIAL_BLOCK), SPATIAL_BLOCK)` for contiguous load hints.
+- `SPATIAL_BLOCK=32768` typically overflows UB on 910B4 (192KB UB); do not attempt without verifying UB budget.
+- Larger SPATIAL_BLOCK reduces loop iterations and improves per-program work density.
+
+**Hybrid dispatch (block-path vs chan-path):**
+- Use chan-path (per-channel) when `spatial_size >= 256` and `n_cols > 4096` (enough work per channel).
+- Use block-path (flat, with atomics) for tiny-spatial cases where channel tiling would produce too many thin programs.
+- The dispatch threshold should be tuned per operator — try lowering from 256 to 128 to capture more cases.
 
 ## Example: Histogram
 

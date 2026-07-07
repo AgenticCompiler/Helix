@@ -13,31 +13,35 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 
+### `atomic-contention-owner-computes-store`
+
+- Summary: Replace many-program atomic updates to a small output domain with an owner-computes decomposition: transpose the grid from input tiles to output targets, let each program own one bucket or reduction target, scan the contributing input region, and write the final value with a plain `tl.store`.
+- Source: [atomic-contention-owner-computes-store.md](patterns/atomic-contention-owner-computes-store.md)
+
 ### `autotune`
 
-- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
+- Summary: Two-phase optimization from `report.txt` simulation data:
 - Source: [autotune.md](patterns/autotune.md)
-
 
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 
-### `program-multiple-rows`
+### `reduce-avoid-transpose-copy`
 
-- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`). **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting, `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced memory access and parallel row processing.
-- Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
+- Summary: Avoid implementing a non-last-dimension single-axis operation (reduction, prefix scan, or other axis-wise computation) by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, scan, inner]` from the original shape and operate directly from the original layout with a strided/tiled kernel.
+- Source: [reduce-avoid-transpose-copy.md](patterns/reduce-avoid-transpose-copy.md)
 
 ### `software-pipeline-dependency-profiling`
 
 - Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 
-### `tile-selection-heuristic`
+### `wrapper-buffer-reuse`
 
-- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
-- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
+- Summary: When auxiliary-op fusion into a Triton kernel is blocked by correctness or precision constraints, reduce torch/CANN wrapper overhead by pre-allocating intermediate buffers and reusing them across computation stages via the `out=` parameter. This eliminates per-op intermediate tensor allocations, reduces memory traffic, and can be combined with an in-place pass-through kernel to avoid the final output copy.
+- Source: [wrapper-buffer-reuse.md](patterns/wrapper-buffer-reuse.md)
 
 ## Generated Pattern Summaries
 
@@ -109,17 +113,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Three-phase signal-driven optimization from `report.txt`. Phase 1 (Pre-Gate A-Cat-5): determine whether autotune is the right tool — if memory layout is fragmented, route to `compile_hint`/`discrete_memory_access` instead. Phase 2: match `report.txt` statistical features against A-Cat-6 through A-Cat-4 to identify which parameters need tuning. Phase 3: choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written Configs using Category examples). Each Category includes concrete `triton.Config` examples and worked simulation cases.
+- Summary: Two-phase optimization from `report.txt` simulation data:
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
   - The kernel logic is mathematically correct, stable, and passes validation tests.
-  - You have a `report.txt` output from `extracted_bin_data`.
-  - **Pre-Gate (always check first):** A-Cat-5 fires when `[MTE2 Data Transport]` ProcessBytes avg < 128B or Data movers = 0 with `tl.load` present. If fired, stop — autotune cannot fix this; fix memory layout/compiler hints first.
-  - **Parameter Diagnostics (only if Pre-Gate passes):** A-Cat-6 (Register Spilling), A-Cat-1 (Pipeline Overlap Deficit), A-Cat-2 (Scalar Overhead Dominance) are diagnosed from `report.txt`. A-Cat-3 (Parallelism Starvation) and A-Cat-4 (Autotune Key Mismatch) require additional data sources.
+  - You have a `report.txt` output from `extracted_bin_data`. Focus on its overall sections.
+  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, `num_stages`, or autotune `key` configuration.
   - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
   - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
-  - The operator is vector-like rather than a Cube-only kernel path.
-  - You are not already in a launch-mode experiment that explicitly changes execution style; if applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
+  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
+  - `report.txt` shows one or more of: near-0% MTE2&VECTOR overlap, SCALAR dominance, small ProcessBytes per MTE fetch, high WAIT_FLAG without compute overlap, register pressure symptoms.
+  - For A-Cat-3 and A-Cat-4, additional data sources beyond `report.txt` are required (see category notes).
 
 ### `auxiliary-op-fusion`
 
@@ -144,12 +148,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
   - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR_dur) / %(VECTOR_dur) > 10`, indicating heavy scalar address computation dominates execution time.
-  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3_dur) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `SCALAR_cycles% / VECTOR_cycles% > 10`, indicating heavy scalar address computation dominates execution time.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `MTE3_cycles% > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
   - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
   - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
   - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
   - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
+  - `report.txt` overall `[Pipe Distribution]` section shows **SCALAR and VECTOR already well-overlapped** — `%(SCALAR&VECTOR/VECTOR) > 60%`; block_ptr cannot further improve overlap.
+  - The kernel uses **gather/scatter access** — non-contiguous indirect access via `tl.gather` or `index_ptr` violates the contiguous-memory assumption of `make_block_ptr`.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2 negligible** — `MTE2_cycles% < 0.5%` — meaning memory access volume is too small to be the bottleneck; likely compute-bound or control-bound instead.
 
 ### `classic-matmul`
 
@@ -290,31 +297,26 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `program-multiple-rows`
 
-- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization. **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting, `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced memory access and parallel row processing.
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization in row-structured kernels.
 - Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
 - Use When:
-  - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
-  - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
-  - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
-  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR imbalance, such as `%(SCALAR instr) >= 70%` or `%(SCALAR cycles) >= 40%`, while `%(VECTOR instr) <= 15%` or `%(VECTOR cycles) <= 15%`.
-  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr >= 8:1` or `SCALAR:VECTOR_cycles >= 3:1`, and code inspection shows `program_id(0)` maps one-to-one to rows.
-  - `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per program, such as only tens of VECTOR instructions, near-zero utilization, or mask/setup-heavy top VECTOR instructions.
-  - `report.txt` total instruction/event counts are small, or only one/few cores appear active, while the same report still shows SCALAR-heavy / VECTOR-thin ratios.
-  - `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show short-program synchronization/control traces rather than long sustained vector work. When these traits appear with scalar/vector thin-program ratios, `program-multiple-rows` is worth trying; frequent wait/barrier patterns strengthen the signal, but low counts do not rule it out.
-  - `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores.
+  - Kernel is naturally row-wise (row reductions, row-wise fused epilogues, row-major transforms).
+  - Current launch maps one row per program and profiling shows many thin programs or scalar-heavy overhead.
+  - Inner-dimension streaming over `N` can remain single-pass while widening row count.
+  - Row count is large enough to amortize wider per-program bundles.
 
 ### `reduce-avoid-transpose-copy`
 
-- Summary: Avoid implementing a non-last-dimension single-axis operation (reduction, prefix scan, or other axis-wise computation) by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, scan, inner]` from the original shape and operate directly from the original layout with a strided/tiled kernel. Applies to cumsum, cumprod, sum, mean, max, and similar axis-wise operators.
+- Summary: Avoid implementing a non-last-dimension single-axis operation (reduction, prefix scan, or other axis-wise computation) by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, scan, inner]` from the original shape and operate directly from the original layout with a strided/tiled kernel.
 - Source: [reduce-avoid-transpose-copy.md](patterns/reduce-avoid-transpose-copy.md)
 - Use When:
-  - The operator performs an axis-wise computation along exactly one logical axis (reductions, prefix scans, etc.).
+  - The operator performs an axis-wise computation along exactly one logical axis (reductions like `sum`/`mean`/`max`, prefix scans like `cumsum`/`cumprod`/`cummax`, or other element-wise axis operations).
   - The target axis is not the last dimension.
   - The input tensor is contiguous in its original row-major layout.
   - The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before the kernel.
-  - Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, or similar layout-conversion work before the reduction kernel.
-  - The copy time is comparable to or larger than the reduction-kernel time.
-  - The suffix dimension after the reduced axis is large enough to provide reasonably coalesced loads along `inner`.
+  - Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, `aclnnInplaceCopy`, or similar layout-conversion work before the kernel.
+  - The copy time is comparable to or larger than the kernel time, OR the copy is a meaningful fraction of total end-to-end time.
+  - The suffix dimension after the target axis is large enough to provide reasonably coalesced loads along `inner` (ideally `inner_size >= 16`).
 
 ### `remove-implicit-transpose`
 
@@ -350,16 +352,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
   - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
 
-### `shift-2d-mask-to-1d-index-stream`
-
-- Summary: When a hot shift or predecessor path is expressed as a 2D mask-and-reduce construction, rewrite it to a direct 1D index stream (`base + arange - 1`) with only boundary masking. This removes unnecessary 2D intermediates and keeps the shift path closer to one-dimensional vector loads and elementwise math on Ascend NPU; do not stop at replacing the reduce with an on-chip `tl.gather` if the final lane formula can be simplified further.
-- Source: [shift-2d-mask-to-1d-index-stream.md](patterns/shift-2d-mask-to-1d-index-stream.md)
-- Use When:
-  - A shift relation is structurally "take previous element" or "take previous position in chunk", including cross-chunk lane-0 handling.
-  - Code uses 2D mask construction and reduction-like assembly for shifting, such as `arange[:, None]`, `arange[None, :]`, `tl.where`, and `tl.sum(..., axis=...)` over an extra axis.
-  - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
-  - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
-
 ### `scalar-vector-simulation-signal`
 
 - Summary: Match observed signals in overall content of `report.txt` against the categories below to identify the simulation bottleneck type, then follow the mapped pattern to the optimization.
@@ -373,10 +365,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% (Signal Category 4).
   - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
   - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
-  - The optimization target is **pure tiling parameter tuning** (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, grid config) — these are invisible in single-program simulation and must use hardware profiling.
-  - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
-  - Simulation data shows **no signal hitting any threshold**.
-  - The kernel is **inherently lightweight** (e.g., a trivial load+store touch kernel, a copy kernel, or a kernel with no compute loop) — an abnormal Pipe distribution is the natural characteristic of such operations, not an optimization target.
+
+### `shift-2d-mask-to-1d-index-stream`
+
+- Summary: When a hot shift or predecessor path is expressed as a 2D mask-and-reduce construction, rewrite it to a direct 1D index stream (`base + arange - 1`) with only boundary masking. This removes unnecessary 2D intermediates and keeps the shift path closer to one-dimensional vector loads and elementwise math on Ascend NPU; do not stop at replacing the reduce with an on-chip `tl.gather` if the final lane formula can be simplified further.
+- Source: [shift-2d-mask-to-1d-index-stream.md](patterns/shift-2d-mask-to-1d-index-stream.md)
+- Use When:
+  - A shift relation is structurally "take previous element" or "take previous position in chunk", including cross-chunk lane-0 handling.
+  - Code uses 2D mask construction and reduction-like assembly for shifting, such as `arange[:, None]`, `arange[None, :]`, `tl.where`, and `tl.sum(..., axis=...)` over an extra axis.
+  - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
+  - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
 
 ### `simt-clip-window-closed-reduction`
 
@@ -406,6 +404,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
   - The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
 
+### `sliding-window-inner-w-slab-gather`
+
+- Summary: For **fixed-window reductions** along the **innermost contiguous spatial dimension** (NCHW-style: often **W**), load one **slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. Higher rank differs only in outer loops over remaining spatial axes. **Adoption gate:** hot path must show **`W_SLAB_LEN` load + gather**.
+- Source: [sliding-window-inner-w-slab-gather.md](patterns/sliding-window-inner-w-slab-gather.md)
+- Use When:
+  - The kernel is a **fixed `KERNEL_W` window reduction** (mean, max, etc., **values only**) along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
+  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
+  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
+
 ### `software-pipeline-dependency-profiling`
 
 - Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
@@ -418,16 +426,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel contains `tl.load`.
   - The `tl.load` path is regular enough that constructing a `for` loop or steady-state loop can enable compiler prefetch and improve performance through pipeline parallelism.
 
-### `sliding-window-inner-w-slab-gather`
-
-- Summary: For **fixed-window reductions** along the **innermost contiguous spatial dimension** (NCHW-style: often **W**), load one **slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. Higher rank differs only in outer loops over remaining spatial axes. **Adoption gate:** hot path must show **`W_SLAB_LEN` load + gather**.
-- Source: [sliding-window-inner-w-slab-gather.md](patterns/sliding-window-inner-w-slab-gather.md)
-- Use When:
-  - The kernel is a **fixed `KERNEL_W` window reduction** (mean, max, etc., **values only**) along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
-  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
-  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
-  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
-
 ### `software-pipeline`
 
 - Summary: Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
@@ -438,15 +436,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `static-range-to-range`
 
-- Summary: Replace `tl.static_range` with `tl.range` in hot loops with lightweight, independent iterations so the compiler preserves loop structure and applies software pipelining, overlapping memory transfers and compute across iterations instead of fully unrolling into a flat serialized sequence.
+- Summary: Replace `tl.static_range` with `tl.range` in hot loops where iteration bodies are lightweight and iterations have no cross-iteration data dependencies. This allows the compiler to preserve loop structure and apply software pipelining, overlapping memory transfers and compute across iterations — instead of fully unrolling the loop into a flat instruction sequence that prevents inter-iteration overlap.
 - Source: [static-range-to-range.md](patterns/static-range-to-range.md)
 - Use When:
-  - The hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
+  - Hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
   - Loop iterations are **independent** — no loop-carried data dependency between iterations.
-  - The loop body is lightweight (simple elementwise ops, few intermediates).
+  - Loop body is lightweight (simple elementwise ops, few intermediates).
   - Profiling shows MTE2 (DMA) ratio is disproportionately low relative to VECTOR, and SCALAR/MTE2 overlap is poor.
-  - Pipeline flows are unidirectional only (`MTE2→VECTOR`, `VECTOR→MTE3`) with no reverse cascade flows, indicating each iteration completes fully before the next begins.
-  - `BLOCK_SIZE` and `num_warps` are moderate enough that the rename pressure from `tl.range` will not cause register spills.
 
 ### `stencil-resize-gm-to-ub-staging`
 
@@ -459,6 +455,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Source maps a **2D output tile** through a **1D linear program layout**, or uses **dynamic-index global loads** per stencil sample instead of a staged slab.
   - msprof shows high **ST/LD** or inner **call_count** while **VGATHER share stays ~1%** — layout/launch issue, not gather-compute bound.
 
+### `tile-selection-heuristic`
+
+- Summary: Replace or augment `@triton.autotune` with a host-side tile-selection heuristic (`_choose_tiling`) that sweeps candidate `BLOCK_M × BLOCK_SIZE` tile sizes and chooses the pair that minimizes total grid programs (`gm × gn`). This is most effective when the operator spans wide shape ranges where a fixed autotune config set cannot adapt well.
+- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
+- Use When:
+  - Autotune with a limited config set (≤10 configs) produces inconsistent winners across diverse shape regimes.
+  - The operator evaluates on diverse shapes where rows and/or columns vary by orders of magnitude (e.g., rows from single digits to thousands, cols from tens to tens of thousands).
+  - The kernel already uses 2D grid decomposition `(cdiv(rows, BLOCK_M), cdiv(cols, BLOCK_SIZE))`.
+  - Autotune overhead (compile time, first-run search) is problematic, or autotune key design is fragile.
+  - You need per-shape-adaptive tile sizing that autotune with static configs cannot provide.
+
 ### `tiling`
 
 - Summary: Reduce per-program working-set size through hierarchical or sub-block tiling, keeping live data within UB capacity.
@@ -466,26 +473,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
   - The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
-
-### `tile-selection-heuristic`
-
-- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
-- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
-- Use When:
-  - Autotune with limited configs produces inconsistent winners across diverse shape regimes.
-  - The operator evaluates on 50+ shapes spanning multiple orders of magnitude in row/col count.
-  - The kernel already uses 2D grid `(cdiv(rows, BLOCK_M), cdiv(cols, BLOCK_SIZE))`.
-  - Autotune overhead is problematic or key design is fragile.
-- Avoid When:
-  - The core algorithm/layout is still changing (stabilize structure first).
-  - The kernel uses a 1D grid that cannot benefit from 2D tile decomposition.
-  - UB capacity constraints force strict upper bounds on tile size.
-- Signals / Code:
-  - Existing autotune configs only vary `BLOCK_SIZE`/`BLOCK_ROWS` across a handful of values.
-  - Per-shape benchmarks show tile-size sensitivity with no single best config.
-- Signals / Profile:
-  - Some shapes show excessive grid programs while others are compute-bound.
-  - Autotune search overhead is visible in first-run benchmarks.
 
 ### `vec-cmp`
 
@@ -500,3 +487,14 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
   - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
   - UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself, making scalarized mask/control work a plausible cause.
+
+### `wrapper-buffer-reuse`
+
+- Summary: When auxiliary-op fusion into a Triton kernel is blocked by correctness or precision constraints, reduce torch/CANN wrapper overhead by pre-allocating intermediate buffers and reusing them across computation stages via the `out=` parameter. This eliminates per-op intermediate tensor allocations, reduces memory traffic, and can be combined with an in-place pass-through kernel to avoid the final output copy.
+- Source: [wrapper-buffer-reuse.md](patterns/wrapper-buffer-reuse.md)
+- Use When:
+  - Auxiliary-op fusion has been attempted and blocked by correctness, precision, compile, or numerical constraints, and the specific blocker is documented (e.g., fp16 Inf mismatch, dtype associativity change).
+  - The torch wrapper chain contains multiple elementwise, broadcast, or reduction ops that each allocate a temporary tensor consumed once and discarded.
+  - Profiling or perf data shows aclnn torch ops dominate `total_op_avg_time_us` (e.g., greater than 90 percent of total-op time).
+  - The operator retains a Triton kernel (even a simple copy or pass-through) on the hot path, so the wrapper chain is the remaining optimization surface.
+  - The `out=` form of a torch op produces bit-identical results to the non-`out=` form for the active dtype set (verify on fp16/bf16 before committing).
