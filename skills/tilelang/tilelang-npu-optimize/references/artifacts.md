@@ -143,7 +143,7 @@ Use these subdirectories consistently:
 - `profile/`
   Keep profiler artifacts for the round here, for example a copied-back `PROF_*` directory or a stable local wrapper directory that contains the profiler output.
 - `ir/`
-  Keep archived IR capture artifacts for the round here, for example `triton_dump/`, `bishengir_stages/`, `all-ir.txt`, and `capture-manifest.json`.
+  Keep round-local generated-source evidence for the round here, for example `ascendc_source.cpp` and small comparison notes derived from it.
 - `logs/`
   Use this only for small auxiliary logs that do not justify a dedicated contract of their own.
 
@@ -209,16 +209,16 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - When `round-state.json` declares `perf_analysis_path`, that path becomes the authoritative location for the analysis file.
 - Treat the content and structure of `perf-analysis.md` as owned by `ascend-npu-analyze-round-performance`, not by the optimize workflow contract.
 
-## Profile And IR Evidence
+## Profile And Source Evidence
 
 - When profiling is needed for a round decision, keep the resulting profiler artifacts under `opt-round-N/profile/`.
-- When IR capture is needed for a round decision, keep the resulting IR directory under `opt-round-N/ir/`.
-- A standard round-local IR workflow uses the `tilelang-npu-analyze-ir` skill's helpers with argument shapes like:
+- When generated source capture is needed for a round decision, keep the resulting AscendC source snapshot under `opt-round-N/ir/`.
+- A standard round-local source-capture workflow uses the `tilelang-npu-analyze-ir` skill's helper with argument shapes like:
   ```text
-  capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
-  inspect_ir.py find-changes --ir-dir opt-round-N/ir --limit 20
+  python3 ./scripts/capture_ir.py --operator-file opt-round-N/opt_<operator>.py > opt-round-N/ir/ascendc_source.cpp
+  diff opt-round-N/ir/ascendc_source.cpp opt-round-(N-1)/ir/ascendc_source.cpp
   ```
-- Prefer preserving profiler and IR evidence inside the round that motivated it instead of scattering those artifacts at the workspace top level.
+- Prefer preserving profiler and source-capture evidence inside the round that motivated it instead of scattering those artifacts at the workspace top level.
 - If the same evidence informs multiple later rounds, mention the reused path explicitly in `attempts.md` or `summary.md` rather than copying large directories repeatedly.
 
 ## Original Operator

@@ -925,6 +925,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--baseline-operator-file")
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),
@@ -935,6 +936,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--baseline-operator-file", required=True)
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op"),
@@ -960,6 +962,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--compare", required=True)
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),
