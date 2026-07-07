@@ -419,6 +419,35 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertFalse(bench_gen_dir.exists())
             self.assertTrue((existing_skills / "user-skill").exists())
 
+    def test_repeated_selected_skill_staging_refreshes_existing_skill_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+
+            skill_dir = source / "common" / "ascend-npu-gen-test"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("version one\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            first_links = manager.prepare_skills("claude", workspace, skill_names=("ascend-npu-gen-test",))
+
+            staged_root = self._skills_target(workspace, "claude")
+            staged_skill = staged_root / "ascend-npu-gen-test"
+            self.assertEqual((staged_skill / "SKILL.md").read_text(encoding="utf-8"), "version one\n")
+
+            (staged_root / "user-skill").mkdir()
+            (skill_dir / "SKILL.md").write_text("version two\n", encoding="utf-8")
+
+            second_links = manager.prepare_skills("claude", workspace, skill_names=("ascend-npu-gen-test",))
+
+            self.assertEqual((staged_skill / "SKILL.md").read_text(encoding="utf-8"), "version two\n")
+            self.assertTrue((staged_root / "user-skill").exists())
+
+            manager.cleanup(second_links)
+            manager.cleanup(first_links)
+
     def test_reject_existing_root_skills_symlink_for_root_copy_backends(self) -> None:
         for backend in ("codex", "pi", "claude", "openhands", "traecli"):
             with self.subTest(backend=backend):
