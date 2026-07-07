@@ -346,6 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--baseline-operator-file")
     run_bench.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
     run_bench.add_argument(
+        "-m",
         "--metric-source",
         default="auto",
         choices=["auto", "kernel", "total-op", "all"],
@@ -380,6 +381,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf.add_argument("--compare", required=True)
     compare_perf.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
     compare_perf.add_argument(
+        "-m",
         "--metric-source",
         default="auto",
         choices=["auto", "kernel", "total-op", "all"],
