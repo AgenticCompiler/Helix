@@ -101,6 +101,21 @@ def collect_local_optimum_warnings(
     return tuple(warnings)
 
 
+def compute_round_geomean_speedup(
+    round_dir: Path,
+    *,
+    baseline_perf_path: Path,
+) -> float | None:
+    sample = _build_round_speedup_sample(
+        round_dir,
+        baseline_perf_path=baseline_perf_path,
+        baseline_cache={},
+    )
+    if sample is None:
+        return None
+    return sample.geomean_speedup
+
+
 def load_local_optimum_config_from_env() -> LocalOptimumConfig:
     window = _DEFAULT_LOCAL_OPTIMUM_WINDOW
     raw_window = os.environ.get(_LOCAL_OPTIMUM_WINDOW_ENV)
