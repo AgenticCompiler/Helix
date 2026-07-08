@@ -576,14 +576,20 @@ class OptimizeStatusTests(unittest.TestCase):
                 ["total-op", "total-op"],
             )
 
-    def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
+    def test_inspect_optimize_status_workspace_prefers_state_declared_baseline_perf_file(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
-            (baseline_dir / "perf.txt").write_text(
+            (baseline_dir / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "other_perf.txt").write_text(
+                "latency-a: 999\nlatency-b: 999\n",
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -597,7 +603,7 @@ class OptimizeStatusTests(unittest.TestCase):
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
                         '  "bench_mode": "torch-npu-profiler",',
-                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "perf_artifact": "kernel_perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
                         '  "baseline_established": true',
@@ -623,6 +629,58 @@ class OptimizeStatusTests(unittest.TestCase):
             status = inspect_optimize_status_workspace(workspace)
 
             self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-1")
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
+
+    def test_inspect_optimize_status_workspace_warns_when_state_declared_baseline_perf_is_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "other_perf.txt").write_text(
+                "latency-a: 999\nlatency-b: 999\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "prepared",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "torch-npu-profiler",',
+                        '  "perf_artifact": "missing_perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "warning")
+            self.assertIn(
+                "perf_artifact points to a missing file: missing_perf.txt",
+                status.warnings,
+            )
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
+            self.assertNotIn("missing baseline perf data", status.warnings)
 
     def test_inspect_optimize_status_workspace_skips_legacy_round_perf_txt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
