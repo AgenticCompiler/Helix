@@ -1,0 +1,172 @@
+{
+  "schema_version": 3,
+  "stages": [
+    {
+      "id": "boundary",
+      "name": "Operator boundary restructuring",
+      "priority_level": 1,
+      "description": "改 kernel/wrapper 的职责分界线。1A 计算融合(外部计算迁入内核):auxiliary-op-fusion、attention-cv-pipeline(mask预计算)、Python for-loop kernel fusion[SKILL]、Multi-kernel fusion[SKILL]。1B 布局拷贝消除(删 wrapper 搬运,内核接受原始布局):reduce-avoid-transpose-copy、layout-materialization-elision。",
+      "patterns": [
+        "auxiliary-op-fusion",
+        "attention-cv-pipeline",
+        "reduce-avoid-transpose-copy",
+        "layout-materialization-elision"
+      ]
+    },
+    {
+      "id": "parallel",
+      "name": "Inter-program parallelism",
+      "priority_level": 2,
+      "description": "改 program 间的分布与协作。2A 粒度调整(减 program 数,增每 program 数据量):program-multiple-rows、grid-flatten-and-ub-buffering。2B 争用缓解:atomic-contention-owner-computes-store(输出地址写争用)、diagonal(L2 cache bank 读争用)。",
+      "patterns": [
+        "program-multiple-rows",
+        "grid-flatten-and-ub-buffering",
+        "atomic-contention-owner-computes-store",
+        "diagonal"
+      ]
+    },
+    {
+      "id": "memory_access",
+      "name": "Memory access restructuring",
+      "priority_level": 3,
+      "description": "改 tl.load/tl.store 的地址生成、搬运路径、事务宽度。3A 地址计算方式(flat-index-decode-tiling、padded_row_col_copy、block-pointer-dimensionality)。3B 批量搬运与片上拣选(discrete_memory_access、sliding-window-inner-w-slab-gather、stencil-resize-gm-to-ub-staging、slice_coalesce)。3C 碎片事务融合(merge-adjacent-stores、accumulator-layout-alignment、remove-implicit-transpose)。",
+      "patterns": [
+        "flat-index-decode-tiling",
+        "padded_row_col_copy",
+        "block-pointer-dimensionality",
+        "discrete_memory_access",
+        "sliding-window-inner-w-slab-gather",
+        "stencil-resize-gm-to-ub-staging",
+        "slice_coalesce",
+        "merge-adjacent-stores",
+        "accumulator-layout-alignment",
+        "remove-implicit-transpose"
+      ]
+    },
+    {
+      "id": "algorithmic",
+      "name": "Algorithmic equivalence substitution",
+      "priority_level": 4,
+      "description": "换公式/表达式/数据类型,语义不变,工作量减少。algebraic-optimization(Welford 单遍、真值图提前、指数分解)、classic-matmul(手写K归约→tl.dot)、simt-clip-window-closed-reduction(闭式窗口体积)、shift-2d-mask-to-1d-index-stream(2D mask→1D索引流)、attention-cv-pipeline(scale+mask合并、exp2→exp)、scalar-latency-traps(窄where、cumsum轴、重复边界掩码)、loop-invariant-hoisting(循环不变量外提)。",
+      "patterns": [
+        "algebraic-optimization",
+        "classic-matmul",
+        "simt-clip-window-closed-reduction",
+        "shift-2d-mask-to-1d-index-stream",
+        "scalar-latency-traps",
+        "loop-invariant-hoisting"
+      ]
+    },
+    {
+      "id": "pipeline",
+      "name": "Pure temporal reordering",
+      "priority_level": 5,
+      "description": "不改任何计算表达式,只调换语句执行顺序。software-pipeline(跨迭代MTE↔Compute重叠)、software-pipeline-dependency-profiling(同上,信号驱动)、reorder-load(同一迭代内MTE独立load并行发射)。",
+      "patterns": [
+        "software-pipeline",
+        "software-pipeline-dependency-profiling",
+        "reorder-load"
+      ]
+    },
+    {
+      "id": "compile_hints",
+      "name": "Compiler cooperation",
+      "priority_level": 6,
+      "description": "6A 标记式(给编译器无法从代码推断的事实):compile_hint(max_contiguous/multiple_of)、scalar-latency-traps(tl.constexpr)、attention-cv-pipeline(A5编译参数)、parallel(双Vector Core)、a5-force-simt-only-discrete-access(SIMT执行模型)、propagate_nan[SKILL]。6B 形态式(换写法,编译器自行better lower):vec-cmp、static-range-to-range、slice_intermediate、scalar-latency-traps(int64→int32/ptr+=%→mask)、Unnecessary mask elimination[SKILL]。",
+      "patterns": [
+        "compile_hint",
+        "scalar-latency-traps",
+        "attention-cv-pipeline",
+        "parallel",
+        "a5-force-simt-only-discrete-access",
+        "vec-cmp",
+        "static-range-to-range",
+        "slice_intermediate"
+      ]
+    },
+    {
+      "id": "parameterization",
+      "name": "Parameter and path decisions",
+      "priority_level": 7,
+      "description": "在 kernel 结构和算法确定后,做参数值选择或 dispatch 级路径决策。7A 参数调优:autotune(搜索BLOCK/num_stages)、tile-selection-heuristic(主机侧sweep)、tiling(设BLOCK上限,UB 192KB)、effective-extent-tiling(实际形状替代固定幂次)、a5-simt-sliding-window-tuning(推导BLOCK+grid+num_warps)。7B 路径拆分:exact-tile-no-boundary-fast-path(BLOCK整除shape→无mask快速路径)。",
+      "patterns": [
+        "autotune",
+        "tile-selection-heuristic",
+        "tiling",
+        "effective-extent-tiling",
+        "a5-simt-sliding-window-tuning",
+        "exact-tile-no-boundary-fast-path"
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "before": "boundary",
+      "after": "parallel"
+    },
+    {
+      "before": "boundary",
+      "after": "memory_access"
+    },
+    {
+      "before": "boundary",
+      "after": "algorithmic"
+    },
+    {
+      "before": "boundary",
+      "after": "pipeline"
+    },
+    {
+      "before": "boundary",
+      "after": "compile_hints"
+    },
+    {
+      "before": "boundary",
+      "after": "parameterization"
+    },
+    {
+      "before": "parallel",
+      "after": "compile_hints"
+    },
+    {
+      "before": "parallel",
+      "after": "parameterization"
+    },
+    {
+      "before": "memory_access",
+      "after": "pipeline"
+    },
+    {
+      "before": "memory_access",
+      "after": "compile_hints"
+    },
+    {
+      "before": "memory_access",
+      "after": "parameterization"
+    },
+    {
+      "before": "algorithmic",
+      "after": "pipeline"
+    },
+    {
+      "before": "algorithmic",
+      "after": "compile_hints"
+    },
+    {
+      "before": "algorithmic",
+      "after": "parameterization"
+    },
+    {
+      "before": "pipeline",
+      "after": "compile_hints"
+    },
+    {
+      "before": "pipeline",
+      "after": "parameterization"
+    },
+    {
+      "before": "compile_hints",
+      "after": "parameterization"
+    }
+  ]
+}

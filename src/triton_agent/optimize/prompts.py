@@ -5,6 +5,7 @@ from typing import Literal
 
 from triton_agent.optimize.subagents import optimize_subagent_recommendation_lines
 from triton_agent.optimize.contract import baseline_state_contract_lines
+from triton_agent.optimize.stages import StageGraph, default_stage_graph
 
 
 def _resolve(text: str, *, language: str) -> str:
@@ -584,3 +585,86 @@ def build_optimize_baseline_prompt(
         ]
     )
     return _resolve("\n".join(lines), language=language)
+
+
+def build_stage_analysis_context_lines(
+    addressed,
+    exhausted,
+    scanner_issues,
+    patterns_tried: dict[str, list[str]] | None = None,
+    graph: StageGraph | None = None,
+) -> list[str]:
+    """Inject stage-analysis context + the self-check instruction into the worker prompt.
+
+    The agent determines the stage itself (dependency-order triage, writes
+    ``stage-verdict.json``), then runs ``check_stage_verdict.py`` to self-check.
+    These lines provide the context (addressed / exhausted / scanner findings)
+    and point to the SKILL procedure. No stage is pre-assigned by the CLI; no
+    post-hoc reject. The gate is the agent's pre-optimization self-check.
+    """
+    graph = graph or default_stage_graph()
+    lines = [
+        "Stage analysis (do this FIRST, before optimizing — see triton-npu-optimize/SKILL.md "
+        "\"Stage analysis\"): determine the current stage in dependency order "
+        "(boundary → parallel/memory_access/algorithmic → pipeline "
+        "→ compile_hints → parameterization), judge each stage clean/issues semantically (do NOT "
+        "mark a stage clean just because the scanner found nothing — the scanner is mechanically "
+        "blind; read the code and judge; for each stage, first read "
+        "`references/stage-guides/<stage_id>.md` if it exists — it has known signal→stage mappings "
+        "with common-misclassification warnings to prevent errors like classifying "
+        "`.expand().contiguous()` as memory_access when it should be boundary), write "
+        "`opt-round-N/stage-verdict.json` (per-stage "
+        "verdict + determined_stage), then run `python scripts/check_stage_verdict.py opt-round-N` "
+        "to self-check. If it prints FAIL, re-do the stage analysis with the stage it names and "
+        "re-run the check. If PASS, triage + optimize for the determined stage — and **only** "
+        "that stage: consider ONLY patterns listed under `determined_stage` in `references/stages.json` "
+        "(its `patterns` array); do NOT re-triage patterns from other stages in `attempts.md` (the "
+        "stage-verdict's clean rationales already dismissed them — re-listing is redundant). If you "
+        "disagree with the stage analysis, re-do step 3-4 (rewrite stage-verdict.json + re-run the "
+        "check) rather than silently re-triage in attempts. Declare the stage in `round-state.json` "
+        "under `stage`. This is not post-hoc: the check runs BEFORE you optimize, so a skip is caught "
+        "before any wasted round.",
+    ]
+    # Per-stage pattern progress (TODO-list framing, not "addressed/done")
+    lines.append("Stage pattern progress (tried vs remaining — this is a TODO list, NOT a 'done' list):")
+    for stage in graph.stage_ids:
+        desc = graph.descriptor(stage)
+        all_patterns = list(desc.patterns)
+        tried = patterns_tried.get(stage.value, []) if patterns_tried else []
+        remaining = [p for p in all_patterns if p not in tried]
+        if not tried:
+            lines.append(
+                f"  - {desc.name} (P{desc.priority_level}): not yet attempted "
+                f"({len(all_patterns)} patterns: {', '.join(all_patterns)})"
+            )
+        elif remaining:
+            lines.append(
+                f"  - {desc.name} (P{desc.priority_level}): tried [{', '.join(tried)}] — "
+                f"RE-VERIFY their signals are gone in the current code (a prior try may be "
+                f"incomplete, e.g. kernel written but launcher not updated); "
+                f"remaining [{', '.join(remaining)}] — check their `Use When`"
+            )
+        else:
+            lines.append(
+                f"  - {desc.name} (P{desc.priority_level}): all patterns tried [{', '.join(tried)}] — "
+                "RE-VERIFY each signal is actually gone in the current code; if all gone, mark `clean`"
+            )
+    if exhausted:
+        lines.append(
+            "Exhausted by the spinning guard (do not re-attempt without a fresh, "
+            "evidence-backed reason): "
+            + ", ".join(graph.descriptor(s).name for s in exhausted)
+        )
+    if scanner_issues:
+        lines.append(
+            "Scanner (mechanical) findings — positive evidence only, not the sole arbiter:"
+        )
+        for issue in scanner_issues:
+            lines.append(f"  - {issue.issue_type.value}: {issue.description}")
+    else:
+        lines.append(
+            "Scanner found no mechanical antipatterns; you must judge stages semantically "
+            "from the code (e.g. a hardcoded loop bound that should be data-adaptive is an "
+            "`algorithmic` issue the scanner cannot see)."
+        )
+    return lines

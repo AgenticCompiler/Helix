@@ -22,3 +22,12 @@ def optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def optional_str_list(value: object) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    # single string → wrap
+    return [str(value)]

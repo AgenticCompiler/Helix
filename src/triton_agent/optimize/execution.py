@@ -17,6 +17,10 @@ from triton_agent.optimize.recovery import (
     render_stall_recovery_note,
     render_transient_recovery_note,
 )
+from triton_agent.optimize.round_contract import (
+    inspect_round_artifacts,
+    load_round_state,
+)
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skills.loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
@@ -34,13 +38,24 @@ from triton_agent.optimize.pattern_reminders import (
 from triton_agent.optimize.prompts import (
     build_optimize_baseline_prompt,
     build_optimize_supervisor_prompt,
+    build_stage_analysis_context_lines,
 )
+from triton_agent.optimize.issue_detection import validate_and_coerce
+from triton_agent.optimize.skill_contract import scan_kernel_issues_module
+from triton_agent.optimize.stages import Stage, default_stage_graph
 from triton_agent.trace.core import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
 )
 from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
+
+
+# Spinning guard: a stage that accumulates this many consecutive no-progress
+# rounds is marked exhausted (no longer assigned; counts as resolved for deps).
+_STAGE_EXHAUSTION_THRESHOLD = 5
+# Adjacent geomean-speedup gain at or below this is "no progress" (2% noise gate).
+_NO_PROGRESS_GAIN = 0.02
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
@@ -485,6 +500,12 @@ class MultiInvocationOptimizeController:
                 )
                 payload = self._serialize_check_result(check_result)
                 status = check_result.status
+                if status == "pass":
+                    # Record the stage the agent declared + progress, so the next
+                    # round's stage-analysis self-check (check_stage_verdict.py)
+                    # sees it as addressed/exhausted. No post-hoc reject — the gate
+                    # is the agent's pre-optimization self-check, not a round reject.
+                    self._record_round_stage_marker(round_dir)
 
             lines.append(f"{round_name}: {json.dumps(payload, ensure_ascii=True)}")
             if status == "fail":
@@ -636,6 +657,309 @@ class MultiInvocationOptimizeController:
         )
         return result
 
+    def _scan_current_kernel(self, request: AgentRequest) -> list[Issue]:
+        """Run the code-structure scanner on the current kernel file.
+
+        v1 scans the input operator file. A follow-up can re-scan the latest
+        accepted round's operator to reflect mid-session rewrites.
+        """
+        kernel_path = self._current_kernel_path(request)
+        if kernel_path is None or not kernel_path.is_file():
+            return []
+        raw_findings = scan_kernel_issues_module().scan(str(kernel_path))
+        issues: list[Issue] = []
+        for raw in raw_findings:
+            issue = validate_and_coerce(raw)
+            if issue is not None:
+                issues.append(issue)
+        return issues
+
+    def _current_kernel_path(self, request: AgentRequest) -> Path | None:
+        """The kernel to scan: the latest *accepted* round's operator, else input.
+
+        Scanning the latest accepted round's operator (rather than the input
+        operator) keeps the gate's issue set fresh after mid-session rewrites,
+        so the post-run gate check does not reject rounds based on stale issues
+        that a prior rewrite already resolved.
+        """
+        accepted_dir = self._latest_accepted_round_dir(request.workdir)
+        if accepted_dir is not None:
+            try:
+                operator_path = inspect_round_artifacts(accepted_dir).operator_path
+            except Exception:
+                operator_path = None
+            if operator_path is not None and operator_path.is_file():
+                return operator_path
+        if request.operator_path is not None:
+            return request.operator_path
+        if request.input_path is not None:
+            return request.input_path
+        return None
+
+    @staticmethod
+    def _latest_accepted_round_dir(workdir: Path) -> Path | None:
+        """Highest-numbered opt-round dir whose round-state is fully passed."""
+        rounds: list[tuple[int, Path]] = []
+        for candidate in workdir.glob("opt-round-*"):
+            match = re.fullmatch(r"opt-round-(\d+)", candidate.name)
+            if match is None or not candidate.is_dir():
+                continue
+            rounds.append((int(match.group(1), 10), candidate))
+        rounds.sort(key=lambda item: -item[0])
+        for _, round_dir in rounds:
+            try:
+                state = load_round_state(round_dir)
+            except Exception:
+                continue
+            if (
+                state.correctness_status == "passed"
+                and state.benchmark_status == "passed"
+            ):
+                return round_dir
+        return None
+
+    @staticmethod
+    def _read_round_stage(round_dir: Path) -> Stage | None:
+        state_path = round_dir / "round-state.json"
+        if not state_path.is_file():
+            return None
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        raw = data.get("stage")
+        if not isinstance(raw, str) or not raw:
+            return None
+        try:
+            return Stage(raw)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _write_stage_addressed_marker(
+        round_dir: Path,
+        stage: Stage,
+        *,
+        progress: bool = True,
+        speedup: float | None = None,
+        patterns_tried: list[str] | None = None,
+    ) -> None:
+        """Write a per-round marker recording that the gate approved ``stage``.
+
+        The marker lives in ``opt-round-N/stage-addressed.json`` (persistent,
+        not cleaned up with the session state) so the next batch's gate can
+        reconstruct ``stages_addressed`` by scanning round dirs — independent of
+        any workflow-state file that may be removed at session end. Defensive:
+        never raises.
+        """
+        try:
+            round_dir.mkdir(parents=True, exist_ok=True)
+            payload: dict[str, object] = {
+                "stage": stage.value,
+                "progress": progress,
+            }
+            if speedup is not None:
+                payload["speedup"] = speedup
+            if patterns_tried:
+                payload["patterns_tried"] = patterns_tried
+            (round_dir / "stage-addressed.json").write_text(
+                json.dumps(payload) + "\n", encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+    @staticmethod
+    def _clear_stage_addressed_marker(round_dir: Path) -> None:
+        """Remove a stale marker (e.g. a repaired round's prior rejected attempt)."""
+        try:
+            (round_dir / "stage-addressed.json").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _get_stages_addressed_from_rounds(workdir: Path) -> set[Stage]:
+        """Reconstruct addressed stages by scanning ``opt-round-*/stage-addressed.json``.
+
+        Only rounds whose gate check passed have a marker, so gate-rejected
+        rounds (even if correctness+benchmark passed) do not count as addressed.
+        """
+        addressed: set[Stage] = set()
+        for marker in workdir.glob("opt-round-*/stage-addressed.json"):
+            try:
+                data = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            raw = data.get("stage")
+            if not isinstance(raw, str) or not raw:
+                continue
+            try:
+                addressed.add(Stage(raw))
+            except ValueError:
+                continue
+        return addressed
+
+    @staticmethod
+    def _get_exhausted_stages(workdir: Path) -> set[Stage]:
+        """Stages that hit the consecutive no-progress cap (spinning guard).
+
+        Scans ``stage-addressed.json`` markers in round-number order and tracks
+        consecutive same-stage no-progress rounds. A stage is exhausted (sticky)
+        once it accumulates ``_STAGE_EXHAUSTION_THRESHOLD`` consecutive
+        no-progress rounds; a progress round or a stage switch resets the streak.
+        """
+        entries: list[tuple[int, Stage, bool]] = []
+        for round_dir in workdir.glob("opt-round-*"):
+            match = re.fullmatch(r"opt-round-(\d+)", round_dir.name)
+            if match is None or not round_dir.is_dir():
+                continue
+            marker = round_dir / "stage-addressed.json"
+            if not marker.is_file():
+                continue
+            try:
+                data = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            raw_stage = data.get("stage")
+            try:
+                stage = Stage(str(raw_stage))
+            except (ValueError, TypeError):
+                continue
+            # Old markers without a progress flag default to True (conservative:
+            # don't count as no-progress).
+            progress = bool(data.get("progress", True))
+            entries.append((int(match.group(1)), stage, progress))
+        entries.sort(key=lambda item: item[0])
+        exhausted: set[Stage] = set()
+        current_stage: Stage | None = None
+        streak = 0
+        for _, stage, progress in entries:
+            if stage != current_stage:
+                current_stage = stage
+                streak = 0
+            if progress:
+                streak = 0
+            else:
+                streak += 1
+                if streak >= _STAGE_EXHAUSTION_THRESHOLD:
+                    exhausted.add(stage)
+        return exhausted
+
+    @staticmethod
+    def _resolve_baseline_perf_path(workdir: Path) -> Path | None:
+        """Locate the baseline perf file (``baseline/*_perf.txt``)."""
+        baseline_dir = workdir / "baseline"
+        if not baseline_dir.is_dir():
+            return None
+        perf_files = sorted(baseline_dir.glob("*_perf.txt"))
+        return perf_files[0] if perf_files else None
+
+    @staticmethod
+    def _read_previous_marker_speedup(round_dir: Path) -> float | None:
+        """Read the previous round's stored baseline-relative speedup, if any."""
+        match = re.fullmatch(r"opt-round-(\d+)", round_dir.name)
+        if match is None:
+            return None
+        previous = round_dir.parent / f"opt-round-{int(match.group(1)) - 1}"
+        marker = previous / "stage-addressed.json"
+        if not marker.is_file():
+            return None
+        try:
+            data = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        speedup = data.get("speedup")
+        return float(speedup) if isinstance(speedup, (int, float)) else None
+
+    def _round_progress(
+        self, round_dir: Path
+    ) -> tuple[bool, float | None]:
+        """Decide whether this round made progress over the previous round.
+
+        Reuses ``local_optimum_check.round_geomean_speedup`` (the existing perf
+        comparison) — no perf reimplementation. Conservative: returns
+        ``(True, None)`` (progress, no speedup stored) when the speedup can't be
+        measured, so a measurement failure never falsely triggers exhaustion.
+        """
+        try:
+            baseline = self._resolve_baseline_perf_path(round_dir.parent)
+            if baseline is None:
+                return (True, None)
+            module = load_skill_script_module(
+                "ascend-npu-optimize-submit-round", "local_optimum_check"
+            )
+            current = module.round_geomean_speedup(
+                round_dir, baseline_perf_path=baseline
+            )
+            if current is None:
+                return (True, None)
+            previous = self._read_previous_marker_speedup(round_dir)
+            if previous is None:
+                # No previous to compare; store current so the next round can compare.
+                return (True, current)
+            gain = current - previous
+            return (gain > _NO_PROGRESS_GAIN, current)
+        except Exception:
+            return (True, None)
+
+    def _record_round_stage_marker(self, round_dir: Path) -> None:
+        """Record the round's declared stage + progress + patterns marker.
+
+        The gate is NOT a post-hoc reject (the agent self-checks via
+        ``check_stage_verdict.py`` BEFORE optimizing). This only writes the
+        ``opt-round-N/stage-addressed.json`` marker (stage + progress + speedup
+        + patterns_tried) so the NEXT round's stage-analysis self-check sees
+        this stage as addressed (and the spinning guard can track consecutive
+        no-progress, and patterns_tried lets the agent exclude already-tried
+        patterns). Defensive: never raises; no-op if no stage declared.
+        """
+        stage = self._read_round_stage(round_dir)
+        if stage is None:
+            return  # agent did not declare a stage; no marker (conservative).
+        progress, speedup = self._round_progress(round_dir)
+        patterns = self._read_round_patterns(round_dir)
+        self._write_stage_addressed_marker(
+            round_dir,
+            stage,
+            progress=progress,
+            speedup=speedup,
+            patterns_tried=patterns,
+        )
+
+    @staticmethod
+    def _read_round_patterns(round_dir: Path) -> list[str] | None:
+        """Read the patterns the agent declared in round-state.json."""
+        state_path = round_dir / "round-state.json"
+        if not state_path.is_file():
+            return None
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        raw = data.get("patterns")
+        if isinstance(raw, list):
+            return [str(p) for p in raw if isinstance(p, str)]
+        if isinstance(raw, str):
+            return [raw]
+        return None
+
+    @staticmethod
+    def _get_patterns_tried(workdir: Path) -> dict[str, list[str]]:
+        """Collect patterns_tried per stage from all stage-addressed.json markers."""
+        result: dict[str, list[str]] = {}
+        for marker in workdir.glob("opt-round-*/stage-addressed.json"):
+            try:
+                data = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            stage = data.get("stage")
+            if not isinstance(stage, str):
+                continue
+            tried = data.get("patterns_tried")
+            if isinstance(tried, list):
+                result.setdefault(stage, [])
+                result[stage].extend(str(p) for p in tried if isinstance(p, str))
+        return result
+
     def _build_worker_batch_request(
         self,
         request: AgentRequest,
@@ -672,6 +996,25 @@ class MultiInvocationOptimizeController:
             ),
             _request_user_prompt(request),
         )
+        # Stage-analysis context (the agent self-determines the stage via the
+        # SKILL procedure + check_stage_verdict.py self-check; no CLI pre-assign).
+        try:
+            graph = default_stage_graph()
+            addressed = self._get_stages_addressed_from_rounds(request.workdir)
+            exhausted = self._get_exhausted_stages(request.workdir)
+            patterns_tried = self._get_patterns_tried(request.workdir)
+            scanner_issues = self._scan_current_kernel(request)
+            context_lines = build_stage_analysis_context_lines(
+                addressed=addressed,
+                exhausted=exhausted,
+                scanner_issues=scanner_issues,
+                patterns_tried=patterns_tried,
+                graph=graph,
+            )
+            if context_lines:
+                prompt = f"{prompt}\n\n" + "\n".join(context_lines)
+        except Exception:
+            pass
         return replace(
             request,
             prompt=prompt,

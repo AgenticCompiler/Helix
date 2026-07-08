@@ -97,6 +97,18 @@ def archive_round_timings_from_state(state_path: Path | None, archive_path: Path
     return bool(_state_machine_module().write_round_timings_archive(state_path, archive_path))
 
 
+def record_stage_addressed(state_path: Path | None, stage: str) -> None:
+    if state_path is None or not state_path.exists():
+        return
+    _state_machine_module().record_stage_addressed(state_path, stage)
+
+
+def get_stages_addressed(state_path: Path | None) -> list[str]:
+    if state_path is None or not state_path.exists():
+        return []
+    return list(_state_machine_module().get_stages_addressed(state_path))
+
+
 def _resolve_source_operator_hint(
     source_operator: Path | None,
     workdir: Path,

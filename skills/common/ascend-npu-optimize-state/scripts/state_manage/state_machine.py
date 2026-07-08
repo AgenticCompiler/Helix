@@ -92,6 +92,7 @@ def bootstrap_state(
             "submitted_at": None,
         },
         "rounds": {},
+        "stages_addressed": [],
     }
     _atomic_write_json(state_path, payload)
 
@@ -104,6 +105,37 @@ def mark_baseline_passed(state_path: Path) -> None:
     payload["phase"] = PHASE_AWAITING_ROUND_START
     payload["current_round"] = None
     _atomic_write_json(state_path, payload)
+
+
+def record_stage_addressed(state_path: Path, stage: str) -> None:
+    """Append a stage id to ``stages_addressed`` (dedup, preserving order).
+
+    Called by the orchestrator after a round completes, using the stage the
+    agent declared in ``round-state.json``. Idempotent: recording the same stage
+    twice is a no-op.
+    """
+    if not stage or not isinstance(stage, str):
+        raise ValueError(f"stage must be a non-empty string: {stage!r}")
+    payload = load_state(state_path)
+    stages = payload.get("stages_addressed")
+    if not isinstance(stages, list):
+        stages = []
+    if stage not in stages:
+        stages.append(stage)
+    payload["stages_addressed"] = stages
+    _atomic_write_json(state_path, payload)
+
+
+def get_stages_addressed(state_path: Path) -> list[str]:
+    """Return the list of stage ids addressed in prior rounds (empty if absent)."""
+    try:
+        payload = load_state(state_path)
+    except FileNotFoundError:
+        return []
+    stages = payload.get("stages_addressed")
+    if not isinstance(stages, list):
+        return []
+    return [str(stage) for stage in stages if isinstance(stage, str) and stage]
 
 
 def start_round(
@@ -483,6 +515,18 @@ def _validate_state(payload: dict[str, object]) -> None:
         strategy_state = round_state_dict.get("strategy_state")
         if strategy_state is not None:
             _validate_strategy_state(strategy_state, round_key=round_key)
+
+    stages_addressed = payload.get("stages_addressed")
+    if stages_addressed is None:
+        # Backward-compat: older state files predate this field.
+        return
+    if not isinstance(stages_addressed, list):
+        raise ValueError("workflow state stages_addressed must be a list")
+    for stage in stages_addressed:
+        if not isinstance(stage, str) or not stage:
+            raise ValueError(
+                f"workflow state stages_addressed entries must be non-empty strings: {stage!r}"
+            )
 
 
 def _validate_strategy_state(strategy_state: object, *, round_key: str) -> None:

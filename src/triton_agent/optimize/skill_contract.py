@@ -17,3 +17,8 @@ def optimize_state_round_module() -> ModuleType:
         "ascend-npu-optimize-state",
         "round/check",
     )
+
+
+def scan_kernel_issues_module() -> ModuleType:
+    """Code-structure scanner skill script (emits raw issue dicts)."""
+    return load_skill_script_module("triton-npu-optimize", "scan_kernel_issues")

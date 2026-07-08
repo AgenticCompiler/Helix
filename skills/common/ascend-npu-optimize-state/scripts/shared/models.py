@@ -57,6 +57,8 @@ class RoundState:
     profile_dir: str | None = None
     ir_dir: str | None = None
     perf_analysis_path: str | None = None
+    stage: str | None = None
+    patterns: list[str] | None = None
 
 
 @dataclass(frozen=True)

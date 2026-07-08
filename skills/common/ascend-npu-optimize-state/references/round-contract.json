@@ -16,6 +16,8 @@
     "analysis_skipped_reason": "when deeper analysis was intentionally skipped, record the evidence-backed reason here.",
     "profile_dir": "when profiler artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local profiler directory, normally `profile`.",
     "ir_dir": "when IR artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local IR directory, normally `ir`.",
-    "perf_analysis_path": "when a standalone performance-analysis note exists, record the path from the directory that contains `round-state.json` to that markdown file, normally `perf-analysis.md`."
+    "perf_analysis_path": "when a standalone performance-analysis note exists, record the path from the directory that contains `round-state.json` to that markdown file, normally `perf-analysis.md`.",
+    "stage": "record the optimization stage id this round targeted, using a value from `stages.json` (e.g. `structural`, `layout`, `scalar_control`, `memory`, `pipeline`, `launch_grid`, `micro_tuning`, `compile_hints`). The orchestrator's dependency gate uses this to mark the stage addressed.",
+    "patterns": "record the pattern id(s) applied this round (from the stage's `patterns` list in `stages.json`), as a JSON array of strings e.g. `[\"flat-index-decode-tiling\"]`. The orchestrator tracks `patterns_tried` per stage so the next round's stage analysis can exclude already-tried patterns and check remaining ones' `Use When`."
   }
 }

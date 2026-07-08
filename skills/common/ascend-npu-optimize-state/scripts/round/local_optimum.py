@@ -101,6 +101,29 @@ def collect_local_optimum_warnings(
     return tuple(warnings)
 
 
+def round_geomean_speedup(
+    round_dir: Path,
+    *,
+    baseline_perf_path: Path,
+) -> float | None:
+    """Return the round's baseline-relative geomean speedup, or None.
+
+    Reuses ``_build_round_speedup_sample`` (the same computation
+    ``collect_local_optimum_warnings`` uses) so callers don't reimplement perf
+    parsing. Used by the optimize gate's spinning guard to decide, per round,
+    whether the round made progress over the previous round (via the adjacent
+    gain between this round's and the previous round's baseline-relative speedup).
+    """
+    sample = _build_round_speedup_sample(
+        round_dir,
+        baseline_perf_path=baseline_perf_path,
+        baseline_cache={},
+    )
+    if sample is None:
+        return None
+    return sample.geomean_speedup
+
+
 def load_local_optimum_config_from_env() -> LocalOptimumConfig:
     window = _DEFAULT_LOCAL_OPTIMUM_WINDOW
     raw_window = os.environ.get(_LOCAL_OPTIMUM_WINDOW_ENV)

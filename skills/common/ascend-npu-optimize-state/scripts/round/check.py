@@ -12,7 +12,7 @@ from baseline.check import (
 from round.contract import ROUND_STATE_REQUIRED_FIELDS
 from round.kernel_continuity import analyze_triton_kernel_continuity
 from round.local_optimum import collect_local_optimum_warnings
-from shared.json_io import load_json_object, optional_str
+from shared.json_io import load_json_object, optional_str, optional_str_list
 from shared.models import OptimizeCheckResult, RoundArtifactsInspection, RoundState
 from shared.paths import baseline_dir, declared_state_file, existing_file, missing_issue
 from shared.results import append_pass_issues_to_summary, build_check_result
@@ -134,6 +134,8 @@ def load_round_state(round_dir: Path) -> RoundState:
         profile_dir=optional_str(data.get("profile_dir")),
         ir_dir=optional_str(data.get("ir_dir")),
         perf_analysis_path=optional_str(data.get("perf_analysis_path")),
+        stage=optional_str(data.get("stage")),
+        patterns=optional_str_list(data.get("patterns")),
     )
 
 

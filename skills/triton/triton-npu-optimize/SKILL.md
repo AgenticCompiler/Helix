@@ -95,6 +95,50 @@ BLOCK_H/BLOCK_M/BLOCK_N, num_stages, autotune. Only effective after structural o
 
 Before committing to a round hypothesis, ask: *"Is there a higher-priority optimization available that I have not yet attempted?"* If yes, do that instead. The higher-priority change may make the current hypothesis obsolete or less impactful.
 
+### Stage analysis (do this BEFORE optimizing)
+
+The priority order above is enforced as a **dependency gate** that you run on yourself, **before** you triage or change any code. The goal: determine which stage the kernel's problem is in, **in dependency order**, so you never tune a kernel whose structure is still in flux (premature tuning locks in a local optimum).
+
+Each round, as the **first** step (before the layered analysis / optimization):
+
+1. **Read the contract + history**: read [`references/stages.json`](references/stages.json) (the 8 stages, their `issue_type` enum, the dependency edges, and each stage's applicable `patterns`). Scan `opt-round-*/stage-addressed.json` markers to see which stages prior rounds already **addressed** (and which are **exhausted** by the spinning guard). The orchestrator also injects a summary of addressed/exhausted + scanner findings into your prompt.
+2. **Run the mechanical scanner** if the orchestrator hasn't already injected its findings: `python scripts/scan_kernel_issues.py <kernel_path>` → mechanical antipatterns (`permute().contiguous()`, `tl.trans` into `tl.dot`, `tl.static_range`, manual K-reductions, flat 1D index decode, non-power-of-two `num_warps`, missing `@triton.autotune`, etc.). These are **positive evidence only** — the scanner is mechanically blind, so absence does NOT mean "no issue".
+3. **Judge each stage semantically, in dependency order** (`boundary` → `parallel`/`memory_access`/`algorithmic` → `pipeline` → `compile_hints` → `parameterization`): read the kernel (and the latest perf report if available — high SCALAR:VECTOR suggests `compile_hints` (vec-cmp / scalar-latency-traps), weak overlap suggests `pipeline`, CUBE instr=0 with `tl.sum` suggests `algorithmic`, etc.). For each stage decide `clean` (you triaged it and found no issue) or `issues` (list them with `issue_type` from the closed enum). **A stage is `clean` only if you read the code and judged it — never mark it clean just because the scanner found nothing there.**
+   - **Read the classification guide first**: for each stage, if `references/stage-guides/<stage_id>.md` exists, read it **before** judging that stage. It contains known code signals → stage/pattern mappings with **common misclassification warnings**. Cross-reference each signal in the guide with the kernel code; if a signal matches, classify to the guide's indicated stage + pattern (the guide's rationale explains why, especially when the classification is counterintuitive). The guide prevents known errors like classifying `.expand().contiguous()` as `memory_access` when it should be `boundary` (layout-materialization-elision).
+   - Semantic example: `for _ in range(31)` with a data-dependent bound is an `algorithmic` issue (use `issue_type: open_ended` with `suggested_stage: algorithmic` if no closed type fits), NOT `parameterization`.
+   - **`clean` judgment standard — a stage is `clean` ONLY when you have checked ALL of its patterns' `Use When` and none match the current kernel.** The orchestrator injects a **per-stage TODO list** showing `tried [X]` (patterns applied in prior rounds) and `remaining [Y, Z]` (patterns not yet tried). Use it as follows:
+     - For each `remaining` pattern: check its `Use When` against the current kernel code. If it matches, the stage is `issues`.
+     - For each `tried` pattern: **RE-VERIFY its signal is actually gone** in the current code. A prior round may have applied the pattern incompletely (e.g., wrote a broadcast-aware kernel but didn't update the launcher to skip `.contiguous()` — the signal is still there). If the signal persists, the try was incomplete and the stage is still `issues`.
+     - Only when all `tried` patterns' signals are gone AND no `remaining` pattern's `Use When` matches, mark the stage `clean`.
+     - **The TODO list is NOT a "done" list.** `tried [X]` means "attempted X," not "X succeeded." You MUST re-verify by reading the current code.
+4. **Write `opt-round-N/stage-verdict.json`** with this schema:
+   ```json
+   {
+     "round": "opt-round-N",
+     "verdicts": [
+       {"stage": "<stage_id>", "verdict": "clean"|"issues", "rationale": "...",
+        "issues": [{"issue_type": "<enum>", "severity": 1-5, "location": "...", "description": "...", "suggested_fix": "..."}]}
+     , ... (one entry per stage, all 8)
+     ],
+     "determined_stage": "<stage_id you intend to triage>"
+   }
+   ```
+   `determined_stage` = the stage you judge is the highest-priority one with issues whose prerequisites are resolved (addressed ∪ your own clean declarations ∪ exhausted). By construction (dependency order) this is the first actionable stage and does not skip.
+5. **Run the self-check gate**: `python scripts/check_stage_verdict.py opt-round-N`. It reads `stages.json` + the markers + your `stage-verdict.json` and verifies `determined_stage` does not skip an unresolved prerequisite.
+   - **PASS**: proceed to triage + optimize for `determined_stage` (use that stage's `patterns` from `stages.json`).
+   - **FAIL** (it names the unmet prerequisite + the dep-order-first actionable stage): you skipped — **re-do step 3-4** with the correct stage, rewrite `stage-verdict.json`, re-run the check. Repeat until PASS (max 3 retries).
+6. **After PASS, triage + optimize for the determined stage** — and **only** that stage. The stage analysis in step 3-4 already dismissed the other stages with reasoning (each `clean` verdict has a `rationale`); do **not** re-triage patterns from other stages in `attempts.md`. Concretely:
+   - **Only consider patterns listed under `determined_stage` in `references/stages.json`** (each stage's `patterns` array). For example, if `determined_stage` is `memory_access`, your `attempts.md` "candidate patterns considered" list should only contain patterns from the `memory_access` stage's `patterns` (e.g. `flat-index-decode-tiling`, `block-pointer-dimensionality`, `slice_coalesce`, ...), **not** patterns from `boundary` or `parallel`.
+   - The `stage-verdict.json` clean rationales are the authoritative dismissal of other stages' patterns; re-listing them in `attempts.md` as "considered but rejected" is redundant triage — the stage analysis already did that work. Skip it.
+   - **If you disagree with the stage analysis** (you believe a stage marked `clean` actually has an issue, or the `determined_stage` is wrong): do **not** silently re-triage in `attempts.md`. Instead, go back and **re-do step 3-4** (rewrite `stage-verdict.json` with the corrected verdict, re-run `check_stage_verdict.py`). The stage analysis is the single place where pattern-to-stage scoping is decided; `attempts.md` operates strictly within that scope.
+   - Within the determined stage's patterns, use each pattern card's `Use When` to pick the one matching your detected issue, then optimize. Declare the stage in `round-state.json` under `stage` (e.g. `"stage": "memory_access"`) AND declare the pattern(s) you applied under `patterns` (e.g. `"patterns": ["flat-index-decode-tiling"]`). The orchestrator reads `stage` to mark the stage addressed (so next round's gate unblocks downstream) and `patterns` to track `patterns_tried` per stage (so next round's stage analysis can exclude already-tried patterns and check remaining ones' `Use When` — this prevents premature `clean` and ensures all applicable patterns in a stage are tried before moving on).
+
+**Why this is not post-hoc**: the check runs **before** you optimize, so a skip is caught and corrected **before** any wasted round. The orchestrator does NOT reject finished rounds; the gate is your pre-optimization self-check.
+
+**Why the scanner isn't the arbiter**: the scanner only feeds mechanical findings into step 2; it cannot mark a stage `clean` (only your semantic judgment in step 3 can). This fixes the failure where a structural issue the scanner can't see (e.g. a hardcoded loop bound) gets treated as "no issue" and lets `parameterization` jump ahead of `algorithmic`.
+
+This respects the "no forward-looking optimization plans" rule: you determine **one** stage per round from current evidence; you do not commit to a multi-round schedule.
+
 ## Stage 2: Layered Analysis
 
 Optimize analysis is layered.
