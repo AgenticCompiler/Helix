@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol, cast
 
-from triton_agent.optimize.baseline import baseline_dir
+from triton_agent.optimize.baseline import baseline_dir, load_baseline_state
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.models import RoundState
 from triton_agent.optimize.round_contract import load_round_state
@@ -320,14 +320,41 @@ def _optional_float(value: object) -> float | None:
     return None
 
 
+def resolve_declared_baseline_perf_file(workspace: Path) -> tuple[Path | None, str | None, bool]:
+    try:
+        baseline_state = load_baseline_state(workspace)
+    except ValueError:
+        return None, None, False
+
+    declared_path = Path(str(baseline_state.perf_artifact))
+    candidate_paths = (declared_path,)
+    if not declared_path.is_absolute():
+        baseline_dir_path = baseline_dir(workspace)
+        candidate_paths = (
+            baseline_dir_path / declared_path,
+            workspace / declared_path,
+        )
+    for candidate_path in candidate_paths:
+        if candidate_path.is_file():
+            return candidate_path, None, True
+    return None, f"perf_artifact points to a missing file: {baseline_state.perf_artifact}", True
+
+
 def select_baseline_perf_file(
     workspace: Path,
     paths: list[Path],
     warnings: list[str],
 ) -> tuple[Path | None, bool]:
-    baseline_perf = baseline_dir(workspace) / "perf.txt"
-    if baseline_perf.is_file():
-        return baseline_perf, False
+    declared_baseline_perf, declared_issue, has_declared_state = (
+        resolve_declared_baseline_perf_file(workspace)
+    )
+    if declared_baseline_perf is not None:
+        return declared_baseline_perf, False
+    if declared_issue is not None:
+        warnings.append(declared_issue)
+        return None, True
+    if has_declared_state:
+        return None, False
 
     baseline_dir_path = baseline_dir(workspace)
     if baseline_dir_path.is_dir():
