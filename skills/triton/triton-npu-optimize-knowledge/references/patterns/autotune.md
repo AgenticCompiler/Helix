@@ -8,7 +8,7 @@ priority: high
 
 Two-phase optimization from `report.txt` simulation data:
 
-- **Phase 1 (Pre-Gate A-Cat-5):** Determine **whether** autotune is the right tool. If memory layout is fragmented, route to `compile_hint` or `discrete_memory_access` instead and stop.
+- **Phase 1 (Pre-Gate A-Cat-5):** Determine **whether** autotune is the right tool. A-Cat-5 firing is a hint that memory layout may be fragmented — verify it is not a simulator false positive before accepting the ruling. If verified as a true positive, route to `compile_hint` or `discrete_memory_access` instead of autotune; if verified as a false positive (e.g. pure data-movement kernel), proceed to Phase 2.
 - **Phase 2 (Parameter Diagnostics):** Only if Pre-Gate passes — match `report.txt` statistical features against A-Cat-6 through A-Cat-4 to identify which parameters need tuning, then configure `@triton.autotune` using Route 1 (auto-infer `configs=[]`), Route 2 (`hints`), or Route 3 (hand-written `triton.Config` lists).
 
 ## Use When
@@ -39,10 +39,11 @@ Before outputting any code modifications or autotune configurations, the followi
 1. **Hardware Alignment Enforcement:** All tiling sizes (`BLOCK_M`, `BLOCK_N`, `BLOCK_K`) must be powers of 2. Inspect the kernel for underlying hardware alignment constraints or static assertions (e.g., `tl.static_assert(BLOCK_K % 16 == 0)`). Generated configurations must never violate these physical boundaries.
 2. **SRAM (UB) Resource Trade-Off:** Tiling sizes and software pipelining stages compete for the same limited on-chip memory (SRAM/Unified Buffer). Total shared memory utilization scales proportionally with O(BLOCK_M × BLOCK_K × num_stages). If increasing `num_stages` to hide latency triggers an out-of-memory (OOM) error or causes register spilling, scale down `BLOCK_K` or other tile dimensions to compensate.
 3. **Data-Driven Logic:** Base all performance reasoning purely on concrete metrics from `report.txt`: instruction cycle ratios, `WAIT_FLAG` execution frequencies, `ProcessBytes` averages, pipe overlap ratios, and pipeline flow deltas. Abandon qualitative visual descriptions.
+4. **Autotune Timeout and Recovery:** If `run-test` times out, **reduce config count first (start with 3-4 configs for operators with many test cases) — NOT abandon autotune**. Host-side heuristics cannot pick per-shape optimal `BLOCK_SIZE`. Large `BLOCK_*` values (>8192) on atomic-add or heavily-masked kernels trigger disproportionate JIT compilation time. When timeout occurs with large `BLOCK_*` in configs, **remove the extreme values first** — reducing config count alone is insufficient if extreme `BLOCK_*` remains, because a single extreme config's JIT + benchmark cost can dominate the entire timeout budget.
 
 ## Phase 1: Pre-Gate — Should You Use Autotune? (A-Cat-5)
 
-**Run this check BEFORE entering parameter diagnostics.** If A-Cat-5 fires, autotune is the wrong tool — the memory layout or compiler information is fundamentally broken, and no amount of parameter tuning will fix it.
+**Run this check BEFORE entering parameter diagnostics.** A-Cat-5 firing is a strong hint that autotune may be the wrong tool, but it is a hint, not a final ruling — on Ascend NPU, MSProf simulator signals on pure data-movement kernels can false-positive (see "Note on ProcessBytes computation" below). Verify the signal is not a false positive before accepting the ruling.
 
 ### Simulation Signature
 
@@ -55,24 +56,35 @@ Before outputting any code modifications or autotune configurations, the followi
 
 > **Note on data movers:** `Data movers: 0` in `[MTE2 Data Transport]` with `Flow control: N` means all MTE2 instructions are flow-control (SET_FLAG/END_LABEL), not actual data movement. This is a strong signal that memory access is routing through SCALAR instead of MTE2.
 
+> **Note on ProcessBytes computation:** `ProcessBytes avg` in `[MTE2 Data Transport]` is computed as `bytes moved / MTE2 instruction count`. When most MTE2 instructions are classified as flow-control (SET_FLAG/END_LABEL) — e.g. `Data movers: 1, Flow control: 7` — both the numerator and denominator are dominated by flow-control overhead, not real data movement. The resulting `ProcessBytes avg = 0B` (or any value < 128B) is a **simulator signal artifact**, not a real indication that the memory layout is fragmented.
+
+> **When ProcessBytes is not a valid A-Cat-5 signal:** Do not treat `ProcessBytes avg < 128B` as a valid A-Cat-5 trigger when ALL of the following hold:
+> - Kernel body is pure data-movement (only `tl.load` → optional mask/transpose → `tl.store`, no compute ops like `*`, `+`, `exp`, `sum`).
+> - `Data movers ≥ 1` (at least one real MTE2 data mover, distinguishing from the all-flow-control case covered by the note above).
+> - Host-side input is already `.contiguous()` and strides match physical layout.
+>
+> In this case, the kernel's actual bottleneck is launch overhead / grid decomposition, not memory fragmentation. Proceed to Phase 2 parameter diagnostics with `BLOCK_SIZE` and `BLOCKS_PER_PROGRAM` as candidate autotune parameters.
+
 ### Matching Rule
 
 Read from `report.txt` overall:
 - **Primary trigger:** overall `[MTE2 Data Transport]` ProcessBytes / data mover avg < 128 bytes, OR Data movers = 0 while kernel has `tl.load`
 - **Confirmation:** overall `[Pipe Overlap Ratio]` %(MTE2&VECTOR/VECTOR) < 5%
-- **Fire when:** Primary trigger AND confirmation are both met, AND kernel contains `tl.load` from non-constant pointers. If the kernel is pure register computation with no global memory access, small ProcessBytes is expected — do not fire.
+- **Fire when:** Primary trigger AND confirmation are both met, AND kernel contains `tl.load` from non-constant pointers. If the kernel is pure register computation with no global memory access, small ProcessBytes is expected — do not fire. Firing triggers the verify-before-ruling flow in the Decision section below; it does not by itself route away from autotune.
 
 ### Decision When A-Cat-5 Fires
 
-**Stop. Do not proceed to Phase 2 parameter diagnostics.** The memory access pattern is too fragmented for the compiler to generate vectorized loads. Autotune parameter search (`BLOCK_*`, `num_stages`, `num_warps`) cannot resolve this.
+Before accepting A-Cat-5 as final, verify the signal is not a false positive:
 
-Route to the appropriate pattern instead:
-- Check `[SCALAR Instr Types]` to confirm the root cause (address computation instructions dominating), then apply **`compile_hint`** if the access pattern is logically contiguous but the compiler can't prove it, or **`discrete_memory_access`** if the access is inherently index-driven.
-- Apply host-side `.contiguous()` rearrangement if input strides don't match physical layout after transpose/view operations.
+1. **Check the kernel body.** If it is pure data-movement (only `tl.load` → optional mask/transpose → `tl.store`, no compute ops like `*`, `+`, `exp`, `sum`), see "Note on ProcessBytes computation" — A-Cat-5 may be a simulator artifact. Proceed to Phase 2 parameter diagnostics with `BLOCK_SIZE` and `BLOCKS_PER_PROGRAM` as candidates.
+2. **Check `[SCALAR Instr Types]`.** If SCALAR is dominated by address computation (MOV_XD_SPR, LDP_XI_XJ_XN) AND the kernel has compute ops, the fragmentation is real — apply **`compile_hint`** if the access pattern is logically contiguous but the compiler can't prove it, or **`discrete_memory_access`** if the access is inherently index-driven.
+3. **Check host-side strides.** If input strides don't match physical layout after transpose/view operations, apply `.contiguous()` rearrangement, re-run simulation, and re-check the Pre-Gate.
+
+Only after ruling out the false-positive cases above, treat A-Cat-5 as final: stop Phase 2 parameter diagnostics — autotune parameter search (`BLOCK_*`, `num_stages`, `num_warps`) cannot resolve a fundamentally broken physical layout.
 
 ### What It Means
 
-The compiler cannot statically verify that the memory access pattern is perfectly contiguous along the vectorization axis. It generates conservative, fragmented, narrow scalar loads. Autotune configurations cannot resolve a fundamentally broken physical layout.
+This section describes the case where A-Cat-5 is verified as a true positive (not a false positive). The compiler cannot statically verify that the memory access pattern is perfectly contiguous along the vectorization axis. It generates conservative, fragmented, narrow scalar loads. Autotune configurations cannot resolve a fundamentally broken physical layout.
 
 ### Code Manifestations
 
@@ -151,7 +163,7 @@ Fix: apply host-side `.contiguous()` before kernel launch and align strides with
 
 ## Phase 2: Parameter Diagnostics — Signal Matching Decision Guide
 
-**Precondition: A-Cat-5 Pre-Gate must have been checked and did NOT fire.** If A-Cat-5 fired, stop here — fix the memory layout first, then re-run simulation and re-check the Pre-Gate.
+**Precondition: A-Cat-5 Pre-Gate must have been checked AND either did NOT fire, OR fired but was verified as a false positive (see Phase 1 Decision).** If A-Cat-5 fired and was verified as a true positive, stop here — fix the memory layout first (route to `compile_hint` / `discrete_memory_access` / `.contiguous()`), then re-run simulation and re-check the Pre-Gate before returning to Phase 2.
 
 All metrics below are read from `report.txt` overall sections unless otherwise noted. Check signals in this order. The first match is the primary signal; secondary matches may co-occur.
 
@@ -368,6 +380,10 @@ Read from `report.txt` overall:
 - **Fire when:** Primary trigger AND at least 1 confirmation condition are met.
 - **Differentiation from A-Cat-6:** A-Cat-6 has SCALAR cycles% high but instr% may be moderate — the cycles come from spill code, not from inherently scalar-dominant instruction mix. A-Cat-2 has both instr% AND cycles% high. If SCALAR instr% > 80% and cycles% > 70%, A-Cat-2 is the primary signal. If SCALAR cycles% > 50% but instr% < 60%, check A-Cat-6.
 - **Differentiation from scalar-vector-simulation-signal A-Cat-1 (Scalar Arithmetic Explosion):** That signal focuses on scalar arithmetic code structures. This signal focuses on the autotune remedy: scale up tile sizes to amortize scalar overhead.
+- **Differentiation from atomic-add kernels:** When the kernel contains `tl.atomic_add` (or any atomic update path), A-Cat-2's SCALAR > 80% can be a false positive. The scalar overhead comes from per-program address computation (`pid * BLOCK_SIZE + tl.arange`, mask computation), not from per-element scalar work that would be amortized by a larger block. Larger `BLOCK_SIZE` on the atomic-update dimension *increases* atomic contention (more threads compete for the same output cell), making performance worse. If the kernel contains `tl.atomic_add`:
+  - Do NOT scale up the atomic-update dimension's `BLOCK_*` blindly. Include small values `[128, 256, 512, 1024]` in configs.
+  - Avoid `BLOCK_SIZE > 4096` on the atomic-update dimension — large blocks amplify atomic contention and trigger disproportionate JIT compilation cost (see Global Constraint 4).
+  - Include the atomic-branch variable (e.g. `ACCUMULATE`) in `key` so atomic vs non-atomic paths get separate cache lines (see A-Cat-4 Manifestation C).
 
 #### What It Means
 
@@ -569,6 +585,36 @@ The `key` parameter list declared in `@triton.autotune` fails to encapsulate the
 )
 ```
 
+##### Manifestation C: Path-branch variable not in key
+
+When a kernel has an `if`-branch on a `tl.constexpr` variable (e.g. `ACCUMULATE`, `mode`, `quant_mode`) leading to different optimal `BLOCK_SIZE` per branch, the branch variable must be in `key`. Otherwise, atomic vs non-atomic paths (or different mode paths) share the same cache line, and one of them gets a suboptimal `BLOCK_SIZE`.
+
+```python
+# detect: kernel has if-branch on a constexpr leading to different optimal BLOCK_SIZE
+if ACCUMULATE:
+    tl.atomic_add(...)   # optimal BLOCK_SIZE=128 (contention-limited)
+else:
+    tl.store(...)        # optimal BLOCK_SIZE=1024 (throughput-limited)
+
+# fix: include the branch variable in autotune key
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 128}),
+        triton.Config({"BLOCK_SIZE": 256}),
+        triton.Config({"BLOCK_SIZE": 512}),
+        triton.Config({"BLOCK_SIZE": 1024}),
+    ],
+    key=["n_elements", "ACCUMULATE", "ELEM_BYTES"],  # ACCUMULATE separates atomic vs non-atomic cache
+)
+```
+
+This pattern is especially common in:
+- `index_put` / `scatter_add` with `accumulate` flag (atomic vs non-atomic path)
+- `quantize` with `mode` flag (per-row vs per-tensor path)
+- `interpolate` with `mode` flag (bilinear vs bicubic vs nearest path)
+
+For all of these, the branch variable must be in `key`, otherwise one path will get the wrong `BLOCK_SIZE`.
+
 #### Optimization Direction
 
 Expand the autotune isolation cache keys to ensure structural variations (shapes, memory layout strides) are explicitly isolated.
@@ -742,7 +788,7 @@ Prefer `hints` or custom configs when you see one or more of the following:
 - Default config-space search should focus on `BLOCK_*`, `multibuffer`, and `unit_flag`, not treat `num_warps` or `num_stages` as the default Ascend autotune surface.
 - When launch hints interact, include a small bounded set of Ascend-relevant options such as `multibuffer`, `set_workspace_multibuffer`, or `enable_auto_bind_sub_block` instead of hand-picking one globally.
 - If you are applying `a5-force-simt-only-discrete-access`, recheck `num_warps` and grid decomposition there after enabling `force_simt_only=True`.
-- For update-style kernels, repeated autotune evaluation can write outputs multiple times. Add `reset_to_zero`, `restore_value`, `pre_hook`, or `post_hook` before trusting benchmarks.
+- For update-style kernels, repeated autotune evaluation can write outputs multiple times. Add `reset_to_zero`, `restore_value`, `pre_hook`, or `post_hook` before trusting benchmarks. Avoid `num_warps=N` per-config on atomic-add kernels — it triggers the `_pre_hook` path on Ascend, forcing keyword argument passing that cascades into `BLOCK_SIZE: tl.constexpr` signature requirements.
 - Start debugging with `TRITON_PRINT_AUTOTUNING=1`.
 
 ## Related Patterns
