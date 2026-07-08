@@ -11,7 +11,10 @@ from baseline.check import (
 )
 from round.contract import ROUND_STATE_REQUIRED_FIELDS
 from round.kernel_continuity import analyze_triton_kernel_continuity
-from round.local_optimum import collect_local_optimum_warnings
+from round.local_optimum import (
+    collect_local_optimum_warnings,
+    compute_round_geomean_speedup,
+)
 from shared.json_io import load_json_object, optional_str
 from shared.models import OptimizeCheckResult, RoundArtifactsInspection, RoundState
 from shared.paths import (
@@ -424,12 +427,53 @@ def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
     )
 
 
+def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
+    try:
+        baseline = load_baseline_state(workspace)
+    except ValueError:
+        return None
+    baseline_perf_path = declared_state_file(
+        baseline_dir(workspace),
+        workspace,
+        baseline.perf_artifact,
+    )
+    if baseline_perf_path is None:
+        return None
+
+    best_speedup: float | None = None
+    for round_dir in iter_completed_round_directories(workspace):
+        geomean_speedup = compute_round_geomean_speedup(
+            round_dir,
+            baseline_perf_path=baseline_perf_path,
+        )
+        if geomean_speedup is None:
+            continue
+        if best_speedup is None or geomean_speedup > best_speedup:
+            best_speedup = geomean_speedup
+    return best_speedup
+
+
+def _min_speedup_pending_prefix(
+    *,
+    best_speedup: float | None,
+    min_speedup: float | None,
+) -> str:
+    if min_speedup is None or best_speedup is None:
+        return "round check passed. "
+    return (
+        "round check passed. "
+        f"Minimum speedup target not yet satisfied: best completed-round geomean speedup "
+        f"is {best_speedup:.2f}x (target {min_speedup:.2f}x). "
+    )
+
+
 def check_round(
     round_dir: Path,
     *,
     current_round: int | None = None,
     final_round: int | None = None,
     optimize_target: Literal["kernel", "operator"] | None = None,
+    min_speedup: float | None = None,
 ) -> OptimizeCheckResult:
     artifact_inspection, round_state, state_error = _inspect_round_minimum_artifact_package(round_dir)
     artifact_issues = artifact_inspection.issues
@@ -575,15 +619,38 @@ def check_round(
         issues=(*tuple(runtime_warnings), *local_optimum_warnings),
     )
 
+    best_speedup = None
+    if min_speedup is not None:
+        best_speedup = best_completed_round_geomean_speedup(round_dir.parent)
+    target_speedup = min_speedup
+
     if current_round is not None and final_round is not None:
-        if current_round < final_round:
+        if best_speedup is not None and target_speedup is not None and best_speedup >= target_speedup:
+            result = build_check_result(
+                kind="round",
+                status="pass",
+                issues=result.issues,
+                summary=append_pass_issues_to_summary(
+                    "round check passed. "
+                    f"Minimum speedup target satisfied: best completed-round geomean speedup "
+                    f"is {best_speedup:.2f}x (target {target_speedup:.2f}x). "
+                    "Stop the optimize session immediately instead of opening another round.",
+                    result.issues,
+                ),
+                next_option=None,
+            )
+        elif current_round < final_round:
             next_round_name = f"opt-round-{current_round + 1}"
             result = build_check_result(
                 kind="round",
                 status="pass",
                 issues=result.issues,
                 summary=append_pass_issues_to_summary(
-                    f"round check passed. "
+                    _min_speedup_pending_prefix(
+                        best_speedup=best_speedup,
+                        min_speedup=target_speedup,
+                    )
+                    +
                     f"Round {current_round}/{final_round} in the current worker batch is complete. "
                     f"Next round: {next_round_name}. "
                     f"Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand "
@@ -598,11 +665,30 @@ def check_round(
                 status="pass",
                 issues=result.issues,
                 summary=append_pass_issues_to_summary(
-                    "round check passed. This round satisfied the current worker batch target.",
+                    _min_speedup_pending_prefix(
+                        best_speedup=best_speedup,
+                        min_speedup=target_speedup,
+                    )
+                    +
+                    "This round satisfied the current worker batch target.",
                     result.issues,
                 ),
                 next_option=None,
             )
+    elif target_speedup is not None and best_speedup is not None and best_speedup >= target_speedup:
+        result = build_check_result(
+            kind="round",
+            status="pass",
+            issues=result.issues,
+            summary=append_pass_issues_to_summary(
+                "round check passed. "
+                f"Minimum speedup target satisfied: best completed-round geomean speedup "
+                f"is {best_speedup:.2f}x (target {target_speedup:.2f}x). "
+                "Stop the optimize session immediately instead of opening another round.",
+                result.issues,
+            ),
+            next_option=None,
+        )
 
     return result
 
