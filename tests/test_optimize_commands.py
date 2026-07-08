@@ -157,6 +157,26 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
 
+    def test_handle_optimize_rejects_nonpositive_min_speedup(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "optimize",
+                    "-i",
+                    str(operator),
+                    "--min-speedup",
+                    "0",
+                ]
+            )
+
+            with self.assertRaises(SystemExit) as exc:
+                handle_optimize(parser, args)
+
+            self.assertEqual(exc.exception.code, 2)
+
     def test_handle_optimize_directory_input_uses_workspace_as_workdir(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:

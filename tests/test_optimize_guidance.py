@@ -473,6 +473,36 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
 
+    def test_prepare_checked_session_mentions_min_speedup_target_when_selected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                min_speedup=1.2,
+            )
+
+            guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn(
+                "Optimize session target: reach at least 1.20x geomean speedup over the baseline.",
+                guidance_content,
+            )
+            self.assertIn(
+                "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+                guidance_content,
+            )
+            self.assertIn(
+                "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+                guidance_content,
+            )
+
+            warnings = manager.cleanup_checked_session(state)
+            self.assertEqual(warnings, [])
+
     def test_record_agent_session_writes_compact_json_per_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
