@@ -631,6 +631,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
         if command_kind == CommandKind.STATUS:
             subparser.add_argument("--view", default="best", choices=_STATUS_VIEW_CHOICES)
+            subparser.add_argument(
+                "-m",
+                "--metric-source",
+                default=None,
+                choices=("auto", "kernel", "total-op"),
+            )
         if spec.has_language:
             subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:

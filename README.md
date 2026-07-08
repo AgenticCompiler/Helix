@@ -569,6 +569,7 @@ uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent status --input operators_root --format json
 uv run triton-agent status --input operators_root --view trend
 uv run triton-agent status --input operators_root --view trend --format json
+uv run triton-agent status --input operators_root --metric-source total-op
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
@@ -577,6 +578,11 @@ It keeps baseline perf files strict, but round `perf.txt` artifacts may include 
 `mean_ms` as long as the required `latency-*` entries are still present.
 When multiple top-level perf files exist, baseline selection prefers `<original-operator>_perf.txt`,
 then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
+
+`-m, --metric-source auto|kernel|total-op` optionally forces one comparison basis for every
+round considered in that `status` invocation. Omit the flag to preserve each round's recorded
+effective metric source. `status` does not accept `all`; unlike `compare-perf`, it renders one
+summary view per invocation instead of separate metric sections.
 
 `--view best` is the default view. It reports each workspace's best numeric round,
 average improvement, geomean speedup, logged best round, verification status, and warnings.

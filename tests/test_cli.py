@@ -2025,6 +2025,26 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["status", "-i", "kernels"])
         self.assertEqual(args.view, "best")
 
+    def test_status_accepts_metric_source_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "--metric-source", "total-op"])
+        self.assertEqual(args.metric_source, "total-op")
+
+    def test_status_accepts_metric_source_short_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels", "-m", "kernel"])
+        self.assertEqual(args.metric_source, "kernel")
+
+    def test_status_defaults_metric_source_to_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status", "-i", "kernels"])
+        self.assertIsNone(args.metric_source)
+
+    def test_status_rejects_metric_source_all(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["status", "-i", "kernels", "--metric-source", "all"])
+
     def test_optimize_status_no_longer_parses(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
@@ -2264,6 +2284,94 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn(f"[OK] {workspace.name}", rendered)
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
+
+    def test_main_status_honors_metric_source_override_for_batch_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_case"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
+                        "latency-b: 10",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 5",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":80.0}]}',
+                        "latency-b: 5",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":80.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
+                        "latency-b: 8",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self._write_round_state(
+                round_one,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+            self._write_round_state(
+                round_two,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["status", "-i", str(root), "--metric-source", "total-op"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[OK] kernel_case", rendered)
+            self.assertIn("Best round: round-2", rendered)
 
     def test_main_status_defaults_input_to_current_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

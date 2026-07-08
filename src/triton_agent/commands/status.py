@@ -15,6 +15,7 @@ from triton_agent.status.render import render_optimize_status_results
 def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     view = str(getattr(args, "view", "best"))
     output_format = str(getattr(args, "format", "text"))
+    metric_source = getattr(args, "metric_source", None)
     if output_format == "html" and view != "trend":
         parser.error("HTML format only supports --view trend")
 
@@ -24,7 +25,13 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
     if workspace_has_optimize_artifacts(root):
-        results = [inspect_optimize_status_workspace(root, verbose=bool(getattr(args, "verbose", False)))]
+        results = [
+            inspect_optimize_status_workspace(
+                root,
+                verbose=bool(getattr(args, "verbose", False)),
+                metric_source=metric_source,
+            )
+        ]
         return render_optimize_status_results(
             results,
             output_format=output_format,
@@ -36,7 +43,11 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     if not workspace_candidates:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
-    results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
+    results = scan_optimize_status_workspaces(
+        root,
+        verbose=bool(getattr(args, "verbose", False)),
+        metric_source=metric_source,
+    )
     return render_optimize_status_results(
         results,
         output_format=output_format,

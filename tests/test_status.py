@@ -305,6 +305,7 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertTrue(status.verified)
             self.assertAlmostEqual(status.verified_geomean_speedup or 0.0, 1.23)
+
     def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -487,6 +488,93 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.best_round, "round-2")
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (50 / 40 * 50 / 40) ** 0.5)
             self.assertEqual(status.warnings, ())
+
+    def test_inspect_optimize_status_workspace_honors_metric_source_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
+                        "latency-b: 10",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 5",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":80.0}]}',
+                        "latency-b: 5",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":80.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
+                        "latency-b: 8",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self._write_round_state(
+                round_one,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+            self._write_round_state(
+                round_two,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+
+            default_status = inspect_optimize_status_workspace(workspace)
+            overridden_status = inspect_optimize_status_workspace(workspace, metric_source="total-op")
+
+            self.assertEqual(default_status.best_round, "round-1")
+            self.assertEqual(overridden_status.best_round, "round-2")
+            self.assertEqual(
+                [round.effective_metric_source for round in overridden_status.rounds],
+                ["total-op", "total-op"],
+            )
 
     def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
