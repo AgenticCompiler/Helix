@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -417,7 +418,7 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertTrue((output_dir / "updated_patterns.json").is_file())
 
 
-def _json_path_from_prompt(prompt: str, *, workdir: Path | None = None) -> Path:
+def _json_path_from_prompt(prompt: str, *, workdir: Optional[Path] = None) -> Path:
     for line in prompt.splitlines():
         if line.startswith("Write JSON to "):
             value = line.removeprefix("Write JSON to ").removesuffix(" with this shape:")

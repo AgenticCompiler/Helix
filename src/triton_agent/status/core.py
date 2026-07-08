@@ -51,10 +51,12 @@ class BenchPerfParserModule(Protocol):
 def _load_bench_perf_parser() -> BenchPerfParserModule:
     return cast(BenchPerfParserModule, load_operator_eval_script_module("perf_artifacts"))
 
+
 def inspect_optimize_status_workspace(
     workspace: Path,
     *,
     verbose: bool = False,
+    metric_source: str | None = None,
 ) -> OptimizeStatusWorkspace:
     del verbose
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
@@ -117,12 +119,15 @@ def inspect_optimize_status_workspace(
         if perf_path is None:
             warnings.append(f"missing perf artifact for {round_dir.name}")
             continue
-        metric_source = _metric_source_for_round_status(round_state)
+        round_metric_source = _resolve_status_metric_source(
+            round_state,
+            metric_source=metric_source,
+        )
         try:
             baseline_values, round_values = _parse_perf_pair_for_metric_source(
                 baseline_path,
                 perf_path,
-                metric_source=metric_source,
+                metric_source=round_metric_source,
                 baseline_cache=baseline_values_by_source,
             )
         except (ValueError, OSError) as exc:
@@ -154,7 +159,7 @@ def inspect_optimize_status_workspace(
         comparable_rounds.append(
             OptimizeStatusRound(
                 round_name=f"round-{round_number(round_dir.name)}",
-                effective_metric_source=metric_source,
+                effective_metric_source=round_metric_source,
                 avg_improvement=mean_value(improvement_values),
                 geomean_speedup=geomean_value(speedup_values),
                 mean_latency=mean_value(valid_round_values),
@@ -208,9 +213,18 @@ def inspect_optimize_status_workspace(
     )
 
 
-def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> list[OptimizeStatusWorkspace]:
+def scan_optimize_status_workspaces(
+    root: Path,
+    *,
+    verbose: bool = False,
+    metric_source: str | None = None,
+) -> list[OptimizeStatusWorkspace]:
     return [
-        inspect_optimize_status_workspace(workspace, verbose=verbose)
+        inspect_optimize_status_workspace(
+            workspace,
+            verbose=verbose,
+            metric_source=metric_source,
+        )
         for workspace in sorted(
             path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
         )
@@ -387,6 +401,16 @@ def _metric_source_for_round_status(state: RoundState) -> str:
     if effective_metric_source == "total-op":
         return "total-op"
     return "auto"
+
+
+def _resolve_status_metric_source(
+    state: RoundState,
+    *,
+    metric_source: str | None,
+) -> str:
+    if metric_source is not None:
+        return metric_source
+    return _metric_source_for_round_status(state)
 
 
 def _parse_baseline_values_for_metric_source(
