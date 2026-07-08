@@ -30,6 +30,7 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
+from triton_agent.optimize.env import optimize_min_speedup_env_name
 from triton_agent.remote.env import (
     apply_remote_execution_env,
     remote_target_env_name,
@@ -115,6 +116,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             (
                 "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
                 "PT cleanup policy: never, round, or run-test. Default round; --reset-optimize still deletes reset artifacts.",
+            ),
+            (
+                optimize_min_speedup_env_name(),
+                "Injected optimize speedup target for optimize worker child processes; `submit-round` uses it automatically when present.",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
@@ -693,6 +698,12 @@ def build_parser() -> argparse.ArgumentParser:
             # Round control
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5,
                                    help="Minimum number of optimization rounds to run.")
+            subparser.add_argument(
+                "--min-speedup",
+                type=float,
+                default=None,
+                help="Allow optimize to stop early once the session reaches at least this baseline-relative geomean speedup.",
+            )
             subparser.add_argument("--round-batch-size", type=int, default=5,
                                    help="Number of candidate kernels to sample per optimization round.")
             subparser.add_argument(
