@@ -70,6 +70,7 @@ class AgentRequestTests(unittest.TestCase):
             prompt="original",
             workdir=Path("/tmp"),
             min_rounds=2,
+            min_speedup=1.2,
             continue_optimize=True,
             no_agent_session=True,
             round_mode="checked",
@@ -101,6 +102,7 @@ class AgentRequestTests(unittest.TestCase):
         self.assertEqual(updated.agent_name, request.agent_name)
         self.assertEqual(updated.skill_name, request.skill_name)
         self.assertEqual(updated.min_rounds, request.min_rounds)
+        self.assertEqual(updated.min_speedup, request.min_speedup)
         self.assertEqual(updated.continue_optimize, request.continue_optimize)
         self.assertEqual(updated.no_agent_session, request.no_agent_session)
         self.assertEqual(updated.round_mode, request.round_mode)

@@ -41,6 +41,7 @@ from triton_agent.optimize.prompts import (
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
 )
+from triton_agent.optimize.env import optimize_min_speedup_env_name
 from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.eval.runners import _normalize_agent_result as normalize_agent_result
 
@@ -583,6 +584,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertIn(remote_target_env_name(), help_text)
         self.assertIn(remote_workdir_env_name(), help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
+        self.assertIn(optimize_min_speedup_env_name(), help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
         self.assertIn("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR", help_text)
@@ -1621,6 +1623,20 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.min_rounds, 5)
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.min_rounds, 5)
+
+    def test_optimize_command_defaults_min_speedup_to_none(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertIsNone(args.min_speedup)
+        options = optimize_run_options_from_args(args)
+        self.assertIsNone(options.min_speedup)
+
+    def test_optimize_command_accepts_min_speedup(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-speedup", "1.2"])
+        self.assertEqual(args.min_speedup, 1.2)
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.min_speedup, 1.2)
 
     def test_optimize_command_defaults_resume_to_auto(self) -> None:
         parser = build_parser()
@@ -6536,6 +6552,36 @@ class PromptTests(unittest.TestCase):
         )
         self.assertNotIn("Complete at least 4 optimization rounds", prompt)
         self.assertIn("This invocation owns rounds 1 through 4.", prompt)
+
+    def test_optimize_prompt_mentions_min_speedup_target(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="torch-npu-profiler",
+            force_overwrite=False,
+            min_speedup=1.2,
+            round_mode="checked",
+        )
+        self.assertIn(
+            "Optimize session target: reach at least 1.20x geomean speedup over the baseline.",
+            prompt,
+        )
+        self.assertIn(
+            "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+            prompt,
+        )
+        self.assertIn(
+            "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+            prompt,
+        )
+        self.assertIn(
+            "submit-round --round-dir opt-round-N --current-round N --final-round M",
+            prompt,
+        )
+        self.assertNotIn("--min-speedup 1.20", prompt)
 
     def test_optimize_prompt_supervised_worker_does_not_mention_audit_pass(self) -> None:
         prompt = build_prompt(
