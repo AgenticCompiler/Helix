@@ -106,7 +106,12 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:
-        max_concurrency = resolve_batch_concurrency(args.concurrency)
+        max_concurrency = resolve_batch_concurrency(
+            args.concurrency,
+            getattr(args, "npu_devices", None),
+            getattr(args, "workers_per_npu", None),
+            ignore_workers_per_npu=bool(getattr(args, "enable_mcp", False)),
+        )
     except ValueError as exc:
         parser.error(str(exc))
     try:
@@ -190,6 +195,8 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
+        npu_devices=getattr(args, "npu_devices", None),
+        workers_per_npu=getattr(args, "workers_per_npu", None),
         prompt=getattr(args, "prompt", None),
         post_optimize_command=post_optimize_command,
         target_chip=target_chip,

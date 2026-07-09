@@ -1025,7 +1025,7 @@ class ConvertBatchTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_convert_batch(
                     root,
                     ConvertOptions(
@@ -1047,6 +1047,51 @@ class ConvertBatchTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_devices, [None, None])
+
+    def test_run_convert_batch_passes_explicit_affinity_into_managed_mcp_scope(self) -> None:
+        from triton_agent.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            class _DummyScope:
+                def __enter__(self):
+                    return None
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            with patch("triton_agent.convert.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+                exit_code = run_convert_batch(
+                    root,
+                    ConvertOptions(
+                        interact=False,
+                        verbose=False,
+                        stream_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        output=None,
+                        test_mode="differential",
+                        npu_devices="0,1",
+                        workers_per_npu="2",
+                        prompt=None,
+                        enable_mcp=True,
+                    ),
+                    max_concurrency=1,
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(npu_devices="0,1", workers_per_npu="2")
 
     def test_run_convert_request_enters_managed_mcp_scope_when_request_requires_mcp(self) -> None:
         from triton_agent.convert.orchestration import run_convert_request
