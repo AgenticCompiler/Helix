@@ -262,6 +262,58 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
 
+    def test_built_plugin_session_start_bootstraps_baseline_state_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "session_start.py")],
+                input=json.dumps(
+                    {
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
+
+    def test_built_plugin_session_end_removes_runtime_dir_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / "baseline").mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "session_end.py")],
+                input=json.dumps(
+                    {
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertTrue((workspace / "baseline").exists())
+
     def test_built_plugin_subagent_start_bootstraps_baseline_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
