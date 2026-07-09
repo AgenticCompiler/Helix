@@ -321,6 +321,14 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.npu_devices, "0,1")
         self.assertEqual(args.workers_per_npu, "2")
 
+    def test_run_eval_mcp_server_accepts_batch_affinity_cli_aliases(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run-eval-mcp-server", "--npu-device", "0,1", "--worker-per-npu", "2"]
+        )
+        self.assertEqual(args.npu_devices, "0,1")
+        self.assertEqual(args.workers_per_npu, "2")
+
     def test_handle_run_eval_mcp_server_passes_explicit_batch_affinity_values(self) -> None:
         from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 
@@ -6061,6 +6069,21 @@ class PathResolutionTests(unittest.TestCase):
                 verbose=False,
                 output=None,
             )
+
+    def test_run_bench_accepts_npu_device_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench.py",
+                "--operator-file",
+                "kernel.py",
+                "--npu-device",
+                "0,2-3",
+            ]
+        )
+        self.assertEqual(args.npu_devices, "0,2-3")
 
     def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

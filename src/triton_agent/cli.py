@@ -701,10 +701,10 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=_BENCH_MODE_CHOICES,
             )
         if spec.has_npu_devices:
-            subparser.add_argument("--npu-devices")
+            subparser.add_argument("--npu-devices", "--npu-device", dest="npu_devices")
         if spec.has_batch_affinity:
-            subparser.add_argument("--npu-devices")
-            subparser.add_argument("--workers-per-npu")
+            subparser.add_argument("--npu-devices", "--npu-device", dest="npu_devices")
+            subparser.add_argument("--workers-per-npu", "--worker-per-npu", dest="workers_per_npu")
         if spec.has_optimize_options:
             # Round control
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5,
