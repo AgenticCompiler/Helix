@@ -21,7 +21,6 @@ def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
     round_parser.add_argument("--round-dir", required=True)
     round_parser.add_argument("--current-round", type=int, default=None)
     round_parser.add_argument("--final-round", type=int, default=None)
-    round_parser.add_argument("--min-speedup", type=float, default=None)
     round_parser.add_argument(
         "--optimize-target",
         choices=("kernel", "operator"),
@@ -30,7 +29,7 @@ def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_min_speedup(args: argparse.Namespace) -> float | None:
+def _resolve_min_speedup() -> float | None:
     raw_env = os.environ.get(_MIN_SPEEDUP_ENV)
     if raw_env is not None:
         text = raw_env.strip()
@@ -43,11 +42,7 @@ def _resolve_min_speedup(args: argparse.Namespace) -> float | None:
         if value <= 0:
             raise ValueError(f"{_MIN_SPEEDUP_ENV} must be greater than 0")
         return value
-    if args.min_speedup is None:
-        return None
-    if args.min_speedup <= 0:
-        raise ValueError("--min-speedup must be greater than 0")
-    return args.min_speedup
+    return None
 
 def _workflow_failure_guideline(message: str) -> str:
     if (
@@ -108,7 +103,7 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
         print(json.dumps(_missing_round_directory_payload(round_dir), ensure_ascii=True))
         return 1
     try:
-        min_speedup = _resolve_min_speedup(args)
+        min_speedup = _resolve_min_speedup()
     except ValueError as exc:
         print(
             json.dumps(

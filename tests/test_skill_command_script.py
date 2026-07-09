@@ -53,6 +53,30 @@ def _load_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_optimize_state_submit_round_resolve_min_speedup_reads_env_without_args(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-state"
+            / "scripts"
+            / "state_manage"
+            / "submit_round.py"
+        )
+        spec = importlib.util.spec_from_file_location("optimize_submit_round_module", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        before = list(sys.path)
+        try:
+            sys.path.insert(0, str(script.parents[1]))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        finally:
+            sys.path[:] = before
+
+        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP": "1.20"}, clear=False):
+            self.assertEqual(module._resolve_min_speedup(), 1.2)
+
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -4629,7 +4653,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             self.assertEqual(completed.stderr, "")
 
-    def test_optimize_state_submit_round_prefers_injected_min_speedup_target(self) -> None:
+    def test_optimize_state_submit_round_uses_injected_min_speedup_target(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
         src_dir = str(_REPO_ROOT / "src")
@@ -4731,8 +4755,6 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "4",
                     "--final-round",
                     "25",
-                    "--min-speedup",
-                    "1.30",
                 ],
                 capture_output=True,
                 text=True,
@@ -4749,6 +4771,40 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertIn("1.25x", payload["guideline"])
             self.assertIn("Stop the optimize session immediately", payload["guideline"])
             self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_rejects_explicit_min_speedup_argument(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--min-speedup",
+                    "1.20",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unrecognized arguments: --min-speedup 1.20", completed.stderr)
 
     def test_optimize_state_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT

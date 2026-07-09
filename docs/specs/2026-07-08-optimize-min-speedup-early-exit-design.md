@@ -20,7 +20,7 @@
 - Worker prompts must state the minimum speedup target and say that the session may stop immediately once `submit-round` reports the target is satisfied.
 - Worker prompts must tell the agent that the runner injects the target into `submit-round` automatically so the agent should not guess or override the target value.
 - The round-loop memory file must repeat that same target so resume and longer sessions do not lose the stopping condition.
-- `ascend-npu-optimize-state submit-round` must read `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` when present, include an explicit stop-now guideline when the current session best speedup already satisfies the target, and treat the injected session target as authoritative over any explicit `--min-speedup` fallback value.
+- `ascend-npu-optimize-state submit-round` must read `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` when present and include an explicit stop-now guideline when the current session best speedup already satisfies the target.
 
 ## Implementation Notes
 

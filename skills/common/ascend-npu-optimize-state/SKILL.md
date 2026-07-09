@@ -129,8 +129,6 @@ Use the same enum values listed above for `--round-strategy` and `--analysis-pol
 - Prints JSON only; read the `guideline` field for the pass/fix instruction, and read `next_option` when it is present.
 - In optimize worker-batch flows, always pass both `--current-round` and `--final-round` so submission is evaluated relative to the current invocation's owned round range.
 - When the session has a speedup target, the optimize runner injects `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` automatically and `submit-round` uses that value as the authority.
-- If both the injected environment variable and an explicit `--min-speedup <X>` are present, the injected session target wins so a mistaken agent-supplied value cannot change the stop condition.
-- Use explicit `--min-speedup <X>` only for manual checks or external scripts that are running outside the standard optimize session environment.
 - Do not use a bare `submit-round --round-dir opt-round-N` call as the primary optimize worker pattern; that shorter form is reserved for manual checks outside the standard optimize worker-batch flow.
 
 ## State Ownership
