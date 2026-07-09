@@ -128,6 +128,7 @@ Use the same enum values listed above for `--round-strategy` and `--analysis-pol
 - Validates one completed `opt-round-N/` directory against the baseline contract and round-state contract.
 - Prints JSON only; read the `guideline` field for the pass/fix instruction, and read `next_option` when it is present.
 - In optimize worker-batch flows, always pass both `--current-round` and `--final-round` so submission is evaluated relative to the current invocation's owned round range.
+- When the session has a speedup target, the optimize runner injects `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` automatically and `submit-round` uses that value as the authority.
 - Do not use a bare `submit-round --round-dir opt-round-N` call as the primary optimize worker pattern; that shorter form is reserved for manual checks outside the standard optimize worker-batch flow.
 
 ## State Ownership

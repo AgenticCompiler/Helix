@@ -38,6 +38,7 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    min_speedup: float | None = None
     post_optimize_command: str | None = None
     language: Literal["triton", "tilelang"] = "triton"
     round_batch_size: int = 5

@@ -9,6 +9,7 @@ def validate_optimize_options(
     command_kind: CommandKind,
     *,
     min_rounds: int,
+    min_speedup: float | None,
     round_batch_size: int,
     max_concurrency: int | None,
     resume_mode: str,
@@ -21,6 +22,8 @@ def validate_optimize_options(
 ) -> None:
     if min_rounds < 1:
         raise ValueError("--min-rounds must be at least 1")
+    if min_speedup is not None and min_speedup <= 0:
+        raise ValueError("--min-speedup must be greater than 0")
     if round_batch_size < 1:
         raise ValueError("--round-batch-size must be at least 1")
     if command_kind == CommandKind.OPTIMIZE_BATCH and max_concurrency is not None and max_concurrency < 1:

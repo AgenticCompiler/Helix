@@ -53,6 +53,30 @@ def _load_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_optimize_state_submit_round_resolve_min_speedup_reads_env_without_args(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-state"
+            / "scripts"
+            / "state_manage"
+            / "submit_round.py"
+        )
+        spec = importlib.util.spec_from_file_location("optimize_submit_round_module", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        before = list(sys.path)
+        try:
+            sys.path.insert(0, str(script.parents[1]))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        finally:
+            sys.path[:] = before
+
+        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP": "1.20"}, clear=False):
+            self.assertEqual(module._resolve_min_speedup(), 1.2)
+
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -4628,6 +4652,159 @@ class SkillCommandScriptTests(unittest.TestCase):
                 payload["guideline"],
             )
             self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_uses_injected_min_speedup_target(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+        env["TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP"] = "1.20"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
+            round_dir = workdir / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.8\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workdir / ".triton-agent").mkdir()
+            (workdir / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260630-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-30T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-30T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-30T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["status"], "pass")
+            self.assertNotIn("next_option", payload)
+            self.assertIn("Minimum speedup target satisfied", payload["guideline"])
+            self.assertIn("1.25x", payload["guideline"])
+            self.assertIn("Stop the optimize session immediately", payload["guideline"])
+            self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_rejects_explicit_min_speedup_argument(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--min-speedup",
+                    "1.20",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unrecognized arguments: --min-speedup 1.20", completed.stderr)
 
     def test_optimize_state_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT
