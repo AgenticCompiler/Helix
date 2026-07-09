@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 
 @dataclass(frozen=True)
@@ -43,3 +44,18 @@ def describe_cleanup(state: HookStageState) -> list[str]:
     if not state.created_paths:
         return ["No backend-specific hooks to clean up."]
     return [f"Cleaning up staged agent hooks: {', '.join(str(path) for path in state.created_paths)}"]
+
+
+def replace_string_placeholder(value: Any, placeholder: str, replacement: str) -> Any:
+    if isinstance(value, str):
+        return value.replace(placeholder, replacement)
+    if isinstance(value, list):
+        items = cast(list[Any], value)
+        return [replace_string_placeholder(item, placeholder, replacement) for item in items]
+    if isinstance(value, dict):
+        mapping = cast(dict[Any, Any], value)
+        return {
+            key: replace_string_placeholder(item, placeholder, replacement)
+            for key, item in mapping.items()
+        }
+    return value
