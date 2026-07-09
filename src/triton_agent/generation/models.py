@@ -17,6 +17,8 @@ class GenerationOptions:
     output: str | None
     test_mode: str | None
     bench_mode: str | None
+    npu_devices: str | None = None
+    workers_per_npu: str | None = None
     prompt: str | None = None
     log_tools: bool = False
     enable_mcp: bool = False

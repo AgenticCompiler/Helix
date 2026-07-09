@@ -29,7 +29,12 @@ def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
     try:
-        max_concurrency = resolve_batch_concurrency(args.concurrency)
+        max_concurrency = resolve_batch_concurrency(
+            args.concurrency,
+            getattr(args, "npu_devices", None),
+            getattr(args, "workers_per_npu", None),
+            ignore_workers_per_npu=bool(getattr(args, "enable_mcp", False)),
+        )
     except ValueError as exc:
         parser.error(str(exc))
     return run_gen_eval_batch(
@@ -114,6 +119,8 @@ def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
+        npu_devices=getattr(args, "npu_devices", None),
+        workers_per_npu=getattr(args, "workers_per_npu", None),
         prompt=getattr(args, "prompt", None),
         log_tools=bool(getattr(args, "log_tools", False)),
         enable_mcp=bool(getattr(args, "enable_mcp", False)),
