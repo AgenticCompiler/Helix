@@ -160,7 +160,8 @@ def resolve_agent_type(payload: dict[str, object]) -> str | None:
     return None
 
 
-def should_manage_payload(payload: dict[str, object]) -> bool:
+def is_optimize_subagent_payload(payload: dict[str, object]) -> bool:
+    """Return True only for optimize subagent or typed-agent payloads."""
     agent_type = resolve_agent_type(payload)
     if agent_type is None:
         return False
@@ -266,10 +267,10 @@ __all__ = [
     "compiler_source_read_root",
     "prepare_compiler_source_context",
     "record_runtime_owner",
+    "is_optimize_subagent_payload",
     "resolve_agent_type",
     "resolve_workspace",
     "runtime_owner",
     "should_cleanup_for_subagent",
-    "should_manage_payload",
     "validate_existing_state",
 ]

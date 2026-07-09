@@ -244,6 +244,24 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
             self.assertEqual(result.stdout, "")
 
+    def test_session_start_bootstraps_baseline_state_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+
+            result = _run_hook(
+                "session_start.py",
+                {
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
+
     def test_subagent_start_bootstraps_baseline_state_for_optimize_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -296,6 +314,24 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
                 "session_end.py",
                 {
                     "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
+                    "cwd": str(workspace),
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertTrue((workspace / "baseline").exists())
+
+    def test_session_end_removes_runtime_dir_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / "baseline").mkdir()
+
+            result = _run_hook(
+                "session_end.py",
+                {
                     "cwd": str(workspace),
                 },
             )
@@ -403,6 +439,55 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
                 "blocked by triton-agent workspace policy",
                 payload["hookSpecificOutput"]["permissionDecisionReason"],
             )
+
+    def test_pretooluse_guard_denies_protected_runtime_read_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            protected_path = workspace / ".triton-agent" / "state.json"
+
+            result = _run_hook(
+                "pretooluse_guard.py",
+                {
+                    "cwd": str(workspace),
+                    "tool_name": "Read",
+                    "tool_input": {
+                        "file_path": str(protected_path),
+                    },
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            payload = json.loads(result.stdout)
+            self.assertEqual(
+                payload["hookSpecificOutput"]["permissionDecision"],
+                "deny",
+            )
+            self.assertIn(
+                "blocked by triton-agent workspace policy",
+                payload["hookSpecificOutput"]["permissionDecisionReason"],
+            )
+
+    def test_pretooluse_guard_allows_workspace_read_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            source_file = workspace / "kernel.py"
+            source_file.write_text("print('x')\n", encoding="utf-8")
+
+            result = _run_hook(
+                "pretooluse_guard.py",
+                {
+                    "cwd": str(workspace),
+                    "tool_name": "Read",
+                    "tool_input": {
+                        "file_path": str(source_file),
+                    },
+                },
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(result.stdout, "")
 
     def test_pretooluse_guard_allows_read_from_existing_compiler_source_checkout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

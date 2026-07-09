@@ -6,10 +6,10 @@ import sys
 
 from state_bootstrap import (
     bootstrap_runtime_state,
+    is_optimize_subagent_payload,
     record_runtime_owner,
     resolve_agent_type,
     resolve_workspace,
-    should_manage_payload,
 )
 
 
@@ -19,7 +19,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - hook must fail open
         print(f"triton-agent claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
         return 0
-    if not isinstance(payload, dict) or not should_manage_payload(payload):
+    if not isinstance(payload, dict) or not is_optimize_subagent_payload(payload):
         return 0
     workspace = resolve_workspace(payload)
     if workspace is None:

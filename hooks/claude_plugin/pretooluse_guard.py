@@ -15,7 +15,6 @@ from typing import Any
 from state_bootstrap import (
     compiler_source_read_root,
     resolve_workspace,
-    should_manage_payload,
 )
 
 
@@ -50,7 +49,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - hook must fail open
         print(f"triton-agent claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
         return 0
-    if not isinstance(payload, dict) or not should_manage_payload(payload):
+    if not isinstance(payload, dict):
         return 0
     workspace = resolve_workspace(payload)
     if workspace is None:
