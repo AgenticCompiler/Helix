@@ -32,9 +32,11 @@ Optimize target modes:
 - establish or reuse `baseline/`
 - open `opt-round-N/`, initialize round strategy state through `ascend-npu-optimize-state start-round`, and start `attempts.md`
 - choose the current analysis level
+- treat each round as one code-changing optimization attempt followed by canonical validation
 - make one coherent optimization attempt
 - optionally screen the direction cheaply with `probe-bench` when the available run-eval surface exposes it
 - validate correctness and benchmark performance
+- After the first canonical `run-bench` plus `compare-perf` conclusion for that attempt, stop editing the current round.
 - record the round outcome
 
 ## Stage 0: Baseline Setup
@@ -145,6 +147,7 @@ Optimize analysis is layered.
 - Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`, using `kernel`, `total-op`, or `mixed`.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
+- If the result is slower, inconclusive, or not worth promoting, close the round and carry the next optimization idea into a new round instead of revising the current round again.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal and follow its stop-or-continue instruction for the current session.

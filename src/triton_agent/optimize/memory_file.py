@@ -130,6 +130,9 @@ _ROUND_GATED_GUIDANCE_TEMPLATE = (
         ## Triton Agent Optimize Round Loop
 
         This workspace is under an optimize round loop.
+        Each optimize round is one code-changing optimization attempt plus its canonical validation.
+        After the first canonical `run-bench` plus `compare-perf` conclusion for a round, stop editing that round and record the outcome.
+        If the result is slower, inconclusive, or not worth promoting, move the next optimization idea into a new round instead of reusing the current round.
 
         """
     )

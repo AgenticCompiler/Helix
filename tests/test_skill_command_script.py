@@ -3803,6 +3803,14 @@ class SkillCommandScriptTests(unittest.TestCase):
             "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
             payload["hard_rules"],
         )
+        self.assertIn(
+            "Treat each round as one code-changing optimization attempt followed by canonical validation.",
+            payload["hard_rules"],
+        )
+        self.assertIn(
+            "After the first canonical `run-bench` plus `compare-perf` conclusion for a round, do not keep editing that round.",
+            payload["hard_rules"],
+        )
         self.assertIn("## State Update", attempts_text)
         self.assertIn("Source: start-round", attempts_text)
         self.assertEqual(completed.stderr, "")

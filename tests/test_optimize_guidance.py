@@ -256,6 +256,18 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "The CLI will inject previous round validation results directly into the next worker prompt when another round is needed.",
                 guidance_content,
             )
+            self.assertIn(
+                "Each optimize round is one code-changing optimization attempt plus its canonical validation.",
+                guidance_content,
+            )
+            self.assertIn(
+                "After the first canonical `run-bench` plus `compare-perf` conclusion for a round, stop editing that round and record the outcome.",
+                guidance_content,
+            )
+            self.assertIn(
+                "If the result is slower, inconclusive, or not worth promoting, move the next optimization idea into a new round instead of reusing the current round.",
+                guidance_content,
+            )
             self.assertNotIn("Read the role brief", guidance_content)
             self.assertNotIn("Worker and supervisor roles", guidance_content)
             self.assertNotIn(".triton-agent/roles/", guidance_content)

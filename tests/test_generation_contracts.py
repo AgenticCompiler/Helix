@@ -1007,6 +1007,20 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction", optimize)
         self.assertIn("You do not need an existing pattern file to justify every optimization round.", optimize)
 
+    def test_optimize_round_contract_limits_rounds_to_one_code_change(self) -> None:
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
+        failure_handling = _read(
+            "skills/triton/triton-npu-optimize/references/round-failure-handling.md"
+        )
+
+        self.assertIn("one code-changing optimization attempt", optimize)
+        self.assertIn(
+            "After the first canonical `run-bench` plus `compare-perf` conclusion for that attempt, stop editing the current round.",
+            optimize,
+        )
+        self.assertIn("move the next optimization idea into a new round", failure_handling)
+        self.assertNotIn("if yes, keep iterating within the same round", failure_handling)
+
     def test_optimize_skill_records_learned_lessons(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         self.assertIn("learned_lessons.md", optimize)

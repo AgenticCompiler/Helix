@@ -45,9 +45,9 @@
 
 If a round is correct but slower:
 
-- decide whether the round idea is still promising
-- if yes, keep iterating within the same round
-- if not, preserve the round summary as a failed or non-promoted branch and choose a different validated parent for the next round
+- preserve the round summary as a failed or non-promoted branch
+- do not reopen the current round for another optimization edit after the first canonical benchmark conclusion
+- move the next optimization idea into a new round that starts from the best validated parent for that next idea
 
 Do not promote a slower round to current best status.
 

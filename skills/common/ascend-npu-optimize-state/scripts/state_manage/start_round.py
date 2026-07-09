@@ -12,6 +12,8 @@ from state_manage.state_machine import (
 
 HARD_RULES = (
     "Only one optimize round may be active at a time.",
+    "Treat each round as one code-changing optimization attempt followed by canonical validation.",
+    "After the first canonical `run-bench` plus `compare-perf` conclusion for a round, do not keep editing that round.",
     "Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. This is cheating behavior and is strictly prohibited.",
     "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
     "Do not treat the next round as a blind parameter sweep. If you need to tune parameters, prefer the `autotune` optimization pattern.",
