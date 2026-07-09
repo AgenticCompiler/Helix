@@ -43,6 +43,10 @@ class AgentHookStageTests(unittest.TestCase):
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
             self.assertFalse((templates_root / "codex" / "policy.json").exists())
             self.assertTrue((templates_root / "codex" / "pretooluse_guard.py").exists())
+            self.assertIn(
+                "${CODEX_PROJECT_DIR}",
+                (templates_root / "codex" / "hooks.json").read_text(encoding="utf-8"),
+            )
             self.assertTrue((templates_root / "claude" / "pretooluse_guard.py").exists())
             self.assertTrue((templates_root / "claude" / "settings.json").exists())
             self.assertTrue((Path(__file__).resolve().parents[1] / "src" / "hook_runtime").is_dir())
@@ -52,6 +56,9 @@ class AgentHookStageTests(unittest.TestCase):
             hooks_json = workspace / ".codex" / "hooks.json"
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             policy_json = hook_dir / "policy.json"
+            resolved_workspace = workspace.resolve()
+            resolved_hook_dir = resolved_workspace / ".codex" / "triton-agent-hooks"
+            resolved_policy_json = resolved_hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
             hook_runtime_dir = hook_dir / "hook_runtime"
             pretooluse_adapter_module = hook_runtime_dir / "pretooluse_adapter.py"
@@ -75,11 +82,17 @@ class AgentHookStageTests(unittest.TestCase):
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python .codex/triton-agent-hooks/tool_trace_hook.py --policy .codex/triton-agent-hooks/policy.json --event PreToolUse",
+                                "command": (
+                                    f"python \"{resolved_hook_dir / 'tool_trace_hook.py'}\" "
+                                    f"--policy \"{resolved_policy_json}\" --event PreToolUse"
+                                ),
                             },
                             {
                                 "type": "command",
-                                "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json",
+                                "command": (
+                                    f"python3 \"{resolved_hook_dir / 'pretooluse_guard.py'}\" "
+                                    f"--policy \"{resolved_policy_json}\""
+                                ),
                             }
                         ],
                     },
@@ -110,6 +123,46 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertFalse(hooks_json.exists())
             self.assertFalse(hook_dir.exists())
             self.assertTrue((workspace / ".codex").exists())
+
+    def test_prepare_codex_hooks_quotes_absolute_command_paths_when_workspace_contains_spaces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace with spaces"
+            workspace.mkdir()
+
+            state = prepare_codex_hooks(Path(__file__).resolve().parents[1] / "hooks", workspace)
+
+            hooks_json = workspace / ".codex" / "hooks.json"
+            resolved_workspace = workspace.resolve()
+            resolved_hook_dir = resolved_workspace / ".codex" / "triton-agent-hooks"
+            resolved_policy_json = resolved_hook_dir / "policy.json"
+            hooks_config = json.loads(hooks_json.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                hooks_config["hooks"]["PreToolUse"],
+                [
+                    {
+                        "matcher": "Bash|Read|Grep|Glob|Edit|MultiEdit|Write",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": (
+                                    f"python \"{resolved_hook_dir / 'tool_trace_hook.py'}\" "
+                                    f"--policy \"{resolved_policy_json}\" --event PreToolUse"
+                                ),
+                            },
+                            {
+                                "type": "command",
+                                "command": (
+                                    f"python3 \"{resolved_hook_dir / 'pretooluse_guard.py'}\" "
+                                    f"--policy \"{resolved_policy_json}\""
+                                ),
+                            },
+                        ],
+                    },
+                ],
+            )
+
+            self.assertEqual(cleanup_hook_stage(state), [])
 
     def test_prepare_opencode_hooks_stages_workspace_policy_and_cleans_owned_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,12 +235,19 @@ class AgentHookStageTests(unittest.TestCase):
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
+            self.assertIn(
+                "${CLAUDE_PROJECT_DIR}",
+                (templates_root / "claude" / "settings.json").read_text(encoding="utf-8"),
+            )
 
             state = prepare_claude_hooks(templates_root, workspace)
 
             hook_dir = workspace / ".claude" / "triton-agent-hooks"
             settings_json = hook_dir / "settings.json"
             policy_json = hook_dir / "policy.json"
+            resolved_workspace = workspace.resolve()
+            resolved_hook_dir = resolved_workspace / ".claude" / "triton-agent-hooks"
+            resolved_policy_json = resolved_hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
             hook_runtime_dir = hook_dir / "hook_runtime"
             pretooluse_adapter_module = hook_runtime_dir / "pretooluse_adapter.py"
@@ -199,10 +259,6 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertTrue(pretooluse_adapter_module.exists())
             self.assertTrue(tool_use_decision_module.exists())
             self.assertEqual(state.created_paths, [settings_json, hook_dir])
-            self.assertEqual(
-                settings_json.read_text(encoding="utf-8"),
-                (templates_root / "claude" / "settings.json").read_text(encoding="utf-8"),
-            )
 
             settings = json.loads(settings_json.read_text(encoding="utf-8"))
             self.assertEqual(
@@ -215,9 +271,9 @@ class AgentHookStageTests(unittest.TestCase):
                                 "type": "command",
                                 "command": "python3",
                                 "args": [
-                                    ".claude/triton-agent-hooks/pretooluse_guard.py",
+                                    str(resolved_hook_dir / "pretooluse_guard.py"),
                                     "--policy",
-                                    ".claude/triton-agent-hooks/policy.json",
+                                    str(resolved_policy_json),
                                 ],
                             }
                         ],
