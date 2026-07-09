@@ -5,12 +5,18 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from triton_agent.backends.hook_common import HookStageOptions, HookStageState, cleanup_hook_stage
+from triton_agent.backends.hook_common import (
+    HookStageOptions,
+    HookStageState,
+    cleanup_hook_stage,
+    replace_string_placeholder,
+)
 from triton_agent.trace.core import append_trace_event, utc_timestamp
 
 
 _CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"
 _CODEX_HOOKS_JSON = Path(".codex") / "hooks.json"
+_CODEX_PROJECT_DIR = "${CODEX_PROJECT_DIR}"
 _CODEX_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
     "and do not inspect protected runner-managed files (temporary optimize runtime files, "
@@ -64,7 +70,7 @@ def prepare_codex_hooks(
     state = HookStageState(created_paths=created_paths)
     try:
         hooks_json.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(template_dir / "hooks.json", hooks_json)
+        _write_codex_hooks_config(template_dir / "hooks.json", hooks_json, policy_workspace)
         created_paths.append(hooks_json)
 
         hook_dir.mkdir(parents=True)
@@ -110,6 +116,12 @@ def _write_codex_policy(
         "deny_message": _CODEX_DENY_MESSAGE,
     }
     policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_codex_hooks_config(template_path: Path, hooks_path: Path, project_dir: Path) -> None:
+    hooks_config = json.loads(template_path.read_text(encoding="utf-8"))
+    hooks_config = replace_string_placeholder(hooks_config, _CODEX_PROJECT_DIR, str(project_dir))
+    hooks_path.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
 
 
 def _allow_read_roots(workspace: Path, extra_allowed_read_roots: Sequence[Path]) -> list[str]:
