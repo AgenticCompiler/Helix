@@ -46,6 +46,20 @@ def _render_high_priority_pattern_block(*, optimize_knowledge_skill_name: str | 
     )
 
 
+def _format_speedup_target(min_speedup: float) -> str:
+    return f"{min_speedup:.2f}x"
+
+
+def _min_speedup_guidance_lines(*, min_speedup: float | None) -> list[str]:
+    if min_speedup is None:
+        return []
+    return [
+        f"Optimize session target: reach at least {_format_speedup_target(min_speedup)} geomean speedup over the baseline.",
+        "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+        "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+    ]
+
+
 def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
     if optimize_target == "operator":
         return [
@@ -154,6 +168,7 @@ class MemoryFileManager:
         agent_name: str,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -168,6 +183,7 @@ class MemoryFileManager:
                 guidance_filename=self.guidance_filename(agent_name),
                 language=language,
                 optimize_target=optimize_target,
+                min_speedup=min_speedup,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
@@ -183,6 +199,7 @@ class MemoryFileManager:
         agent_name: str,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -199,6 +216,7 @@ class MemoryFileManager:
                 guidance_filename=guidance_filename,
                 language=language,
                 optimize_target=optimize_target,
+                min_speedup=min_speedup,
                 include_supervisor_handoff=include_supervisor_handoff,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
@@ -278,6 +296,7 @@ class MemoryFileManager:
         guidance_filename: str,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -308,6 +327,9 @@ class MemoryFileManager:
                 _optimize_target_guidance_lines(optimize_target=optimize_target)
             )
             + _render_line_block(
+                _min_speedup_guidance_lines(min_speedup=min_speedup)
+            )
+            + _render_line_block(
                 compiler_source_analysis_lines(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
@@ -325,6 +347,7 @@ class MemoryFileManager:
         guidance_filename: str,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -354,6 +377,9 @@ class MemoryFileManager:
             ),
             compiler_source_block=_render_line_block(
                 _optimize_target_guidance_lines(optimize_target=optimize_target)
+            )
+            + _render_line_block(
+                _min_speedup_guidance_lines(min_speedup=min_speedup)
             )
             + _render_line_block(
                 compiler_source_analysis_lines(

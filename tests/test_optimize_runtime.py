@@ -23,6 +23,7 @@ from triton_agent.optimize.execution import (
     _count_round_directories,
     _latest_round_dir,
 )
+from triton_agent.optimize.env import optimize_min_speedup_env_name
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.prompts import build_optimize_round_prompt
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
@@ -858,6 +859,42 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 "torch-npu-optimize-knowledge",
                 request.staged_skill_names or (),
             )
+
+    def test_build_optimize_request_preserves_min_speedup_and_uses_single_round_batches(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=5,
+                min_speedup=1.2,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                round_batch_size=3,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertEqual(request.min_speedup, 1.2)
+            self.assertIsNotNone(request.extra_env)
+            assert request.extra_env is not None
+            self.assertEqual(request.extra_env[optimize_min_speedup_env_name()], "1.2")
+            self.assertEqual(request.current_round, 1)
+            self.assertEqual(request.final_round, 1)
 
     def test_build_optimize_request_maps_v2_knowledge_to_stable_staged_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1811,6 +1848,84 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Execute those rounds strictly one at a time.", runner.requests[0].prompt)
             self.assertIn("This invocation owns rounds 3 through 3.", runner.requests[1].prompt)
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
+
+    def test_multi_invocation_controller_stops_early_when_min_speedup_target_is_met(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="torch-npu-profiler",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="",
+                workdir=workdir,
+                min_rounds=5,
+                min_speedup=1.1,
+                round_mode="checked",
+                round_batch_size=3,
+                current_round=1,
+                final_round=1,
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.requests: list[AgentRequest] = []
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del stdout, stderr
+                    self.requests.append(request)
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                    )
+                    return AgentResult(return_code=0, stdout="worker ok", stderr="")
+
+            self_outer = self
+            runner = FakeRunner()
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, runner),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            with patch(
+                "triton_agent.optimize.execution.check_round",
+                return_value=SimpleNamespace(
+                    kind="round",
+                    status="pass",
+                    issues=(),
+                    summary="round check passed",
+                ),
+            ):
+                with patch(
+                    "triton_agent.optimize.execution.best_completed_round_geomean_speedup",
+                    side_effect=[None, 1.15],
+                ):
+                    result = controller.run_round_loop(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(len(runner.requests), 1)
+            self.assertIn("This invocation owns rounds 1 through 1.", runner.requests[0].prompt)
 
     def test_multi_invocation_controller_failed_worker_run_preserves_pt_files_with_round_cleanup_policy(
         self,
