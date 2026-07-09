@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List
 
@@ -63,6 +63,7 @@ def staged_skill_dir(backend: str) -> Path:
 @dataclass
 class SkillLinkSet:
     created_paths: List[Path]
+    refreshed_paths: List[Path] = field(default_factory=lambda: [])
     temporary_git_dir: Path | None = None
 
 
@@ -158,17 +159,21 @@ class SkillLinkManager:
         target: Path,
         skill_names: tuple[str, ...] | None,
         skill_sources: dict[str, str] | None = None,
-    ) -> list[Path]:
+    ) -> tuple[list[Path], list[Path]]:
         created: list[Path] = []
+        refreshed: list[Path] = []
         for staged_name, skill_dir in self._iter_selected_skill_dirs(skill_names, skill_sources):
             staged_path = target / staged_name
             if staged_path.exists():
                 if staged_path.is_symlink():
                     raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
-                continue
+                if not staged_path.is_dir():
+                    raise RuntimeError(f"Skill path already exists and is not a directory: {staged_path}")
+                self._remove_path(staged_path)
+                refreshed.append(staged_path)
             shutil.copytree(skill_dir, staged_path, symlinks=False)
             created.append(staged_path)
-        return created
+        return created, refreshed
 
     def prepare_skills(
         self,
@@ -200,20 +205,23 @@ class SkillLinkManager:
                 return SkillLinkSet(created, temporary_git_dir=temporary_git_dir)
 
             self._prepare_target_dir(target)
+            refreshed: list[Path] = []
 
             if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
-                created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+                created_paths, refreshed = self._copy_selected_skill_dirs(target, skill_names, skill_sources)
+                created.extend(created_paths)
                 if created:
                     result = [target]
                     if not root_pre_existed:
                         result.insert(0, backend_root_path)
-                    return SkillLinkSet(result, temporary_git_dir=temporary_git_dir)
-                return SkillLinkSet([], temporary_git_dir=temporary_git_dir)
+                    return SkillLinkSet(result, refreshed_paths=refreshed, temporary_git_dir=temporary_git_dir)
+                return SkillLinkSet([], refreshed_paths=refreshed, temporary_git_dir=temporary_git_dir)
 
-            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+            created_paths, refreshed = self._copy_selected_skill_dirs(target, skill_names, skill_sources)
+            created.extend(created_paths)
             if not root_pre_existed:
                 created.insert(0, backend_root_path)
-            return SkillLinkSet(created, temporary_git_dir=temporary_git_dir)
+            return SkillLinkSet(created, refreshed_paths=refreshed, temporary_git_dir=temporary_git_dir)
         except Exception:
             if temporary_git_dir is not None:
                 self._remove_path(temporary_git_dir)
@@ -235,9 +243,14 @@ class SkillLinkManager:
 
     def describe_prepare(self, link_set: SkillLinkSet) -> list[str]:
         messages: list[str] = []
+        refreshed_paths = set(link_set.refreshed_paths)
         if link_set.temporary_git_dir is not None:
             messages.append(f"created temporary git repo {link_set.temporary_git_dir}")
-        messages.extend(f"created skill copy {path}" for path in link_set.created_paths)
+        for path in link_set.created_paths:
+            if path in refreshed_paths:
+                messages.append(f"refreshed skill copy {path}")
+                continue
+            messages.append(f"created skill copy {path}")
         if not messages:
             return ["No new skill copies were created."]
         return messages

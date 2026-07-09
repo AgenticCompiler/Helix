@@ -10,6 +10,26 @@ from pathlib import Path
 from typing import Any
 
 
+def _cache_cleanup_guidance() -> str:
+    return (
+        'Clear workspace "__pycache__" directories and stale TileLang memoize files '
+        '(for example `.pkl_memoize_py3`) before retrying the capture.'
+    )
+
+
+def _no_kernels_found_message(operator_file: Path) -> str:
+    return (
+        f"No compiled TileLang kernels found in {operator_file}. "
+        "Add a module-level call that triggers @tilelang.jit compilation during import, "
+        "for example `compiled_kernel = kernel_func(...)`, and expose the compiled kernel "
+        "through a name that does not start with `_`."
+    )
+
+
+def _compilation_failure_message(prefix: str, exc: Exception) -> str:
+    return f"{prefix}: {exc}. {_cache_cleanup_guidance()}"
+
+
 def _resolve_existing_path(raw_path: str, label: str) -> Path:
     path = Path(raw_path).expanduser().resolve()
     if not path.exists():
@@ -65,17 +85,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         module = _load_operator_module(operator_file)
-    except ImportError as exc:
-        print(f"Failed to load operator: {exc}", file=sys.stderr)
+    except Exception as exc:
+        print(_compilation_failure_message("Failed to load operator", exc), file=sys.stderr)
         return 1
 
     kernels = _find_kernels(module)
     if not kernels:
-        print(
-            f"No compiled TileLang kernels found in {operator_file}. "
-            "Ensure the operator calls a @tilelang.jit factory at module level.",
-            file=sys.stderr,
-        )
+        print(_no_kernels_found_message(operator_file), file=sys.stderr)
         return 1
 
     if args.kernel:
@@ -93,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             print(kernel.get_kernel_source())
         except Exception as exc:
-            print(f"// Error: {exc}", file=sys.stderr)
+            print(_compilation_failure_message(f"Compilation failed for kernel '{name}'", exc), file=sys.stderr)
             return 1
 
     return 0

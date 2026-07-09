@@ -1,9 +1,11 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -70,7 +72,7 @@ class DistillWorkflowTests(unittest.TestCase):
                 if output_label == "[op] [distill]":
                     self.assertEqual(kwargs["output_label"], "[op] [distill]")
                     self.assertIn("ascend-npu-distill-patterns", prompt)
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps(
                             {
                                 "matched_patterns": ["tiling"],
@@ -92,7 +94,7 @@ class DistillWorkflowTests(unittest.TestCase):
                             "unaligned candidate should be deleted before the next simulate iteration",
                         )
                     (workdir / "generated_foo.py").write_text("x = 2\n", encoding="utf-8")
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps({"summary": "generated", "applied_patterns": ["tiling"]}),
                         encoding="utf-8",
                     )
@@ -100,7 +102,7 @@ class DistillWorkflowTests(unittest.TestCase):
                     self.assertIn("[op] [analyze-iter-", str(kwargs["output_label"]))
                     self.assertIn("ascend-npu-distill-patterns", prompt)
                     analysis_count += 1
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps(
                             {
                                 "aligned": analysis_count == 2,
@@ -157,6 +159,88 @@ class DistillWorkflowTests(unittest.TestCase):
             ]
             self.assertEqual(len(simulate_calls), 2)
             promote.assert_called_once_with(knowledge_dir, language="triton")
+
+    def test_simulate_json_stays_in_simulator_workdir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            op_dir = root / "op"
+            op_dir.mkdir()
+            (op_dir / "bar.py").write_text("x = 1\n", encoding="utf-8")
+            (op_dir / "opt_bar.py").write_text("x = 2\n", encoding="utf-8")
+            skills_dir = root / "skills"
+            knowledge_dir = skills_dir / "triton-npu-optimize-knowledge"
+            knowledge_dir.mkdir(parents=True)
+            fake_cwd = root / "cwd"
+            fake_cwd.mkdir()
+
+            def agent_runner(**kwargs: object) -> AgentResult:
+                prompt = str(kwargs["prompt"])
+                output_label = str(kwargs["output_label"])
+                workdir = Path(kwargs["workdir"])  # type: ignore[arg-type]
+                if output_label == "[op] [distill]":
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
+                        json.dumps(
+                            {
+                                "matched_patterns": ["tiling"],
+                                "updated_patterns": [],
+                                "summary": "uses tiling",
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                elif "[simulate-iter-" in output_label:
+                    (workdir / "generated_bar.py").write_text("x = 2\n", encoding="utf-8")
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
+                        json.dumps({"summary": "generated", "applied_patterns": ["tiling"]}),
+                        encoding="utf-8",
+                    )
+                elif "[analyze-iter-" in output_label:
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
+                        json.dumps(
+                            {
+                                "aligned": True,
+                                "summary": "candidate aligned",
+                                "updated_patterns": [],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            config = DistillConfig(
+                input_root=root,
+                skills_dir=skills_dir,
+                output_dir=root / "distill-output",
+                source="diff",
+                agent_name="codex",
+                max_iterations=1,
+                concurrency=1,
+                stream_output=False,
+                verbose=False,
+                force=False,
+                skip_existing=False,
+                promote_converged_skills=False,
+                post_update_review=False,
+            )
+
+            previous_cwd = Path.cwd()
+            os.chdir(fake_cwd)
+            try:
+                with (
+                    patch(
+                        "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                        return_value=knowledge_dir,
+                    ),
+                    patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+                ):
+                    results = run_distill(config, agent_runner=agent_runner)
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].status, "aligned")
+            self.assertTrue((op_dir / "distill-simulator" / "simulate-bar-1.json").is_file())
+            self.assertFalse((fake_cwd / "simulate-bar-1.json").exists())
 
     def test_git_repo_plan_agent_receives_staged_skill_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -274,7 +358,7 @@ class DistillWorkflowTests(unittest.TestCase):
                 output_label = str(kwargs["output_label"])
                 workdir = Path(kwargs["workdir"])  # type: ignore[arg-type]
                 if output_label == "[op] [distill]":
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps(
                             {
                                 "matched_patterns": [],
@@ -286,12 +370,12 @@ class DistillWorkflowTests(unittest.TestCase):
                     )
                 elif "[simulate-iter-" in output_label:
                     (workdir / "generated_foo.py").write_text("x = 2\n", encoding="utf-8")
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps({"summary": "generated"}),
                         encoding="utf-8",
                     )
                 elif "[analyze-iter-" in output_label:
-                    _json_path_from_prompt(prompt).write_text(
+                    _json_path_from_prompt(prompt, workdir=workdir).write_text(
                         json.dumps(
                             {
                                 "aligned": True,
@@ -334,14 +418,16 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertTrue((output_dir / "updated_patterns.json").is_file())
 
 
-def _json_path_from_prompt(prompt: str) -> Path:
+def _json_path_from_prompt(prompt: str, *, workdir: Optional[Path] = None) -> Path:
     for line in prompt.splitlines():
         if line.startswith("Write JSON to "):
             value = line.removeprefix("Write JSON to ").removesuffix(" with this shape:")
-            return Path(value)
+            path = Path(value)
+            return workdir / path if workdir is not None and not path.is_absolute() else path
         if line.startswith("Also write JSON to "):
             value = line.removeprefix("Also write JSON to ").removesuffix(" with this shape:")
-            return Path(value)
+            path = Path(value)
+            return workdir / path if workdir is not None and not path.is_absolute() else path
     raise AssertionError("prompt did not include JSON output path")
 
 

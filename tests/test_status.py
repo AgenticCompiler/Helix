@@ -50,6 +50,37 @@ class OptimizeStatusTests(unittest.TestCase):
         )
         return state_path
 
+    def _write_round_state(
+        self,
+        round_dir: Path,
+        *,
+        perf_artifact: str,
+        correctness_status: str = "passed",
+        benchmark_status: str = "passed",
+        effective_metric_source: str = "kernel",
+    ) -> Path:
+        state_path = round_dir / "round-state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "round": round_dir.name,
+                    "parent_round": "baseline",
+                    "hypothesis": "test round",
+                    "evidence_sources": ["benchmark"],
+                    "correctness_status": correctness_status,
+                    "benchmark_status": benchmark_status,
+                    "perf_artifact": perf_artifact,
+                    "comparison_target_path": "../baseline/perf.txt",
+                    "effective_metric_source": effective_metric_source,
+                    "summary_path": "summary.md",
+                    "opt_note_updated": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return state_path
+
     def test_parse_logged_best_round_prefers_overall_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             note = Path(tmp) / "opt-note.md"
@@ -134,6 +165,8 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -169,6 +202,8 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 5\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -213,6 +248,8 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -250,6 +287,7 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
             self._write_verify_state(
                 workspace,
                 "verify-20260421-100000",
@@ -267,6 +305,7 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertTrue(status.verified)
             self.assertAlmostEqual(status.verified_geomean_speedup or 0.0, 1.23)
+
     def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -281,6 +320,7 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
             latest_state = self._write_verify_state(
                 workspace,
                 "verify-20260421-120000",
@@ -313,6 +353,8 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 19\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -342,6 +384,8 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 0.9\nlatency-b: 60\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
+            self._write_round_state(round_two, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -429,7 +473,7 @@ class OptimizeStatusTests(unittest.TestCase):
                             "correctness_status": "passed",
                             "benchmark_status": "passed",
                             "perf_artifact": "opt_kernel_perf.txt",
-                            "comparison_target": "baseline/perf.txt",
+                            "comparison_target_path": "baseline/perf.txt",
                             "effective_metric_source": "total-op",
                             "summary_path": "summary.md",
                             "opt_note_updated": True
@@ -445,14 +489,107 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (50 / 40 * 50 / 40) ** 0.5)
             self.assertEqual(status.warnings, ())
 
-    def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
+    def test_inspect_optimize_status_workspace_honors_metric_source_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
+                        "latency-b: 10",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 5",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":80.0}]}',
+                        "latency-b: 5",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":80.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
+                        "latency-b: 8",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self._write_round_state(
+                round_one,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+            self._write_round_state(
+                round_two,
+                perf_artifact="opt_kernel_perf.txt",
+                effective_metric_source="kernel",
+            )
+
+            default_status = inspect_optimize_status_workspace(workspace)
+            overridden_status = inspect_optimize_status_workspace(workspace, metric_source="total-op")
+
+            self.assertEqual(default_status.best_round, "round-1")
+            self.assertEqual(overridden_status.best_round, "round-2")
+            self.assertEqual(
+                [round.effective_metric_source for round in overridden_status.rounds],
+                ["total-op", "total-op"],
+            )
+
+    def test_inspect_optimize_status_workspace_prefers_state_declared_baseline_perf_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "other_perf.txt").write_text(
+                "latency-a: 999\nlatency-b: 999\n",
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -466,7 +603,7 @@ class OptimizeStatusTests(unittest.TestCase):
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
                         '  "bench_mode": "torch-npu-profiler",',
-                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "perf_artifact": "kernel_perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
                         '  "baseline_established": true',
@@ -487,12 +624,65 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
             self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-1")
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
 
-    def test_inspect_optimize_status_workspace_accepts_legacy_round_perf_txt(self) -> None:
+    def test_inspect_optimize_status_workspace_warns_when_state_declared_baseline_perf_is_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "other_perf.txt").write_text(
+                "latency-a: 999\nlatency-b: 999\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "prepared",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "torch-npu-profiler",',
+                        '  "perf_artifact": "missing_perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "warning")
+            self.assertIn(
+                "perf_artifact points to a missing file: missing_perf.txt",
+                status.warnings,
+            )
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
+            self.assertNotIn("missing baseline perf data", status.warnings)
+
+    def test_inspect_optimize_status_workspace_skips_legacy_round_perf_txt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
@@ -515,8 +705,9 @@ class OptimizeStatusTests(unittest.TestCase):
 
             status = inspect_optimize_status_workspace(workspace)
 
-            self.assertEqual(status.state, "ok")
-            self.assertEqual(status.best_round, "round-2")
+            self.assertEqual(status.state, "warning")
+            self.assertIsNone(status.best_round)
+            self.assertIn("missing comparable round perf data", status.warnings)
 
     def test_inspect_optimize_status_workspace_prefers_non_opt_baseline_perf_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -536,6 +727,7 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 15\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -561,6 +753,7 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_Gemm_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -586,6 +779,7 @@ class OptimizeStatusTests(unittest.TestCase):
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
+            self._write_round_state(round_one, perf_artifact="opt_Gemm_perf.txt")
 
             status = inspect_optimize_status_workspace(workspace)
 
@@ -604,6 +798,43 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "warning")
             self.assertIn("found multiple baseline perf files", status.warnings)
             self.assertNotIn("missing baseline perf data", status.warnings)
+
+    def test_inspect_optimize_status_workspace_skips_failed_correctness_round_with_perf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            invalid_round = workspace / "opt-round-1"
+            valid_round = workspace / "opt-round-2"
+            invalid_round.mkdir()
+            valid_round.mkdir()
+            (invalid_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 1\nlatency-b: 1\n",
+                encoding="utf-8",
+            )
+            (valid_round / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+            self._write_round_state(
+                invalid_round,
+                perf_artifact="opt_kernel_perf.txt",
+                correctness_status="failed",
+            )
+            self._write_round_state(valid_round, perf_artifact="opt_kernel_perf.txt")
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-2")
+            self.assertEqual([round.round_name for round in status.rounds], ["round-2"])
+            self.assertIn(
+                "skipping opt-round-1 because correctness_status=failed",
+                status.warnings,
+            )
 
     def test_workspace_has_optimize_artifacts_detects_single_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

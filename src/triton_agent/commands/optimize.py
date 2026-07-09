@@ -27,6 +27,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         validate_optimize_options(
             CommandKind.OPTIMIZE,
             min_rounds=options.min_rounds,
+            min_speedup=options.min_speedup,
             round_batch_size=options.round_batch_size,
             max_concurrency=None,
             resume_mode=options.resume_mode,
@@ -105,13 +106,19 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:
-        max_concurrency = resolve_batch_concurrency(args.concurrency)
+        max_concurrency = resolve_batch_concurrency(
+            args.concurrency,
+            getattr(args, "npu_devices", None),
+            getattr(args, "workers_per_npu", None),
+            ignore_workers_per_npu=bool(getattr(args, "enable_mcp", False)),
+        )
     except ValueError as exc:
         parser.error(str(exc))
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE_BATCH,
             min_rounds=options.min_rounds,
+            min_speedup=options.min_speedup,
             round_batch_size=options.round_batch_size,
             max_concurrency=max_concurrency,
             resume_mode=options.resume_mode,
@@ -179,6 +186,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", 5),
+        min_speedup=getattr(args, "min_speedup", None),
         round_batch_size=round_batch_size,
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
@@ -187,6 +195,8 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
+        npu_devices=getattr(args, "npu_devices", None),
+        workers_per_npu=getattr(args, "workers_per_npu", None),
         prompt=getattr(args, "prompt", None),
         post_optimize_command=post_optimize_command,
         target_chip=target_chip,

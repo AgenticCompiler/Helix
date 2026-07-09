@@ -1,3 +1,4 @@
+import inspect
 import importlib.util
 import json
 import subprocess
@@ -47,16 +48,23 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertIsNotNone(convert_skill_names)
 
         assets = build_claude_optimize_plugin_assets()
+        expected_optimize_skill_names = tuple(
+            skill_name
+            for skill_name in (optimize_skill_names or ())
+            if skill_name != "torch-npu-optimize-knowledge"
+        )
 
         self.assertEqual(
             tuple(sorted(assets.optimize_skill_names)),
-            tuple(sorted(optimize_skill_names or ())),
+            tuple(sorted(expected_optimize_skill_names)),
         )
         self.assertEqual(
             tuple(sorted(assets.convert_skill_names)),
             tuple(sorted(convert_skill_names or ())),
         )
-        expected_skill_names = tuple(dict.fromkeys((optimize_skill_names or ()) + (convert_skill_names or ())))
+        expected_skill_names = tuple(
+            dict.fromkeys(expected_optimize_skill_names + (convert_skill_names or ()))
+        )
         self.assertEqual(
             tuple(sorted(assets.skill_names)),
             tuple(sorted(expected_skill_names)),
@@ -67,18 +75,27 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         if convert_skill_sources:
             expected_skill_sources.update(convert_skill_sources)
         self.assertEqual(assets.skill_sources, expected_skill_sources or None)
+        self.assertNotIn("torch-npu-optimize-knowledge", assets.optimize_skill_names)
+        self.assertNotIn("torch-npu-optimize-knowledge", assets.skill_names)
+
+    def test_plugin_builder_api_does_not_expose_optimize_target(self) -> None:
+        asset_parameters = inspect.signature(build_claude_optimize_plugin_assets).parameters
+        builder_parameters = inspect.signature(build_claude_optimize_plugin).parameters
+
+        self.assertNotIn("optimize_target", asset_parameters)
+        self.assertNotIn("optimize_target", builder_parameters)
 
     def test_plugin_builder_renders_optimize_and_convert_agents_without_standalone_prompt_files(self) -> None:
         assets = build_claude_optimize_plugin_assets()
 
-        self.assertIn("agents/triton-agent-optimize.md", assets.text_files)
+        self.assertIn("agents/triton-agent-optimizer.md", assets.text_files)
         self.assertIn("agents/triton-agent-convert.md", assets.text_files)
         self.assertNotIn("CLAUDE.md", assets.text_files)
         self.assertNotIn("prompts.md", assets.text_files)
-        agent_text = assets.text_files["agents/triton-agent-optimize.md"]
+        agent_text = assets.text_files["agents/triton-agent-optimizer.md"]
         convert_agent_text = assets.text_files["agents/triton-agent-convert.md"]
         readme_text = assets.text_files["README.md"]
-        self.assertIn("name: triton-agent-optimize", agent_text)
+        self.assertIn("name: triton-agent-optimizer", agent_text)
         self.assertIn("Use `triton-npu-optimize` as the primary workflow skill.", agent_text)
         self.assertIn("## Fixed Optimize Modes", agent_text)
         self.assertIn("test-mode: `differential`", agent_text)
@@ -110,6 +127,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertIn("a5-force-simt-only-discrete-access", agent_text)
         self.assertIn("autotune", agent_text)
         self.assertIn("grid-flatten-and-ub-buffering", agent_text)
+        self.assertNotIn("torch-npu-optimize-knowledge", agent_text)
         self.assertNotIn("triton-npu-optimize-submit-baseline", agent_text)
         self.assertNotIn("triton-npu-optimize-start-round", agent_text)
         self.assertNotIn("triton-npu-optimize-submit-round", agent_text)
@@ -140,9 +158,11 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
 
             self.assertEqual(built_dir, output_dir.resolve())
             self.assertTrue((built_dir / ".claude-plugin" / "plugin.json").exists())
-            self.assertTrue((built_dir / "agents" / "triton-agent-optimize.md").exists())
+            self.assertTrue((built_dir / "agents" / "triton-agent-optimizer.md").exists())
             self.assertTrue((built_dir / "agents" / "triton-agent-convert.md").exists())
             self.assertTrue((built_dir / "hooks" / "hooks.json").exists())
+            self.assertTrue((built_dir / "hooks" / "subagent_start.py").exists())
+            self.assertTrue((built_dir / "hooks" / "subagent_stop.py").exists())
             self.assertTrue((built_dir / "skills").is_dir())
             self.assertFalse((built_dir / "CLAUDE.md").exists())
             self.assertFalse((built_dir / "prompts.md").exists())
@@ -166,7 +186,14 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertFalse((built_dir / "python_support").exists())
             self.assertTrue((built_dir / "skills" / "ascend-npu-optimize-state").is_dir())
             self.assertTrue((built_dir / "skills" / "triton-npu-convert-pytorch-operator").is_dir())
+            self.assertFalse((built_dir / "skills" / "torch-npu-optimize-knowledge").exists())
             self.assertFalse((built_dir / "skills" / "tilelang-npu-convert-pytorch-operator").exists())
+
+            hooks_manifest = json.loads((built_dir / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+            self.assertIn("SessionStart", hooks_manifest["hooks"])
+            self.assertIn("SessionEnd", hooks_manifest["hooks"])
+            self.assertIn("SubagentStart", hooks_manifest["hooks"])
+            self.assertIn("SubagentStop", hooks_manifest["hooks"])
 
     def test_build_plugin_copies_latest_hook_runtime_tool_use_decision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,7 +246,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
                 [sys.executable, str(plugin_dir / "hooks" / "session_start.py")],
                 input=json.dumps(
                     {
-                        "agent_type": "triton-optimizer:triton-agent-optimize",
+                        "agent_type": "triton-optimizer:triton-agent-optimizer",
                         "cwd": str(workspace),
                     }
                 ),
@@ -234,6 +261,90 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             )
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
+
+    def test_built_plugin_session_start_bootstraps_baseline_state_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "session_start.py")],
+                input=json.dumps(
+                    {
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
+
+    def test_built_plugin_session_end_removes_runtime_dir_without_agent_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / "baseline").mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "session_end.py")],
+                input=json.dumps(
+                    {
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertTrue((workspace / "baseline").exists())
+
+    def test_built_plugin_subagent_start_bootstraps_baseline_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "subagent_start.py")],
+                input=json.dumps(
+                    {
+                        "hook_event_name": "SubagentStart",
+                        "subagent_type": "triton-agent-optimizer",
+                        "agent_id": "agent-opt-1",
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            owner_payload = json.loads(
+                (workspace / ".triton-agent" / "plugin-owner.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"})
 
 
 if __name__ == "__main__":

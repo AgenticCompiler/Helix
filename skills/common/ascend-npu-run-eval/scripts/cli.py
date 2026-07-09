@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from datetime import datetime, timezone
 import importlib
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -77,10 +79,115 @@ def _cleanup_run_test_pt_files(paths: tuple[Path | None, ...]) -> list[str]:
     return cleaned
 
 
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _find_optimize_state_path(*paths: Path) -> Path | None:
+    search_roots = [Path.cwd().resolve()]
+    search_roots.extend(path.resolve().parent for path in paths)
+    seen: set[Path] = set()
+    for root in search_roots:
+        current = root
+        while True:
+            if current in seen:
+                break
+            seen.add(current)
+            state_path = current / ".triton-agent" / "state.json"
+            if state_path.is_file():
+                return state_path
+            if current.parent == current:
+                break
+            current = current.parent
+    return None
+
+
+def _active_optimize_round_context(*paths: Path) -> dict[str, str] | None:
+    state_path = _find_optimize_state_path(*paths)
+    if state_path is None:
+        return None
+    try:
+        raw_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw_payload, dict):
+        return None
+    payload = cast(dict[str, object], raw_payload)
+    if payload.get("phase") != "round_active":
+        return None
+    run_id = payload.get("run_id")
+    current_round = payload.get("current_round")
+    rounds = payload.get("rounds")
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    if not isinstance(current_round, int) or not isinstance(rounds, dict):
+        return None
+    rounds_dict = cast(dict[str, object], rounds)
+    round_entry = rounds_dict.get(str(current_round))
+    if not isinstance(round_entry, dict):
+        return None
+    round_entry_dict = cast(dict[str, object], round_entry)
+    round_dir = round_entry_dict.get("round_dir")
+    status = round_entry_dict.get("status")
+    if status != "active" or not isinstance(round_dir, str) or not round_dir:
+        return None
+    return {
+        "run_id": run_id,
+        "round": round_dir,
+        "workspace_root": str(state_path.parent.parent),
+    }
+
+
+def _timing_display_path(path: Path, workspace_root: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(workspace_root).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def _append_optimize_timing_event(
+    context: dict[str, str] | None,
+    *,
+    event: str,
+    command: str,
+    return_code: int | None = None,
+    test_file: Path | None = None,
+    bench_file: Path | None = None,
+    operator_file: Path | None = None,
+) -> None:
+    if context is None:
+        return
+    try:
+        workspace_root = Path(context["workspace_root"])
+        log_path = workspace_root / ".triton-agent" / "round-timings" / f"{context['round']}.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        payload: dict[str, object] = {
+            "event": event,
+            "timestamp": _utc_now(),
+            "run_id": context["run_id"],
+            "round": context["round"],
+            "command": command,
+        }
+        if return_code is not None:
+            payload["return_code"] = return_code
+        if test_file is not None:
+            payload["test_file"] = _timing_display_path(test_file, workspace_root)
+        if bench_file is not None:
+            payload["bench_file"] = _timing_display_path(bench_file, workspace_root)
+        if operator_file is not None:
+            payload["operator_file"] = _timing_display_path(operator_file, workspace_root)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    except OSError:
+        return
+
+
 @contextlib.contextmanager
 def _guard_operator_execution_env(command: str) -> Iterator[None]:
     if command not in {
         "run-test-baseline",
+        "run-test-convert",
         "run-test-optimize",
         "run-bench",
         "profile-bench",
@@ -231,6 +338,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_test_baseline = subparsers.add_parser("run-test-baseline")
     _add_run_test_arguments(run_test_baseline)
 
+    run_test_convert = subparsers.add_parser("run-test-convert")
+    _add_run_test_arguments(run_test_convert)
+
     run_test_optimize = subparsers.add_parser("run-test-optimize")
     _add_run_test_arguments(run_test_optimize)
 
@@ -240,6 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--baseline-operator-file")
     run_bench.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
     run_bench.add_argument(
+        "-m",
         "--metric-source",
         default="auto",
         choices=["auto", "kernel", "total-op", "all"],
@@ -274,6 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf.add_argument("--compare", required=True)
     compare_perf.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
     compare_perf.add_argument(
+        "-m",
         "--metric-source",
         default="auto",
         choices=["auto", "kernel", "total-op", "all"],
@@ -316,10 +428,15 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             metric_source=args.metric_source,
         )
 
-    if args.command in {"run-test-baseline", "run-test-optimize"}:
+    if args.command in {"run-test-baseline", "run-test-convert", "run-test-optimize"}:
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+        timing_context = (
+            _active_optimize_round_context(test_file, operator_file)
+            if args.command == "run-test-optimize"
+            else None
+        )
         ref_result = _resolve_optional_existing_path(
             parser, getattr(args, "ref_result", None), "Reference result"
         )
@@ -327,6 +444,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             parser, getattr(args, "ref_operator_file", None), "Reference operator file"
         )
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        require_reference_input = args.command in {"run-test-convert", "run-test-optimize"}
         ref_result = _resolve_run_test_comparison_inputs(
             parser,
             args,
@@ -338,9 +456,17 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             run_remote_test,
             remote,
             remote_workdir,
-            optimize_mode=args.command == "run-test-optimize",
+            command_name=args.command,
+            require_reference_input=require_reference_input,
         )
         remote_workspace: str | None = None
+        _append_optimize_timing_event(
+            timing_context,
+            event="run_test_start",
+            command=args.command,
+            test_file=test_file,
+            operator_file=operator_file,
+        )
         try:
             if remote is not None:
                 result, archived_result, remote_workspace = run_remote_test(
@@ -361,6 +487,14 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                     verbose=args.verbose,
                 )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            _append_optimize_timing_event(
+                timing_context,
+                event="run_test_end",
+                command=args.command,
+                return_code=1,
+                test_file=test_file,
+                operator_file=operator_file,
+            )
             print(str(exc), file=sys.stderr)
             return 1
         _render_result(result, skip_stdout=remote is not None)
@@ -387,6 +521,14 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             final_code = 1
         if remote is not None and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
+        _append_optimize_timing_event(
+            timing_context,
+            event="run_test_end",
+            command=args.command,
+            return_code=final_code,
+            test_file=test_file,
+            operator_file=operator_file,
+        )
         return final_code
 
     if args.command == "profile-bench":
@@ -439,6 +581,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
 
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+    timing_context = _active_optimize_round_context(bench_file, operator_file)
     baseline_operator_file = _resolve_optional_existing_path(
         parser,
         getattr(args, "baseline_operator_file", None),
@@ -451,6 +594,13 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
     baseline_perf_path = _derived_perf_path(baseline_operator_file) if baseline_operator_file is not None else None
     if baseline_perf_path is not None and baseline_perf_path.exists():
         print(f"Baseline perf file: {baseline_perf_path}")
+    _append_optimize_timing_event(
+        timing_context,
+        event="run_bench_start",
+        command=args.command,
+        bench_file=bench_file,
+        operator_file=operator_file,
+    )
     try:
         if baseline_operator_file is not None and baseline_perf_path is not None and not baseline_perf_path.exists():
             baseline_result, baseline_generated_perf, baseline_remote_workspace = _run_bench_once(
@@ -475,7 +625,16 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             if int(baseline_result["return_code"]) != 0 or baseline_generated_perf is None:
                 if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
                     print(f"Remote workspace: {baseline_remote_workspace}")
-                return int(baseline_result["return_code"]) or 1
+                final_code = int(baseline_result["return_code"]) or 1
+                _append_optimize_timing_event(
+                    timing_context,
+                    event="run_bench_end",
+                    command=args.command,
+                    return_code=final_code,
+                    bench_file=bench_file,
+                    operator_file=operator_file,
+                )
+                return final_code
             if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
                 print(f"Remote workspace: {baseline_remote_workspace}")
 
@@ -494,6 +653,14 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             output=args.output,
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _append_optimize_timing_event(
+            timing_context,
+            event="run_bench_end",
+            command=args.command,
+            return_code=1,
+            bench_file=bench_file,
+            operator_file=operator_file,
+        )
         print(str(exc), file=sys.stderr)
         return 1
     if result["return_code"] != 0:
@@ -506,13 +673,31 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             print(_RUN_BENCH_HINT)
         else:
             compare_perf_files = _load_compare_perf_function()
-            return compare_perf_files(
+            final_code = compare_perf_files(
                 baseline_perf_path,
                 perf_path,
                 skip_latency_errors=args.skip_latency_errors,
                 metric_source=args.metric_source,
             )
-    return int(result["return_code"])
+            _append_optimize_timing_event(
+                timing_context,
+                event="run_bench_end",
+                command=args.command,
+                return_code=final_code,
+                bench_file=bench_file,
+                operator_file=operator_file,
+            )
+            return final_code
+    final_code = int(result["return_code"])
+    _append_optimize_timing_event(
+        timing_context,
+        event="run_bench_end",
+        command=args.command,
+        return_code=final_code,
+        bench_file=bench_file,
+        operator_file=operator_file,
+    )
+    return final_code
 
 
 def _resolve_existing_path(
@@ -565,14 +750,16 @@ def _resolve_run_test_comparison_inputs(
     remote: str | None,
     remote_workdir: str | None,
     *,
-    optimize_mode: bool,
+    command_name: str,
+    require_reference_input: bool,
 ) -> Path | None:
     _validate_run_test_comparison_inputs(
         parser,
+        command_name,
         resolved_test_mode,
         ref_result,
         ref_operator_file,
-        optimize_mode=optimize_mode,
+        require_reference_input=require_reference_input,
     )
     if ref_operator_file is None:
         return ref_result
@@ -592,30 +779,33 @@ def _resolve_run_test_comparison_inputs(
 
 def _validate_run_test_comparison_inputs(
     parser: argparse.ArgumentParser,
+    command_name: str,
     resolved_test_mode: str,
     ref_result: Path | None,
     ref_operator_file: Path | None,
     *,
-    optimize_mode: bool,
+    require_reference_input: bool,
 ) -> None:
-    if optimize_mode:
-        if ref_result is not None and ref_operator_file is not None:
-            parser.error(
-                "run-test-optimize differential mode requires exactly one of "
-                "--ref-result or --ref-operator-file"
-            )
-        if resolved_test_mode == "differential" and ref_result is None and ref_operator_file is None:
-            parser.error(
-                "run-test-optimize differential mode requires exactly one of "
-                "--ref-result or --ref-operator-file"
-            )
-    elif ref_result is not None and ref_operator_file is not None:
-        parser.error("run-test-baseline differential mode accepts at most one of --ref-result or --ref-operator-file")
-
     if ref_result is not None and resolved_test_mode != "differential":
-        parser.error("--ref-result is supported only with --test-mode differential")
+        parser.error(f"{command_name} standalone mode does not accept --ref-result")
     if ref_operator_file is not None and resolved_test_mode != "differential":
-        parser.error("--ref-operator-file is supported only with --test-mode differential")
+        parser.error(f"{command_name} standalone mode does not accept --ref-operator-file")
+    if ref_result is not None and ref_operator_file is not None:
+        if require_reference_input:
+            parser.error(
+                f"{command_name} differential mode requires exactly one of "
+                "--ref-result or --ref-operator-file"
+            )
+        else:
+            parser.error(
+                f"{command_name} differential mode accepts at most one of "
+                "--ref-result or --ref-operator-file"
+            )
+    if require_reference_input and resolved_test_mode == "differential" and ref_result is None and ref_operator_file is None:
+        parser.error(
+            f"{command_name} differential mode requires exactly one of "
+            "--ref-result or --ref-operator-file"
+        )
 
 
 def _resolve_ref_operator_result(

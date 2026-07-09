@@ -69,7 +69,7 @@ Round-local parent comparison is still allowed for diagnosis, but it does not re
 - Round metadata should explicitly distinguish:
   - `parent_round`
   - `canonical_baseline`
-  - `comparison_target`
+  - `comparison_target_path`
 
 ## Expected Outcome
 

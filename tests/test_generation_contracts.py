@@ -270,11 +270,20 @@ class GenerationContractTests(unittest.TestCase):
         )
 
         self.assertIn("run-test-baseline", run_test)
+        self.assertIn("run-test-convert", run_test)
         self.assertIn("run-test-optimize", run_test)
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
         self.assertNotIn("--oracle-result", run_test)
         self.assertIn("--ref-operator-file", run_test)
         self.assertIn("run-test-optimize` requires `--ref-operator-file`", run_test)
+        self.assertIn(
+            "run-test-optimize --test-file test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone",
+            run_test,
+        )
+        self.assertNotIn(
+            "run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone",
+            run_test,
+        )
         self.assertIn("--remote user@host:2222", run_test)
 
         self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
@@ -303,6 +312,7 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("Use the bundled helper script in this skill", skill)
         self.assertIn("run-test-baseline", skill)
+        self.assertIn("run-test-convert", skill)
         self.assertIn("run-test-optimize", skill)
         self.assertIn("run-bench", skill)
         self.assertIn("profile-bench", skill)
@@ -326,12 +336,28 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_run_eval_mcp_skill_is_tool_first_and_omits_compare_result(self) -> None:
         skill = _read("skills/common/ascend-npu-run-eval-mcp/SKILL.md")
+        run_test = _read("skills/common/ascend-npu-run-eval-mcp/references/run-test.md")
 
         self.assertIn("use the corresponding MCP tool", skill)
+        self.assertIn("run-test-convert", skill)
         self.assertIn("profile-report", skill)
         self.assertIn("compare-perf", skill)
         self.assertNotIn("compare-result", skill)
         self.assertNotIn("python3 ./scripts/cli.py", skill)
+        self.assertIn("# `run-test-baseline`, `run-test-convert`, and `run-test-optimize`", run_test)
+        self.assertIn("Use the `run-test-convert` MCP tool for convert validation", run_test)
+        self.assertIn(
+            'run-test-convert(test_file="test_<operator>.py", operator_file="triton_<operator>.py", test_mode="standalone")',
+            run_test,
+        )
+        self.assertIn(
+            'run-test-optimize(test_file="test_<operator>.py", operator_file="opt_<operator>.py", test_mode="standalone")',
+            run_test,
+        )
+        self.assertNotIn(
+            'run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", test_mode="standalone")',
+            run_test,
+        )
         self.assertFalse(
             (
                 REPO_ROOT
@@ -376,6 +402,12 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("standalone or differential test file", convert_skill)
         self.assertIn("triton_<origin-name>.py", convert_skill)
         self.assertIn("## Converted Example", convert_skill)
+        self.assertIn("run-test-convert", convert_skill)
+        self.assertIn("--ref-operator-file <original>", convert_skill)
+        self.assertNotIn(
+            "run-test-optimize` with `--baseline-operator-file <original>`",
+            convert_skill,
+        )
         self.assertIn("@triton.jit", convert_skill)
         self.assertIn("def triton_add", convert_skill)
         self.assertIn("class Model", convert_skill)
@@ -399,6 +431,21 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("standalone or differential correctness validation", readme)
         self.assertIn("`--test-mode standalone|differential`", readme)
         self.assertNotIn("preparing `baseline/`", readme)
+
+    def test_tilelang_convert_skill_uses_run_test_convert_wording(self) -> None:
+        convert_skill = _read("skills/tilelang/tilelang-npu-convert-pytorch-operator/SKILL.md")
+
+        self.assertTrue(
+            (REPO_ROOT / "skills" / "tilelang" / "tilelang-npu-convert-pytorch-operator" / "SKILL.md").exists()
+        )
+        self.assertIn("## Validation Flow", convert_skill)
+        self.assertIn("standalone or differential test file", convert_skill)
+        self.assertIn("run-test-convert", convert_skill)
+        self.assertIn("--ref-operator-file <original>", convert_skill)
+        self.assertNotIn(
+            "run-test-optimize` with `--baseline-operator-file <original>`",
+            convert_skill,
+        )
 
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
@@ -487,10 +534,10 @@ class GenerationContractTests(unittest.TestCase):
     def test_torch_npu_optimize_knowledge_skill_owns_operator_level_pattern_references(
         self,
     ) -> None:
-        knowledge = _read("skills/triton/torch-npu-optimize-knowledge/SKILL.md")
-        pattern_index = _read("skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md")
+        knowledge = _read("skills/torch/torch-npu-optimize-knowledge/SKILL.md")
+        pattern_index = _read("skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md")
         pattern = _read(
-            "skills/triton/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
+            "skills/torch/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
         )
 
         self.assertIn("reference-only", knowledge)
@@ -797,7 +844,7 @@ class GenerationContractTests(unittest.TestCase):
             skill,
         )
         self.assertIn(
-            "skills/triton/torch-npu-optimize-knowledge/references/patterns/",
+            "skills/torch/torch-npu-optimize-knowledge/references/patterns/",
             skill,
         )
         self.assertIn(
@@ -829,7 +876,7 @@ class GenerationContractTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            "skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md",
+            "skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md",
             script,
         )
         self.assertIn(
@@ -1090,6 +1137,23 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertNotIn("Keep IR evidence under `opt-round-N/ir/`.", optimize)
         self.assertNotIn("Write `opt-round-N/compiler-analysis.md`.", optimize)
+
+    def test_tilelang_capture_ir_skill_documents_cache_cleanup_and_prerequisites(self) -> None:
+        skill = _read("skills/tilelang/tilelang-npu-analyze-ir/SKILL.md")
+
+        self.assertIn("module-level", skill)
+        self.assertIn("does not start with `_`", skill)
+        self.assertIn('find <workspace> -name "__pycache__" -type d -exec rm -rf {} +', skill)
+        self.assertIn(".pkl_memoize_py3", skill)
+        self.assertIn("No compiled kernels found", skill)
+        self.assertIn("Compilation Failed", skill)
+
+    def test_tilelang_optimize_artifacts_describe_ascendc_source_capture(self) -> None:
+        artifacts = _read("skills/tilelang/tilelang-npu-optimize/references/artifacts.md")
+
+        self.assertIn("ascendc_source.cpp", artifacts)
+        self.assertNotIn("bishengir_stages/", artifacts)
+        self.assertNotIn("triton_dump/", artifacts)
 
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")

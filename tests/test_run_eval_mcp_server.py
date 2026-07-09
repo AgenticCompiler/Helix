@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from triton_agent.eval import mcp as mcp_module
 from triton_agent.eval import mcp_server as module
 
 
@@ -22,14 +23,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
         )
 
     def test_configured_slot_pool_defaults_to_device_zero_and_one_worker(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "",
-            },
-            clear=False,
-        ):
+        with patch.dict(os.environ, {}, clear=True):
             pool = module.configured_slot_pool()
 
         seen_devices: list[str] = []
@@ -37,7 +31,61 @@ class RunEvalMCPServerTests(unittest.TestCase):
             seen_devices.append(device)
         self.assertEqual(seen_devices, ["0"])
 
+    def test_configured_slot_pool_rejects_explicit_empty_device_list(self) -> None:
+        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+            module.configured_slot_pool(npu_devices="", workers_per_npu="2")
+
+    def test_configured_slot_pool_rejects_empty_device_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+                module.configured_slot_pool()
+
     def test_configured_slot_pool_ignores_workers_per_npu_when_devices_are_configured(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+            },
+            clear=False,
+        ):
+            pool = module.configured_slot_pool()
+
+        seen_devices: list[str] = []
+        with pool.acquire() as first:
+            seen_devices.append(first)
+            with pool.acquire() as second:
+                seen_devices.append(second)
+
+        self.assertEqual(seen_devices, ["0", "1"])
+
+    def test_configured_slot_pool_uses_explicit_devices_over_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+            },
+            clear=False,
+        ):
+            pool = module.configured_slot_pool(npu_devices="0,1", workers_per_npu="2")
+
+        seen_devices: list[str] = []
+        with pool.acquire() as first:
+            seen_devices.append(first)
+            with pool.acquire() as second:
+                seen_devices.append(second)
+
+        self.assertEqual(seen_devices, ["0", "1"])
+
+    def test_configured_slot_pool_falls_back_to_env_when_args_omitted(self) -> None:
         with patch.dict(
             os.environ,
             {
@@ -76,6 +124,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
                 "profile-report",
                 "run-bench",
                 "run-test-baseline",
+                "run-test-convert",
                 "run-test-optimize",
             ],
         )
@@ -233,7 +282,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
             workspace: Path,
         ):
             del workspace
-            self.assertIn(subcommand, {"run-test-baseline", "run-test-optimize"})
+            self.assertIn(subcommand, {"run-test-baseline", "run-test-convert", "run-test-optimize"})
             self.assertIn("--test-file", arguments)
             self.assertIn("--operator-file", arguments)
             seen_devices.append(leased_device)
@@ -258,6 +307,15 @@ class RunEvalMCPServerTests(unittest.TestCase):
                     },
                 )
                 await server.call_tool(
+                    "run-test-convert",
+                    {
+                        "test_file": "/tmp/differential_test_kernel.py",
+                        "operator_file": "/tmp/triton_kernel.py",
+                        "test_mode": "differential",
+                        "ref_operator_file": "/tmp/kernel.py",
+                    },
+                )
+                await server.call_tool(
                     "run-test-optimize",
                     {
                         "test_file": "/tmp/differential_test_kernel.py",
@@ -269,7 +327,52 @@ class RunEvalMCPServerTests(unittest.TestCase):
 
         asyncio.run(_call_tools())
 
-        self.assertEqual(seen_devices, ["0", "0"])
+        self.assertEqual(seen_devices, ["0", "0", "0"])
+
+    def test_run_test_convert_tool_forwards_reference_arguments(self) -> None:
+        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
+        observed: dict[str, object] = {}
+
+        def fake_run_subcommand(
+            subcommand: str,
+            arguments: list[str],
+            *,
+            leased_device: Optional[str] = None,
+            workspace: Path,
+        ):
+            observed["subcommand"] = subcommand
+            observed["arguments"] = arguments
+            observed["leased_device"] = leased_device
+            observed["workspace"] = workspace
+            return {
+                "return_code": 0,
+                "stdout": "Archived result: /tmp/triton_kernel_result.pt\n",
+                "stderr": "",
+                "archived_result": "/tmp/triton_kernel_result.pt",
+            }
+
+        async def _call_tool() -> None:
+            with (
+                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
+                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
+            ):
+                await server.call_tool(
+                    "run-test-convert",
+                    {
+                        "test_file": "/tmp/differential_test_kernel.py",
+                        "operator_file": "/tmp/triton_kernel.py",
+                        "test_mode": "differential",
+                        "ref_operator_file": "/tmp/kernel.py",
+                    },
+                )
+
+        asyncio.run(_call_tool())
+
+        self.assertEqual(observed["subcommand"], "run-test-convert")
+        self.assertEqual(observed["workspace"], Path("/tmp/ws"))
+        arguments = cast(list[str], observed["arguments"])
+        self.assertIn("--ref-operator-file", arguments)
+        self.assertIn("/tmp/kernel.py", arguments)
 
     def test_run_test_tool_leaves_accuracy_controls_in_parent_env(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
@@ -501,6 +604,21 @@ class RunEvalMCPServerTests(unittest.TestCase):
         rendered = stdout.getvalue()
         self.assertIn(fake_server.endpoint, rendered)
         self.assertIn("workspace=", rendered)
+
+    def test_managed_mcp_scope_allows_equivalent_device_lists(self) -> None:
+        with mcp_module.managed_mcp_scope(npu_devices="0,1", workers_per_npu="2"):
+            state = mcp_module.current_managed_mcp_scope()
+            self.assertEqual(state.npu_devices, "0,1")
+            self.assertEqual(state.workers_per_npu, "2")
+            with mcp_module.managed_mcp_scope(npu_devices="0, 1", workers_per_npu=" 2 "):
+                nested_state = mcp_module.current_managed_mcp_scope()
+                self.assertEqual(nested_state.npu_devices, "0,1")
+                self.assertEqual(nested_state.workers_per_npu, "2")
+
+    def test_managed_mcp_scope_rejects_empty_device_list(self) -> None:
+        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+            with mcp_module.managed_mcp_scope(npu_devices=""):
+                pass
 
 
 if __name__ == "__main__":

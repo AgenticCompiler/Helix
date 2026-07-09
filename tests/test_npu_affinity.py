@@ -141,6 +141,15 @@ class BatchNpuAffinityTests(unittest.TestCase):
                 ("0", "0", "0", "3", "3", "3", "4", "4", "4"),
             )
 
+    def test_configured_slots_accept_explicit_raw_values(self) -> None:
+        self.assertEqual(
+            configured_batch_npu_slots("0,1", "2"),
+            ("0", "0", "1", "1"),
+        )
+
+    def test_configured_slots_accept_explicit_none_without_env(self) -> None:
+        self.assertIsNone(configured_batch_npu_slots(None, None))
+
     # -- validate_batch_affinity_capacity --
 
     def test_validate_capacity_allows_within_device_count(self) -> None:
@@ -190,6 +199,15 @@ class BatchNpuAffinityTests(unittest.TestCase):
         ):
             self.assertEqual(effective_batch_affinity_capacity(), 6)
 
+    def test_effective_capacity_uses_explicit_raw_inputs(self) -> None:
+        self.assertEqual(effective_batch_affinity_capacity("0,1", "3"), 6)
+
+    def test_effective_capacity_ignores_workers_per_npu_when_requested(self) -> None:
+        self.assertEqual(
+            effective_batch_affinity_capacity("0,1", "3", ignore_workers_per_npu=True),
+            2,
+        )
+
     def test_resolve_batch_concurrency_returns_numeric_value(self) -> None:
         self.assertEqual(resolve_batch_concurrency(4), 4)
 
@@ -204,6 +222,15 @@ class BatchNpuAffinityTests(unittest.TestCase):
         ):
             self.assertEqual(resolve_batch_concurrency("max"), 4)
 
+    def test_resolve_batch_concurrency_expands_max_from_explicit_inputs(self) -> None:
+        self.assertEqual(resolve_batch_concurrency("max", "0,1", "2"), 4)
+
+    def test_resolve_batch_concurrency_ignores_workers_per_npu_for_mcp_max(self) -> None:
+        self.assertEqual(
+            resolve_batch_concurrency("max", "0,1", "2", ignore_workers_per_npu=True),
+            2,
+        )
+
     def test_resolve_batch_concurrency_rejects_max_without_device_pool(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
@@ -212,6 +239,15 @@ class BatchNpuAffinityTests(unittest.TestCase):
     def test_resolve_batch_concurrency_rejects_zero(self) -> None:
         with self.assertRaisesRegex(ValueError, "--concurrency"):
             resolve_batch_concurrency(0)
+
+    def test_validate_capacity_ignores_workers_per_npu_when_requested(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must not exceed"):
+            validate_batch_affinity_capacity(
+                ("0",),
+                max_concurrency=2,
+                workers_per_npu_raw="2",
+                ignore_workers_per_npu=True,
+            )
 
     # -- pool with repeated slots (shared devices) --
 

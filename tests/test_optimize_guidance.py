@@ -398,7 +398,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
             self.assertFalse((state.run_archive_dir / "supervisor-handoffs").exists())
 
-    def test_cleanup_supervised_session_writes_round_timings_archive_for_passed_rounds(self) -> None:
+    def test_cleanup_supervised_session_archives_round_timings_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -413,6 +413,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
 
             assert state.workflow_state_path is not None
+            timing_dir = workdir / ".triton-agent" / "round-timings"
+            timing_dir.mkdir(parents=True)
+            (timing_dir / "opt-round-1.jsonl").write_text(
+                '{"event":"round_start","timestamp":"2026-06-22T12:40:00Z","run_id":"'
+                + state.archive.run_id
+                + '","round":"opt-round-1"}\n',
+                encoding="utf-8",
+            )
             state.workflow_state_path.write_text(
                 json.dumps(
                     {
@@ -426,14 +434,10 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                             "1": {
                                 "status": "passed",
                                 "round_dir": "opt-round-1",
-                                "started_at": "2026-06-22T12:40:00Z",
-                                "ended_at": "2026-06-22T12:55:00Z",
                             },
                             "2": {
                                 "status": "active",
                                 "round_dir": "opt-round-2",
-                                "started_at": "2026-06-22T13:10:00Z",
-                                "ended_at": None,
                             },
                         },
                     }
@@ -444,8 +448,9 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
 
             self.assertEqual(warnings, [])
-            payload = json.loads((state.run_archive_dir / "round-timings.json").read_text(encoding="utf-8"))
-            self.assertEqual([row["round"] for row in payload], [1])
+            archived_timing_file = state.run_archive_dir / "round-timings" / "opt-round-1.jsonl"
+            self.assertTrue(archived_timing_file.exists())
+            self.assertIn('"event":"round_start"', archived_timing_file.read_text(encoding="utf-8"))
 
     def test_prepare_checked_session_mentions_operator_target_when_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -464,6 +469,36 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Target optimization scope: operator.", guidance_content)
             self.assertIn("Optimize end-to-end operator latency.", guidance_content)
             self.assertIn("both kernel and total-op `compare-perf` views visible", guidance_content)
+
+            warnings = manager.cleanup_checked_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_checked_session_mentions_min_speedup_target_when_selected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                min_speedup=1.2,
+            )
+
+            guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn(
+                "Optimize session target: reach at least 1.20x geomean speedup over the baseline.",
+                guidance_content,
+            )
+            self.assertIn(
+                "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+                guidance_content,
+            )
+            self.assertIn(
+                "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+                guidance_content,
+            )
 
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])

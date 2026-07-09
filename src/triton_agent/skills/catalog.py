@@ -135,10 +135,13 @@ _TRITON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         source_group="triton",
         physical_path="skills/triton/triton-npu-optimize-knowledge-v3",
     ),
+)
+
+_TORCH_SKILLS: tuple[SkillCatalogEntry, ...] = (
     SkillCatalogEntry(
         logical_name="torch-npu-optimize-knowledge",
-        source_group="triton",
-        physical_path="skills/triton/torch-npu-optimize-knowledge",
+        source_group="torch",
+        physical_path="skills/torch/torch-npu-optimize-knowledge",
     ),
 )
 
@@ -185,7 +188,9 @@ _TILELANG_SKILLS: tuple[SkillCatalogEntry, ...] = (
     ),
 )
 
-SKILL_CATALOG: tuple[SkillCatalogEntry, ...] = _COMMON_SKILLS + _TRITON_SKILLS + _TILELANG_SKILLS
+SKILL_CATALOG: tuple[SkillCatalogEntry, ...] = (
+    _COMMON_SKILLS + _TRITON_SKILLS + _TORCH_SKILLS + _TILELANG_SKILLS
+)
 
 _SKILL_BY_NAME: dict[str, SkillCatalogEntry] = {
     entry.logical_name: entry for entry in SKILL_CATALOG

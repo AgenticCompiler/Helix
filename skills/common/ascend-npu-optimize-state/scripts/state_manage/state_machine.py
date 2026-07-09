@@ -176,8 +176,6 @@ def start_round(
     rounds[round_key] = {
         "status": "active",
         "round_dir": round_dir,
-        "started_at": _utc_now(),
-        "ended_at": None,
         "strategy_state": _build_strategy_state(
             round_strategy=normalized_round_strategy,
             analysis_policy=normalized_analysis_policy,
@@ -187,6 +185,17 @@ def start_round(
     }
     _atomic_write_json(state_path, payload)
     result_warnings = list(warnings)
+    try:
+        _append_round_timing_event(
+            state_path,
+            round_dir=round_dir,
+            run_id=_require_run_id(payload),
+            event="round_start",
+        )
+    except OSError as exc:
+        result_warnings.append(
+            f"round timing log could not be updated: {exc}. Workflow state remains authoritative."
+        )
     try:
         _append_state_update_block(
             _attempts_path_for_round(state_path, round_dir),
@@ -349,10 +358,22 @@ def complete_round(
         raise ValueError(f"cannot complete non-active round {round_dir}")
 
     round_entry["status"] = "passed"
-    round_entry["ended_at"] = _utc_now()
+    round_entry.pop("started_at", None)
+    round_entry.pop("ended_at", None)
     payload["phase"] = PHASE_AWAITING_ROUND_START
     payload["current_round"] = None
     _atomic_write_json(state_path, payload)
+    try:
+        _append_round_timing_event(
+            state_path,
+            round_dir=round_dir,
+            run_id=_require_run_id(payload),
+            event="round_end",
+        )
+    except OSError:
+        # Round completion must not fail just because the best-effort timing log
+        # could not be updated after workflow state has already been advanced.
+        pass
 
 
 def render_phase_summary(state_path: Path) -> str:
@@ -387,41 +408,6 @@ def render_phase_summary(state_path: Path) -> str:
     return "\n".join(lines)
 
 
-def write_round_timings_archive(state_path: Path, archive_path: Path) -> bool:
-    payload = load_state(state_path)
-    rows: list[dict[str, object]] = []
-    for round_key, round_state in sorted(
-        _require_rounds_dict(payload).items(),
-        key=lambda item: int(item[0]),
-    ):
-        if not isinstance(round_state, dict):
-            raise ValueError(f"workflow state round {round_key} must be an object")
-        round_state_dict = cast(dict[str, object], round_state)
-        if round_state_dict.get("status") != "passed":
-            continue
-        started_at = round_state_dict.get("started_at")
-        ended_at = round_state_dict.get("ended_at")
-        if not isinstance(started_at, str) or not started_at:
-            raise ValueError(f"completed round {round_key} is missing started_at")
-        if not isinstance(ended_at, str) or not ended_at:
-            raise ValueError(f"completed round {round_key} is missing ended_at")
-        rows.append(
-            {
-                "round": int(round_key),
-                "started_at": started_at,
-                "ended_at": ended_at,
-            }
-        )
-    if not rows:
-        return False
-    archive_path.parent.mkdir(parents=True, exist_ok=True)
-    archive_path.write_text(
-        json.dumps(rows, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    return True
-
-
 def _validate_state(payload: dict[str, object]) -> None:
     schema_version = payload.get("schema_version")
     if schema_version != WORKFLOW_SCHEMA_VERSION:
@@ -452,8 +438,6 @@ def _validate_state(payload: dict[str, object]) -> None:
         current_entry = cast(dict[str, object], current_entry_obj)
         if current_entry.get("status") != "active":
             raise ValueError(f"phase=round_active requires active state for round {current_round}")
-        if not isinstance(current_entry.get("started_at"), str) or not current_entry.get("started_at"):
-            raise ValueError(f"active round {current_round} must have started_at")
     else:
         if current_round is not None:
             raise ValueError(f"phase={phase} requires current_round=null")
@@ -473,13 +457,11 @@ def _validate_state(payload: dict[str, object]) -> None:
                 f"workflow state round key {round_key} does not match round_dir {round_dir}"
             )
         started_at = round_state_dict.get("started_at")
-        if not isinstance(started_at, str) or not started_at:
-            raise ValueError(f"workflow state round {round_key} is missing started_at")
+        if started_at is not None and (not isinstance(started_at, str) or not started_at):
+            raise ValueError(f"workflow state round {round_key} started_at must be a non-empty string or null")
         ended_at = round_state_dict.get("ended_at")
-        if ended_at is not None and not isinstance(ended_at, str):
-            raise ValueError(f"workflow state round {round_key} ended_at must be a string or null")
-        if status == "passed" and ended_at is None:
-            raise ValueError(f"completed round {round_key} is missing ended_at")
+        if ended_at is not None and (not isinstance(ended_at, str) or not ended_at):
+            raise ValueError(f"workflow state round {round_key} ended_at must be a non-empty string or null")
         strategy_state = round_state_dict.get("strategy_state")
         if strategy_state is not None:
             _validate_strategy_state(strategy_state, round_key=round_key)
@@ -524,6 +506,13 @@ def _require_rounds_dict(payload: dict[str, object]) -> dict[str, object]:
     if not isinstance(rounds, dict):
         raise ValueError("workflow state rounds must be an object")
     return cast(dict[str, object], rounds)
+
+
+def _require_run_id(payload: dict[str, object]) -> str:
+    run_id = payload.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("workflow state run_id must be a non-empty string")
+    return run_id
 
 
 def _get_optional_strategy_state(round_entry: dict[str, object]) -> dict[str, str] | None:
@@ -716,6 +705,29 @@ def _parse_round_number(round_dir: str) -> int:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _round_timing_log_path(state_path: Path, round_dir: str) -> Path:
+    return state_path.parent / "round-timings" / f"{round_dir}.jsonl"
+
+
+def _append_round_timing_event(
+    state_path: Path,
+    *,
+    round_dir: str,
+    run_id: str,
+    event: str,
+) -> None:
+    log_path = _round_timing_log_path(state_path, round_dir)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "event": event,
+        "timestamp": _utc_now(),
+        "run_id": run_id,
+        "round": round_dir,
+    }
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
 def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:

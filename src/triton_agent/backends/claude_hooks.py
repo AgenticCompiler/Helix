@@ -5,11 +5,17 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from triton_agent.backends.hook_common import HookStageOptions, HookStageState, cleanup_hook_stage
+from triton_agent.backends.hook_common import (
+    HookStageOptions,
+    HookStageState,
+    cleanup_hook_stage,
+    replace_string_placeholder,
+)
 
 
 _CLAUDE_HOOK_DIR = Path(".claude") / "triton-agent-hooks"
 _CLAUDE_SETTINGS_JSON = _CLAUDE_HOOK_DIR / "settings.json"
+_CLAUDE_PROJECT_DIR = "${CLAUDE_PROJECT_DIR}"
 _CLAUDE_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
     "and do not inspect protected runner-managed files (temporary optimize runtime files, "
@@ -70,7 +76,7 @@ def prepare_claude_hooks(
             options,
             extra_allowed_read_roots=extra_allowed_read_roots,
         )
-        shutil.copy2(settings_template, settings_json)
+        _write_claude_settings(settings_template, settings_json, policy_workspace)
         created_paths.append(settings_json)
         created_paths.append(hook_dir)
     except Exception:
@@ -102,6 +108,14 @@ def _write_claude_policy(
         "deny_message": _CLAUDE_DENY_MESSAGE,
     }
     policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_claude_settings(settings_template: Path, settings_path: Path, project_dir: Path) -> None:
+    settings = json.loads(settings_template.read_text(encoding="utf-8"))
+    settings = replace_string_placeholder(settings, _CLAUDE_PROJECT_DIR, str(project_dir))
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
 def _allow_read_roots(workspace: Path, extra_allowed_read_roots: Sequence[Path]) -> list[str]:
     roots = [str(workspace)]
     seen = {workspace}

@@ -1,14 +1,17 @@
-# `run-test-baseline` and `run-test-optimize`
+# `run-test-baseline`, `run-test-convert`, and `run-test-optimize`
 
-Use `run-test-baseline` for baseline or generation validation, and use `run-test-optimize` for optimize-round validation.
+Use `run-test-baseline` for baseline or generation validation, `run-test-convert` for convert validation, and `run-test-optimize` for optimize-round validation.
 
 
 ```bash
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential
 
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-convert --test-file test_<operator>.py --operator-file triton_<operator>.py --test-mode standalone
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-convert --test-file differential_test_<operator>.py --operator-file triton_<operator>.py --test-mode differential --ref-operator-file <operator>.py
+
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --ref-operator-file <operator>.py
-python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone
 ```
 
 Rules:
@@ -16,11 +19,17 @@ Rules:
 - Always pass both `--test-file` and `--operator-file`.
 - If `--test-mode` is omitted, the command reads `# test-mode: ...` from the test file.
 - Use `--test-mode standalone` or `--test-mode differential` only when you need to override the embedded metadata.
+- Standalone mode never accepts `--ref-result` or `--ref-operator-file`.
+- `run-test-baseline` differential mode accepts at most one of `--ref-result` or `--ref-operator-file`, and it may omit both when you want to produce a reusable archived baseline result.
+- `run-test-convert` differential mode requires exactly one of `--ref-result` or `--ref-operator-file`.
+- In convert differential mode, `run-test-convert` requires `--ref-operator-file` or `--ref-result`.
+- `run-test-optimize` differential mode requires exactly one of `--ref-result` or `--ref-operator-file`.
 
 - `run-test-baseline` must be used to validate the correctness of a baseline operator.
+- `run-test-convert` must be used to validate the correctness of a converted operator.
 - `run-test-optimize` must be used to validate the correctness of an optimized operator.
 - `run-test-baseline` preserves archived `.pt` result payloads so later optimize validation can reuse them.
-- In optimize differential mode, `run-test-optimize` requires `--ref-operator-file`.
+- In optimize differential mode, `run-test-optimize` requires `--ref-operator-file` or `--ref-result`.
 - The comparison policy is controlled by the execution environment; invoke the run-test command normally.
 - There is no compare-level option.
 
@@ -28,5 +37,6 @@ Remote examples:
 
 ```bash
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-convert --test-file differential_test_<operator>.py --operator-file triton_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

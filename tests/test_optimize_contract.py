@@ -52,6 +52,8 @@ class OptimizeContractTests(unittest.TestCase):
         self.assertNotIn("baseline_state_required_fields", data)
 
         field_map = data["round_state_required_fields"]
+        self.assertIn("comparison_target_path", field_map)
+        self.assertNotIn("comparison_target", field_map)
         for key in ROUND_STATE_REQUIRED_FIELDS:
             self.assertIn(key, field_map)
             self.assertIsInstance(field_map[key], str)

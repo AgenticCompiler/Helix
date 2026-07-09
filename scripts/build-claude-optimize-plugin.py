@@ -18,7 +18,7 @@ from triton_agent.skills.selection import resolve_staged_skills
 
 _PLUGIN_NAME = "triton-optimizer"
 _PLUGIN_VERSION = "0.1.0"
-_OPTIMIZE_AGENT_NAME = "triton-agent-optimize"
+_OPTIMIZE_AGENT_NAME = "triton-agent-optimizer"
 _CONVERT_AGENT_NAME = "triton-agent-convert"
 _PLUGIN_TEST_MODE = "differential"
 _PLUGIN_BENCH_MODE = "torch-npu-profiler"
@@ -36,18 +36,17 @@ class ClaudeOptimizePluginAssets:
 def build_claude_optimize_plugin_assets(
     *,
     language: str = "triton",
-    optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
     enable_subagent: bool = False,
 ) -> ClaudeOptimizePluginAssets:
     optimize_skill_names, optimize_skill_sources = resolve_staged_skills(
         CommandKind.OPTIMIZE,
         language=language,
-        optimize_target=optimize_target,
         enable_cann_ext_api=enable_cann_ext_api,
     )
     if optimize_skill_names is None:
         raise RuntimeError("Optimize plugin packaging requires an explicit optimize skill list.")
+    optimize_skill_names = _select_plugin_optimize_skill_names(optimize_skill_names)
     convert_skill_names, convert_skill_sources = resolve_staged_skills(
         CommandKind.CONVERT,
         language="triton",
@@ -61,7 +60,7 @@ def build_claude_optimize_plugin_assets(
     convert_agent_text = _render_claude_convert_agent(skill_names=convert_skill_names)
     return ClaudeOptimizePluginAssets(
         text_files={
-            "agents/triton-agent-optimize.md": optimize_agent_text,
+            "agents/triton-agent-optimizer.md": optimize_agent_text,
             "agents/triton-agent-convert.md": convert_agent_text,
             "README.md": _render_plugin_readme(),
         },
@@ -76,14 +75,12 @@ def build_claude_optimize_plugin(
     output_dir: Path,
     *,
     language: str = "triton",
-    optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
     enable_subagent: bool = False,
 ) -> Path:
     root = output_dir.resolve()
     assets = build_claude_optimize_plugin_assets(
         language=language,
-        optimize_target=optimize_target,
         enable_cann_ext_api=enable_cann_ext_api,
         enable_subagent=enable_subagent,
     )
@@ -242,7 +239,19 @@ def _render_plugin_readme() -> str:
         "This plugin packages the Claude optimize workflow and Triton convert workflow for Triton Agent.\n\n"
         "It includes one optimize agent with plugin-managed workflow state automation "
         "and first-session compiler source provisioning, plus one Triton convert agent "
-        "with the minimum Triton convert skill set.\n"
+        "with the minimum Triton convert skill set.\n\n"
+        "## Usage\n\n"
+        "### Use as a subagent\n\n"
+        "After installing the plugin, start Claude in the target workspace and ask:\n\n"
+        "`Please use the triton-optimizer:triton-agent-optimizer agent to optimize "
+        "@your_triton_operator.py in the current directory. Stop after reaching Xx speedup "
+        "over the baseline or after X rounds.`\n\n"
+        "### Start Claude with the optimize agent\n\n"
+        "Run:\n\n"
+        "`claude --agent triton-optimizer:triton-agent-optimizer`\n\n"
+        "Then ask:\n\n"
+        "`Please optimize @your_triton_operator.py in the current directory. Stop after "
+        "reaching Xx speedup over the baseline or after X rounds.`\n"
     )
 
 
@@ -300,6 +309,14 @@ def _copy_selected_skills(
 
 def _deduplicate_skill_names(skill_names: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(skill_names))
+
+
+def _select_plugin_optimize_skill_names(skill_names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        skill_name
+        for skill_name in skill_names
+        if skill_name != "torch-npu-optimize-knowledge"
+    )
 
 
 def _merge_skill_sources(*skill_source_maps: dict[str, str] | None) -> dict[str, str] | None:

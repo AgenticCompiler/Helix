@@ -67,8 +67,11 @@ class AgentRequest:
     workdir: Path
     remote: Optional[str] = None
     remote_workdir: Optional[str] = None
+    npu_devices: Optional[str] = None
+    workers_per_npu: Optional[str] = None
     extra_env: dict[str, str] | None = None
     min_rounds: Optional[int] = None
+    min_speedup: Optional[float] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
     round_mode: Literal["checked", "supervised"] = "checked"

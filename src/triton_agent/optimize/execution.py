@@ -15,7 +15,11 @@ from triton_agent.transient_failures import (
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.optimize.checks import check_baseline, check_round
+from triton_agent.optimize.checks import (
+    best_completed_round_geomean_speedup,
+    check_baseline,
+    check_round,
+)
 from triton_agent.optimize.recovery import (
     RecoveryBudget,
     build_optimize_progress_probe,
@@ -165,6 +169,7 @@ def execute_multi_invocation_optimize(
             source_operator_path=request.input_path,
             language=request.language,
             optimize_target=request.optimize_target,
+            min_speedup=request.min_speedup,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
@@ -182,6 +187,7 @@ def execute_multi_invocation_optimize(
             source_operator_path=request.input_path,
             language=request.language,
             optimize_target=request.optimize_target,
+            min_speedup=request.min_speedup,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
@@ -293,6 +299,7 @@ class MultiInvocationOptimizeController:
                 bench_mode=request.bench_mode,
                 target_chip=request.target_chip,
                 optimize_target=request.optimize_target,
+                min_speedup=request.min_speedup,
                 compiler_source_path=request.compiler_source_path,
                 compiler_source_commit=request.compiler_source_commit,
                 enable_cann_ext_api=_request_enables_cann_ext_api(request),
@@ -311,6 +318,9 @@ class MultiInvocationOptimizeController:
         batch_start = request.current_round
         batch_end = request.final_round
         previous_batch_issues: str | None = None
+
+        if self._min_speedup_target_met(request):
+            return AgentResult(return_code=0, stdout="", stderr="")
 
         if request.interact:
             worker_request = self._request_with_fresh_batch_prompt(
@@ -350,6 +360,9 @@ class MultiInvocationOptimizeController:
             )
             if batch_check.terminal_result is not None:
                 return batch_check.terminal_result
+
+            if not batch_check.has_failures and self._min_speedup_target_met(request):
+                return round_result
 
             is_final_batch = batch_end >= min_rounds
             if batch_check.has_failures:
@@ -485,12 +498,21 @@ class MultiInvocationOptimizeController:
                 }
                 status = "fail"
             else:
-                check_result = check_round(
-                    round_dir,
-                    current_round=round_number,
-                    final_round=batch_end,
-                    optimize_target=request.optimize_target,
-                )
+                if request.min_speedup is not None:
+                    check_result = check_round(
+                        round_dir,
+                        current_round=round_number,
+                        final_round=batch_end,
+                        optimize_target=request.optimize_target,
+                        min_speedup=request.min_speedup,
+                    )
+                else:
+                    check_result = check_round(
+                        round_dir,
+                        current_round=round_number,
+                        final_round=batch_end,
+                        optimize_target=request.optimize_target,
+                    )
                 payload = self._serialize_check_result(check_result)
                 status = check_result.status
 
@@ -726,6 +748,7 @@ class MultiInvocationOptimizeController:
                 remote=request.remote,
                 remote_workdir=request.remote_workdir,
                 min_rounds=request.min_rounds,
+                min_speedup=request.min_speedup,
                 resume_existing_session=True,
                 round_mode=cast(Any, request.round_mode),
                 target_chip=request.target_chip,
@@ -783,8 +806,17 @@ class MultiInvocationOptimizeController:
     ) -> tuple[int, int]:
         min_rounds = cast(int, request.min_rounds)
         next_batch_start = current_batch_end + 1
-        next_batch_end = min(next_batch_start + request.round_batch_size - 1, min_rounds)
+        if request.min_speedup is not None:
+            next_batch_end = min(next_batch_start, min_rounds)
+        else:
+            next_batch_end = min(next_batch_start + request.round_batch_size - 1, min_rounds)
         return next_batch_start, next_batch_end
+
+    def _min_speedup_target_met(self, request: AgentRequest) -> bool:
+        if request.min_speedup is None:
+            return False
+        best_speedup = best_completed_round_geomean_speedup(request.workdir)
+        return best_speedup is not None and best_speedup >= request.min_speedup
 
     def _build_final_batch_failure_message(self, batch_summary: str) -> str:
         return (

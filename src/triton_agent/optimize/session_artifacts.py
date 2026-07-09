@@ -6,6 +6,7 @@ from pathlib import Path
 
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
+from triton_agent.optimize.profile_cleanup import cleanup_optimize_workspace_profile_artifacts
 from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
 from triton_agent.optimize.workflow_state import (
     archive_round_timings_from_state,
@@ -45,7 +46,7 @@ class OptimizeSessionArtifactsState:
 
     @property
     def round_timings_archive_path(self) -> Path:
-        return self.archive.run_archive_dir / "round-timings.json"
+        return self.archive.run_archive_dir / "round-timings"
 
     def agent_session_path(self, label: str) -> Path:
         return self.archive.agent_session_path(label)
@@ -92,6 +93,7 @@ class OptimizeSessionArtifactsManager:
         source_operator_path: Path | None = None,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -127,6 +129,7 @@ class OptimizeSessionArtifactsManager:
                 agent_name=agent_name,
                 language=language,
                 optimize_target=optimize_target,
+                min_speedup=min_speedup,
                 include_supervisor_handoff=False,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
@@ -155,6 +158,7 @@ class OptimizeSessionArtifactsManager:
         source_operator_path: Path | None = None,
         language: str = "triton",
         optimize_target: str = "kernel",
+        min_speedup: float | None = None,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -199,6 +203,7 @@ class OptimizeSessionArtifactsManager:
                 agent_name=agent_name,
                 language=language,
                 optimize_target=optimize_target,
+                min_speedup=min_speedup,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
@@ -270,6 +275,7 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
+        warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
         warnings.extend(self._cleanup_supervisor_report_path(state.supervisor_report_path))
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_session(state))
@@ -283,6 +289,7 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
+        warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_session(state))
         return warnings
@@ -344,6 +351,13 @@ class OptimizeSessionArtifactsManager:
                 supervisor_report_path.unlink()
         except OSError as exc:
             return [f"Failed to remove temporary optimize file {supervisor_report_path}: {exc}"]
+        return []
+
+    def _cleanup_workspace_profile_artifacts(self, workdir: Path) -> list[str]:
+        try:
+            cleanup_optimize_workspace_profile_artifacts(workdir)
+        except Exception as exc:
+            return [f"Failed to clean optimize profile artifacts under {workdir}: {exc}"]
         return []
 
     def describe_cleanup_checked_session(

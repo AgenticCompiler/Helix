@@ -27,6 +27,7 @@ from triton_agent.batch.affinity import (
     affinity_env_for_device,
     configured_batch_npu_devices,
     configured_batch_npu_slots,
+    parse_batch_npu_devices,
     validate_batch_affinity_capacity,
 )
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
@@ -91,12 +92,21 @@ def run_optimize_batch(
 
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
-    devices = configured_batch_npu_devices()
-    if not options.enable_mcp:
-        validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    devices = (
+        configured_batch_npu_devices()
+        if options.npu_devices is None
+        else parse_batch_npu_devices(options.npu_devices)
+    )
+    validate_batch_affinity_capacity(
+        devices,
+        max_concurrency=max_concurrency,
+        workers_per_npu_raw=options.workers_per_npu,
+        ignore_workers_per_npu=options.enable_mcp,
+    )
     affinity_pool = (
         BatchNpuAffinityPool(slots)
-        if not options.enable_mcp and (slots := configured_batch_npu_slots()) is not None
+        if not options.enable_mcp
+        and (slots := configured_batch_npu_slots(options.npu_devices, options.workers_per_npu)) is not None
         else None
     )
 
@@ -130,7 +140,10 @@ def run_optimize_batch(
         enable_mcp=options.enable_mcp,
     )
     scope = (
-        managed_mcp_scope()
+        managed_mcp_scope(
+            npu_devices=options.npu_devices,
+            workers_per_npu=options.workers_per_npu,
+        )
         if managed_mcp_server_names_for_request(staged_skill_names, enable_mcp=options.enable_mcp)
         else nullcontext()
     )

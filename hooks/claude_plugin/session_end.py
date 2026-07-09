@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import sys
 
-from state_bootstrap import cleanup_runtime_tree, resolve_workspace, should_manage_payload
+from state_bootstrap import cleanup_runtime_tree, resolve_workspace
 
 
 def main() -> int:
@@ -13,7 +13,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - hook must fail open
         print(f"triton-agent claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
         return 0
-    if not isinstance(payload, dict) or not should_manage_payload(payload):
+    if not isinstance(payload, dict):
         return 0
     workspace = resolve_workspace(payload)
     if workspace is None:

@@ -56,7 +56,7 @@ class SupportsColorTests(unittest.TestCase):
 
 class StyleHelpTextTests(unittest.TestCase):
     def test_plain_text_returned_when_color_disabled(self) -> None:
-        text = "usage: triton-agent [-h] COMMAND ..."
+        text = "usage: triton-agent [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _NonTtyStringIO(),
@@ -68,17 +68,22 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertNotIn("\033[", result)
 
     def test_option_token_colored_on_tty(self) -> None:
-        text = "usage: triton-agent [-h] COMMAND ...\n\noptional arguments:\n  -h, --help  show this help"
+        text = (
+            "usage: triton-agent [-h] [-v] COMMAND ...\n\n"
+            "options:\n  -h, --help  show this help\n  -v, --version  show version"
+        )
         result = style_help_text(
             text,
             _TtyStringIO(),
-            option_tokens={"-h", "--help"},
+            option_tokens={"-h", "--help", "-v", "--version"},
             env_var_tokens=set(),
             command_tokens=set(),
             environ=_EMPTY_ENV,
         )
         self.assertIn("\033[36m-h\033[0m", result)
         self.assertIn("\033[36m--help\033[0m", result)
+        self.assertIn("\033[36m-v\033[0m", result)
+        self.assertIn("\033[36m--version\033[0m", result)
 
     def test_env_var_token_colored_on_tty(self) -> None:
         text = "Environment variables:\n  TRITON_AGENT_BATCH_NPU_DEVICES    device pool"
@@ -197,7 +202,7 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertNotIn("\033[36mTRITON_AGENT_BATCH_NPU_DEVICES\033[0m_EXTRA", result)
 
     def test_no_color_environment_disables_styling(self) -> None:
-        text = "usage: triton-agent [-h] COMMAND ..."
+        text = "usage: triton-agent [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _TtyStringIO(),
@@ -209,7 +214,7 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertEqual(result, text)
 
     def test_clicolor_force_enables_styling_for_non_tty(self) -> None:
-        text = "usage: triton-agent [-h] COMMAND ..."
+        text = "usage: triton-agent [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _NonTtyStringIO(),

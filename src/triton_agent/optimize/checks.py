@@ -21,6 +21,7 @@ def check_round(
     current_round: int | None = None,
     final_round: int | None = None,
     optimize_target: Literal["kernel", "operator"] | None = None,
+    min_speedup: float | None = None,
 ) -> OptimizeCheckResult:
     module = load_skill_script_module(
         "ascend-npu-optimize-state",
@@ -32,7 +33,17 @@ def check_round(
     }
     if optimize_target is not None:
         kwargs["optimize_target"] = optimize_target
+    if min_speedup is not None:
+        kwargs["min_speedup"] = min_speedup
     return _normalize_result(module.check_round(round_dir, **kwargs))
+
+
+def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
+    module = load_skill_script_module(
+        "ascend-npu-optimize-state",
+        "round/check",
+    )
+    return _normalize_optional_float(module.best_completed_round_geomean_speedup(workspace))
 
 
 def _normalize_result(raw_result: object) -> OptimizeCheckResult:
@@ -104,3 +115,11 @@ def _normalize_optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _normalize_optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float, str)):
+        return float(value)
+    raise TypeError("Optimize speedup helper must return a float-compatible value")

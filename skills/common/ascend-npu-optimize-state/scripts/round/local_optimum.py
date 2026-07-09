@@ -95,10 +95,25 @@ def collect_local_optimum_warnings(
         current.geomean_speedup - previous.geomean_speedup
         for previous, current in zip(samples, samples[1:])
     ]
-    if all(gain <= config.max_geomean_gain for gain in adjacent_gains):
+    if all(_gain_within_flat_band(gain, max_gain=config.max_geomean_gain) for gain in adjacent_gains):
         warnings.append(_build_local_optimum_warning(samples, adjacent_gains))
 
     return tuple(warnings)
+
+
+def compute_round_geomean_speedup(
+    round_dir: Path,
+    *,
+    baseline_perf_path: Path,
+) -> float | None:
+    sample = _build_round_speedup_sample(
+        round_dir,
+        baseline_perf_path=baseline_perf_path,
+        baseline_cache={},
+    )
+    if sample is None:
+        return None
+    return sample.geomean_speedup
 
 
 def load_local_optimum_config_from_env() -> LocalOptimumConfig:
@@ -320,13 +335,18 @@ def _parse_perf_pair(
     return baseline_values, round_values
 
 
+def _gain_within_flat_band(gain: float, *, max_gain: float) -> bool:
+    magnitude = abs(gain)
+    return magnitude <= max_gain or math.isclose(magnitude, max_gain, rel_tol=1e-9, abs_tol=1e-12)
+
+
 def _build_local_optimum_warning(samples: list[RoundSpeedupSample], adjacent_gains: list[float]) -> str:
     start_round = samples[0].round_name
     end_round = samples[-1].round_name
     gains_text = ", ".join(_format_speedup_gain(gain) for gain in adjacent_gains)
     metric_basis = _describe_metric_basis(samples[0].metric_basis)
     return (
-        "recent rounds show only marginal baseline-relative geomean speedup gains "
+        "recent rounds show only marginal baseline-relative geomean speedup changes "
         f"on the same metric basis ({metric_basis}; {start_round} -> {end_round}: {gains_text}); "
         "optimization may be stagnating in the current direction and may be stuck in a local optimum. "
         "Review earlier rounds and consider resuming from a round before this flat sequence "

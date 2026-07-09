@@ -17,6 +17,10 @@ def _display_path(path: Path) -> str:
     return path.as_posix()
 
 
+def _format_speedup_target(min_speedup: float) -> str:
+    return f"{min_speedup:.2f}x"
+
+
 def _supports_ir_attribution(language: str) -> bool:
     return language == "triton"
 
@@ -390,6 +394,7 @@ def build_optimize_resume_prompt(
     base_prompt: str | None = None,
     round_mode: Literal["checked", "supervised"] = "checked",
     optimize_target: str = "kernel",
+    min_speedup: float | None = None,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_subagent: bool = False,
@@ -441,6 +446,12 @@ def build_optimize_resume_prompt(
         *layered_analysis_lines(round_scope="the round", language=language),
         *strict_learned_lessons_lines(language=language),
     ]
+    if min_speedup is not None:
+        continuation_lines[1:1] = [
+            f"Optimize session target: reach at least {_format_speedup_target(min_speedup)} geomean speedup over the baseline.",
+            "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+            "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+        ]
     lines.extend(continuation_lines)
     lines.extend(
         compiler_source_analysis_lines(
@@ -461,6 +472,7 @@ def build_optimize_round_prompt(
     bench_mode: str | None,
     target_chip: str = "A5",
     optimize_target: str = "kernel",
+    min_speedup: float | None = None,
     resume_existing_session: bool = False,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
@@ -481,6 +493,14 @@ def build_optimize_round_prompt(
         "Produce all required round artifacts before stopping.",
         "The CLI will validate the completed batch after the invocation exits.",
     ]
+    if min_speedup is not None:
+        lines.extend(
+            [
+                f"Optimize session target: reach at least {_format_speedup_target(min_speedup)} geomean speedup over the baseline.",
+                "The optimize runner injects this target into `submit-round` automatically; do not guess or override a different speedup target.",
+                "If `submit-round` reports that this target is satisfied, stop the optimize session immediately.",
+            ]
+        )
     if baseline_ready:
         lines.append("The baseline has already been validated before this worker batch.")
         lines.append(
@@ -506,9 +526,12 @@ def build_optimize_round_prompt(
             enable_subagent=enable_subagent,
         )
     )
-    lines.append(
-        "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M` with the actual round numbers from this worker batch."
+    submit_round_command = (
+        "When a round in this invocation is complete, run "
+        "`submit-round --round-dir opt-round-N --current-round N --final-round M"
     )
+    submit_round_command += "` with the actual round numbers from this worker batch."
+    lines.append(submit_round_command)
     lines.append("Do not self-approve whether the optimize session should continue.")
     lines.append("Before each round, re-evaluate the next bottleneck and choose the right analysis depth from the current evidence.")
     return _finalize_optimize_prompt_lines(
@@ -530,6 +553,7 @@ def build_optimize_baseline_prompt(
     bench_mode: str | None,
     target_chip: str = "A5",
     optimize_target: str = "kernel",
+    min_speedup: float | None = None,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
@@ -560,6 +584,10 @@ def build_optimize_baseline_prompt(
             f"Target chip for this optimize session: {target_chip}.",
         ]
     )
+    if min_speedup is not None:
+        context_lines.append(
+            f"Optimize session target: reach at least {_format_speedup_target(min_speedup)} geomean speedup over the baseline."
+        )
     context_lines.extend(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,

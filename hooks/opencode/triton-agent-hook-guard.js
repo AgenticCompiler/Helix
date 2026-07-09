@@ -30,10 +30,7 @@ const READ_COMMANDS = new Set([
   "tree",
 ]);
 const PROTECTED_RELATIVE_PATH_PREFIXES = [".triton-agent/", "triton-agent-logs/"];
-
-const PATH_FRAGMENT_RE =
-  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.triton-agent\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
-const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
+const WINDOWS_ABSOLUTE_PATH_RE = /^[A-Za-z]:[\\/].+/;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
 const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
 const ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = new Set([
@@ -488,7 +485,7 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
 
   const state = await loadWorkflowState(workspaceRoot);
   if (!state) {
-    return builtInEditMissingStateDenial();
+    return null;
   }
 
   if (state.phase === "baseline") {
@@ -688,36 +685,28 @@ function isReadCommandToken(token) {
 
 function collectCommandPathReferences(command, tokens) {
   const scanCommand = stripHeredocPayload(command);
-  const scanTokens = filterTokensForReadScan(splitCommand(scanCommand));
-  const scanText = scanTokens.join(" ");
-  const pathTexts = [];
-  const explicitPathTokens = new Set(scanTokens.filter((token) => looksLikePath(token)));
+  const firstCommand = firstSimpleCommandText(scanCommand);
+  const firstTokens = splitCommand(firstCommand);
+  if (firstTokens.length === 0) {
+    return [];
+  }
 
-  for (const token of scanTokens) {
-    if (isReadCommandToken(token)) {
-      continue;
-    }
+  const nestedCommand = firstShellWrapperCommand(firstTokens);
+  if (typeof nestedCommand === "string") {
+    return collectCommandPathReferences(nestedCommand, splitCommand(nestedCommand));
+  }
+
+  const scanTokens = filterTokensForReadScan(firstTokens);
+  if (scanTokens.length === 0 || !isReadCommandToken(scanTokens[0])) {
+    return [];
+  }
+
+  const pathTexts = [];
+  for (const token of scanTokens.slice(1)) {
     if (looksLikePath(token)) {
       pathTexts.push(token);
     }
   }
-
-  for (const match of scanText.matchAll(PATH_FRAGMENT_RE)) {
-    const pathText = match.groups?.path;
-    if (typeof pathText !== "string") {
-      continue;
-    }
-    if (!isReadCommandToken(pathText) && !isNestedPathFragment(pathText, explicitPathTokens)) {
-      pathTexts.push(pathText);
-    }
-  }
-  for (const match of scanText.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
-    const pathText = match[0].replace(/['"),]+$/g, "");
-    if (!isReadCommandToken(pathText) && !isNestedPathFragment(pathText, explicitPathTokens)) {
-      pathTexts.push(pathText);
-    }
-  }
-
   return pathTexts;
 }
 
@@ -726,6 +715,50 @@ function stripHeredocPayload(command) {
     return command;
   }
   return command.split(/\r?\n/, 1)[0];
+}
+
+function firstSimpleCommandText(command) {
+  let quote = null;
+  let escaped = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote !== null) {
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === ";" || char === "\n" || char === "|" || char === "&") {
+      return command.slice(0, index);
+    }
+  }
+  return command;
+}
+
+function firstShellWrapperCommand(tokens) {
+  if (tokens.length < 3) {
+    return null;
+  }
+  if (!["bash", "sh", "zsh"].includes(path.basename(tokens[0]))) {
+    return null;
+  }
+  if (!["-c", "-lc"].includes(tokens[1])) {
+    return null;
+  }
+  return tokens[2];
 }
 
 function filterTokensForReadScan(tokens) {
@@ -785,26 +818,24 @@ function inputRedirectionTarget(token) {
 }
 
 function looksLikePath(token) {
+  if (token.length === 0 || token.startsWith("-")) {
+    return false;
+  }
   return (
     token === ".triton-agent" ||
+    token === "triton-agent-logs" ||
+    token === "~" ||
+    token.startsWith("~/") ||
     token.startsWith("/") ||
     token.startsWith("./") ||
     token.startsWith("../") ||
     token.startsWith(".triton-agent/") ||
+    token.startsWith(".codex/") ||
+    token.startsWith(".claude/") ||
     token.startsWith(".opencode/") ||
     PROTECTED_RELATIVE_PATH_PREFIXES.some((prefix) => token.startsWith(prefix)) ||
-    token.includes("\\") ||
-    path.extname(token).length > 0
+    WINDOWS_ABSOLUTE_PATH_RE.test(token)
   );
-}
-
-function isNestedPathFragment(pathText, explicitPathTokens) {
-  for (const token of explicitPathTokens) {
-    if (pathText !== token && token.includes(pathText)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------

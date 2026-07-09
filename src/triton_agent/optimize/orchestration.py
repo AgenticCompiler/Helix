@@ -11,6 +11,7 @@ from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_fo
 from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
+from triton_agent.optimize.env import merge_optimize_session_env
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
@@ -30,12 +31,18 @@ def _initial_batch_bounds(
     workdir: Path,
     *,
     min_rounds: int,
+    min_speedup: float | None,
     round_batch_size: int,
     interact: bool = False,
 ) -> tuple[int, int]:
     completed_rounds = count_completed_round_directories(workdir)
     batch_start = completed_rounds + 1
-    batch_end = min_rounds if interact else min(completed_rounds + round_batch_size, min_rounds)
+    if interact:
+        batch_end = min_rounds
+    elif min_speedup is not None:
+        batch_end = min(batch_start, min_rounds)
+    else:
+        batch_end = min(completed_rounds + round_batch_size, min_rounds)
     return batch_start, batch_end
 
 
@@ -65,6 +72,7 @@ def build_optimize_request(
     current_round, final_round = _initial_batch_bounds(
         workdir,
         min_rounds=options.min_rounds,
+        min_speedup=options.min_speedup,
         round_batch_size=options.round_batch_size,
         interact=options.interact,
     )
@@ -82,6 +90,10 @@ def build_optimize_request(
         enable_mcp=options.enable_mcp,
     )
     extra_env = merge_remote_execution_env(None, options.remote, options.remote_workdir)
+    extra_env = merge_optimize_session_env(
+        extra_env,
+        min_speedup=options.min_speedup,
+    )
     mcp_servers = managed_mcp_server_names_for_request(
         staged_skill_names,
         enable_mcp=options.enable_mcp,
@@ -104,8 +116,11 @@ def build_optimize_request(
         workdir=workdir,
         remote=options.remote,
         remote_workdir=options.remote_workdir,
+        npu_devices=options.npu_devices,
+        workers_per_npu=options.workers_per_npu,
         extra_env=extra_env,
         min_rounds=options.min_rounds,
+        min_speedup=options.min_speedup,
         continue_optimize=resolution.resume_existing_session,
         no_agent_session=options.no_agent_session,
         round_mode=options.round_mode,
@@ -144,7 +159,14 @@ def run_optimize_request(
     if request.verbose:
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
     try:
-        scope = managed_mcp_scope() if request.mcp_servers else nullcontext()
+        scope = (
+            managed_mcp_scope(
+                npu_devices=request.npu_devices,
+                workers_per_npu=request.workers_per_npu,
+            )
+            if request.mcp_servers
+            else nullcontext()
+        )
         with scope:
             runner = create_runner(request.agent_name)
             artifacts_manager = OptimizeSessionArtifactsManager()

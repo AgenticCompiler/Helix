@@ -48,7 +48,35 @@ _REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
 _REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
 
 
+def _load_jsonl(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_optimize_state_submit_round_resolve_min_speedup_reads_env_without_args(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-state"
+            / "scripts"
+            / "state_manage"
+            / "submit_round.py"
+        )
+        spec = importlib.util.spec_from_file_location("optimize_submit_round_module", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        before = list(sys.path)
+        try:
+            sys.path.insert(0, str(script.parents[1]))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        finally:
+            sys.path[:] = before
+
+        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP": "1.20"}, clear=False):
+            self.assertEqual(module._resolve_min_speedup(), 1.2)
+
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -841,6 +869,64 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(args.metric_source, "kernel")
 
+    def test_run_bench_parser_accepts_metric_source_short_alias(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_metric_source_short_alias_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "-m",
+                "all",
+            ]
+        )
+
+        self.assertEqual(args.metric_source, "all")
+
+    def test_compare_perf_parser_accepts_metric_source_short_alias(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_perf_short_alias_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "-m",
+                "kernel",
+            ]
+        )
+
+        self.assertEqual(args.metric_source, "kernel")
+
     def test_compare_perf_parser_accepts_metric_source_all_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1140,6 +1226,92 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(observed_env_values, ["0"])
         self.assertEqual(restored_value, "1")
 
+    def test_script_run_test_convert_guards_blocks_parallel_env(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_guard", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "triton_kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            observed_env_values: list[Optional[str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], None]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertFalse(verbose)
+                observed_env_values.append(os.environ.get("TRITON_ALL_BLOCKS_PARALLEL"))
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_ALL_BLOCKS_PARALLEL": "1"},
+                    clear=False,
+                ):
+                    with patch.object(
+                        module,
+                        "_load_test_functions",
+                        return_value=(
+                            lambda _path: {"test-mode": "standalone"},
+                            fake_run_local_test,
+                            lambda *_args, **_kwargs: None,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-convert",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                            ]
+                        )
+                    restored_value = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_env_values, ["0"])
+        self.assertEqual(restored_value, "1")
+
     def test_script_run_test_optimize_deletes_pt_files_when_run_test_cleanup_policy_enabled(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1217,6 +1389,95 @@ class SkillCommandScriptTests(unittest.TestCase):
                     )
                 self.assertEqual(exit_code, 0)
                 self.assertFalse(archived_result.exists())
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+    def test_script_run_test_convert_preserves_pt_files_when_run_test_cleanup_policy_enabled(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_pt_cleanup", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "triton_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archived_result = root / "triton_kernel_result.pt"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            archived_result.write_text("payload\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archived_result,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    clear=False,
+                ), patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_compare_result_functions",
+                    return_value=(lambda *_args, **_kwargs: 0, lambda *_args, **_kwargs: 0),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-convert",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--ref-result",
+                            str(baseline_result),
+                        ]
+                    )
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(archived_result.exists())
             finally:
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
@@ -1499,6 +1760,311 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(alias_args.ref_result, "baseline_result.pt")
         self.assertEqual(alias_args.ref_operator_file, "baseline_kernel.py")
 
+    def test_script_run_test_optimize_appends_active_round_timing_events(self) -> None:
+        script = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_test_round_timing_run_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-3"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260706-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 3,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-06T12:34:56Z"},
+                        "rounds": {
+                            "3": {
+                                "status": "active",
+                                "round_dir": "opt-round-3",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            test_file = workspace / "differential_test_kernel.py"
+            operator_file = round_dir / "opt_kernel.py"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-3.jsonl"
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+            operator_file.write_text("print('kernel')\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                candidate_operator_path: Path,
+                test_mode: str,
+                *,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path | None]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(candidate_operator_path, operator_file.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "standalone"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator_file),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+            timing_events = _load_jsonl(timing_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [event["event"] for event in timing_events],
+            ["run_test_start", "run_test_end"],
+        )
+        self.assertEqual(timing_events[0]["round"], "opt-round-3")
+        self.assertEqual(timing_events[0]["command"], "run-test-optimize")
+        self.assertEqual(timing_events[1]["return_code"], 0)
+
+    def test_script_run_test_convert_does_not_append_active_round_timing_events(self) -> None:
+        script = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_round_timing", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-2"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260707-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 2,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-07T12:34:56Z"},
+                        "rounds": {
+                            "2": {
+                                "status": "active",
+                                "round_dir": "opt-round-2",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            test_file = workspace / "differential_test_kernel.py"
+            operator_file = round_dir / "triton_kernel.py"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-2.jsonl"
+            baseline_result = workspace / "kernel_result.pt"
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            operator_file.write_text("print('kernel')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                candidate_operator_path: Path,
+                test_mode: str,
+                *,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(candidate_operator_path, operator_file.resolve())
+                self.assertEqual(test_mode, "differential")
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    workspace / "triton_kernel_result.pt",
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_compare_result_functions",
+                    return_value=(lambda *_args, **_kwargs: 0, lambda *_args, **_kwargs: 0),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-convert",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator_file),
+                            "--ref-result",
+                            str(baseline_result),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+            self.assertFalse(timing_path.exists())
+
+        self.assertEqual(exit_code, 0)
+
+    def test_script_run_bench_appends_active_round_timing_events(self) -> None:
+        script = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_test_round_timing_run_bench", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-4"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260706-123456-abcdef",
+                        "phase": "round_active",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-06T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            bench_file = workspace / "bench_kernel.py"
+            operator_file = round_dir / "opt_kernel.py"
+            perf_path = round_dir / "opt_kernel_perf.txt"
+            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-4.jsonl"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
+            operator_file.write_text("print('kernel')\n", encoding="utf-8")
+            perf_path.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                candidate_operator_path: Path,
+                bench_mode: str,
+                npu_devices: str | None = None,
+                verbose: bool = False,
+                output: str | None = None,
+            ) -> tuple[dict[str, object], Path | None]:
+                self.assertEqual(bench_path, bench_file.resolve())
+                self.assertEqual(candidate_operator_path, operator_file.resolve())
+                self.assertEqual(bench_mode, "torch-npu-profiler")
+                self.assertIsNone(npu_devices)
+                self.assertIsNone(output)
+                self.assertFalse(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    perf_path,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "torch-npu-profiler"},
+                        fake_run_local_bench,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator_file),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+            timing_events = _load_jsonl(timing_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [event["event"] for event in timing_events],
+            ["run_bench_start", "run_bench_end"],
+        )
+        self.assertEqual(timing_events[0]["round"], "opt-round-4")
+        self.assertEqual(timing_events[0]["command"], "run-bench")
+        self.assertEqual(timing_events[1]["return_code"], 0)
+
     def test_script_run_test_uses_existing_derived_baseline_result(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1746,6 +2312,39 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(args.operator_file, "kernel.py")
         self.assertEqual(args.test_mode, "standalone")
 
+    def test_run_test_convert_parser_accepts_reference_flags(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-test-convert",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "triton_kernel.py",
+                "--ref-operator-file",
+                "kernel.py",
+                "--test-mode",
+                "differential",
+            ]
+        )
+
+        self.assertEqual(args.command, "run-test-convert")
+        self.assertEqual(args.ref_operator_file, "kernel.py")
+        self.assertEqual(args.test_mode, "differential")
+
     def test_script_run_test_optimize_requires_baseline_source_in_differential_mode(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1789,6 +2388,97 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 2)
         self.assertIn("requires exactly one of --ref-result or --ref-operator-file", stderr.getvalue())
+
+    def test_script_run_test_convert_requires_reference_input_in_differential_mode(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_requires_ref", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "triton_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-convert",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn(
+            "run-test-convert differential mode requires exactly one of --ref-result or --ref-operator-file",
+            stderr.getvalue(),
+        )
+
+    def test_script_run_test_convert_rejects_reference_inputs_in_standalone_mode(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_standalone", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "triton_kernel.py"
+            test_file = root / "test_kernel.py"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-convert",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--ref-result",
+                            str(baseline_result),
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("run-test-convert standalone mode does not accept --ref-result", stderr.getvalue())
 
     def test_script_run_test_optimize_requires_baseline_source_for_differential_metadata(self) -> None:
         script = (
@@ -1968,6 +2658,98 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(baseline_result),
                             ]
                         )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_convert_auto_compares_when_ref_result_is_provided(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_convert_compare", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "triton_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "triton_kernel_result.pt"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_compare_result_functions",
+                    return_value=(
+                        lambda baseline_path, new_path: (
+                            0
+                            if baseline_path == baseline_result.resolve() and new_path == archive
+                            else 2
+                        ),
+                        lambda *_args, **_kwargs: 0,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-convert",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--ref-result",
+                            str(baseline_result),
+                        ]
+                    )
             finally:
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
@@ -2521,6 +3303,27 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--baseline-result", completed.stdout)
         self.assertIn("--baseline-operator-file", completed.stdout)
         self.assertIn("--test-mode", completed.stdout)
+
+    def test_script_exposes_run_test_convert_help(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "run-test-convert", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("usage: cli.py run-test-convert", completed.stdout)
+        self.assertIn("--ref-result", completed.stdout)
+        self.assertIn("--ref-operator-file", completed.stdout)
+        self.assertIn("--baseline-operator-file", completed.stdout)
 
     def test_script_exposes_profile_bench_help(self) -> None:
         script = (
@@ -3780,7 +4583,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True
@@ -3850,6 +4653,159 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             self.assertEqual(completed.stderr, "")
 
+    def test_optimize_state_submit_round_uses_injected_min_speedup_target(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+        env["TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP"] = "1.20"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
+            round_dir = workdir / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.8\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workdir / ".triton-agent").mkdir()
+            (workdir / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260630-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-30T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-30T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-30T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["status"], "pass")
+            self.assertNotIn("next_option", payload)
+            self.assertIn("Minimum speedup target satisfied", payload["guideline"])
+            self.assertIn("1.25x", payload["guideline"])
+            self.assertIn("Stop the optimize session immediately", payload["guideline"])
+            self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_submit_round_rejects_explicit_min_speedup_argument(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--min-speedup",
+                    "1.20",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unrecognized arguments: --min-speedup 1.20", completed.stderr)
+
     def test_optimize_state_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
@@ -3902,7 +4858,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -4030,7 +4986,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -4189,7 +5145,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,

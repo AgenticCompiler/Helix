@@ -44,21 +44,30 @@ class WorkspaceCleaningTests(unittest.TestCase):
             self.assertFalse(test_harness.exists())
             self.assertFalse(bench_harness.exists())
 
-    def test_clean_workspace_removes_prof_and_extra_info(self) -> None:
+    def test_clean_workspace_removes_prof_and_opprof_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
-            extra_info = workspace / "extra-info.json"
-            extra_info.write_text("{}", encoding="utf-8")
             prof_dir = workspace / "PROF_demo"
             prof_dir.mkdir()
+            opprof_dir = workspace / "OPPROF_demo"
+            opprof_dir.mkdir()
 
             result = clean_workspace(workspace, deep=False)
 
-            self.assertFalse(extra_info.exists())
             self.assertFalse(prof_dir.exists())
-            self.assertIn(extra_info, result.removed)
+            self.assertFalse(opprof_dir.exists())
             self.assertIn(prof_dir, result.removed)
+            self.assertIn(opprof_dir, result.removed)
+
+    def test_is_cleanable_workspace_detects_opprof_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            opprof_dir = workspace / "OPPROF_demo"
+            opprof_dir.mkdir()
+
+            self.assertTrue(is_cleanable_workspace(workspace))
+            self.assertEqual(discover_clean_workspaces(workspace), [workspace])
 
     def test_clean_workspace_unlinks_symlink_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -11,10 +11,21 @@ from baseline.check import (
 )
 from round.contract import ROUND_STATE_REQUIRED_FIELDS
 from round.kernel_continuity import analyze_triton_kernel_continuity
-from round.local_optimum import collect_local_optimum_warnings
+from round.local_optimum import (
+    collect_local_optimum_warnings,
+    compute_round_geomean_speedup,
+)
 from shared.json_io import load_json_object, optional_str
 from shared.models import OptimizeCheckResult, RoundArtifactsInspection, RoundState
-from shared.paths import baseline_dir, declared_state_file, existing_file, missing_issue
+from shared.paths import (
+    baseline_dir,
+    declared_state_file,
+    existing_file,
+    invalid_dependency_issue,
+    missing_path_issue,
+    noncanonical_path_issue,
+    unexpected_path_name_issue,
+)
 from shared.results import append_pass_issues_to_summary, build_check_result
 from shared.round_naming import expected_round_operator_name, expected_round_perf_name, resolve_workspace_operator_file
 
@@ -31,6 +42,7 @@ _ROUND_METADATA_FILENAMES = {
     "perf-analysis.md",
     "round-state.json",
 }
+_PROFILE_ARTIFACT_PREFIXES = ("PROF_", "OPPROF_")
 
 
 def ordinary_optimize_pt_cleanup_mode() -> OptimizePtCleanupMode:
@@ -79,31 +91,190 @@ def cleanup_dir_pt_files(directory: Path) -> list[str]:
     return cleaned
 
 
-def cleanup_dir_prof_artifacts(directory: Path) -> list[str]:
+def _is_profile_artifact_name(name: str) -> bool:
+    return any(name.startswith(prefix) for prefix in _PROFILE_ARTIFACT_PREFIXES)
+
+
+def _remove_artifact_path(path: Path) -> None:
+    if path.is_symlink():
+        path.unlink()
+        return
+    if path.is_dir():
+        shutil.rmtree(path)
+        return
+    path.unlink()
+
+
+def cleanup_dir_prof_artifacts(
+    directory: Path,
+    *,
+    preserve_paths: tuple[Path, ...] = (),
+) -> list[str]:
     cleaned: list[str] = []
+    preserved = {path.resolve(strict=False) for path in preserve_paths}
     try:
         candidates = sorted(directory.iterdir())
     except OSError:
         return cleaned
     for artifact in candidates:
-        if not artifact.name.startswith("PROF_"):
+        if not _is_profile_artifact_name(artifact.name):
+            continue
+        if artifact.resolve(strict=False) in preserved:
             continue
         try:
-            if artifact.is_dir() and not artifact.is_symlink():
-                shutil.rmtree(artifact)
-            else:
-                artifact.unlink()
+            _remove_artifact_path(artifact)
             cleaned.append(artifact.name)
         except OSError:
             pass
     return cleaned
 
 
+def _state_relative_path(state_dir: Path, workspace: Path, relative_path: str | None) -> Path | None:
+    if relative_path is None:
+        return None
+    declared_path = Path(relative_path)
+    state_relative = state_dir / declared_path
+    if state_relative.exists():
+        return state_relative
+    workspace_relative = workspace / declared_path
+    if workspace_relative.exists():
+        return workspace_relative
+    return None
+
+
+def resolve_round_profile_dir(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    round_state_path = round_dir / "round-state.json"
+    if round_state_path.is_file():
+        try:
+            state = load_round_state(round_dir)
+        except ValueError:
+            state = None
+        if state is not None:
+            declared_profile_dir = _state_relative_path(
+                round_dir,
+                workspace,
+                state.profile_dir,
+            )
+            if declared_profile_dir is not None and declared_profile_dir.is_dir():
+                return declared_profile_dir
+
+    conventional_profile_dir = round_dir / "profile"
+    if conventional_profile_dir.is_dir():
+        return conventional_profile_dir
+    return None
+
+
+def _cleanup_profile_dir_csv_only(current_dir: Path, *, root_dir: Path) -> list[str]:
+    cleaned: list[str] = []
+    try:
+        candidates = sorted(current_dir.iterdir())
+    except OSError:
+        return cleaned
+
+    for candidate in candidates:
+        try:
+            if candidate.is_symlink():
+                _remove_artifact_path(candidate)
+                cleaned.append(str(candidate.relative_to(root_dir)))
+                continue
+            if candidate.is_dir():
+                cleaned.extend(_cleanup_profile_dir_csv_only(candidate, root_dir=root_dir))
+                try:
+                    if candidate != root_dir and not any(candidate.iterdir()):
+                        candidate.rmdir()
+                except OSError:
+                    pass
+                continue
+            if candidate.suffix.lower() == ".csv":
+                continue
+            _remove_artifact_path(candidate)
+            cleaned.append(str(candidate.relative_to(root_dir)))
+        except OSError:
+            pass
+
+    return cleaned
+
+
+def cleanup_profile_dir_csv_only(profile_dir: Path) -> list[str]:
+    if not profile_dir.is_dir():
+        return []
+    return _cleanup_profile_dir_csv_only(profile_dir, root_dir=profile_dir)
+
+
+def cleanup_round_profile_artifacts(round_dir: Path) -> list[str]:
+    cleaned: list[str] = []
+    profile_dir = resolve_round_profile_dir(round_dir)
+    if profile_dir is not None:
+        profile_dir_label = os.path.relpath(profile_dir.resolve(), round_dir.resolve())
+        for name in cleanup_profile_dir_csv_only(profile_dir):
+            cleaned.append(f"{profile_dir_label}/{name}")
+
+    preserve_paths: tuple[Path, ...] = ()
+    if profile_dir is not None:
+        try:
+            if profile_dir.parent.resolve() == round_dir.resolve():
+                preserve_paths = (profile_dir,)
+        except OSError:
+            preserve_paths = ()
+
+    for name in cleanup_dir_prof_artifacts(round_dir, preserve_paths=preserve_paths):
+        cleaned.append(name)
+    return cleaned
+
+
+def cleanup_workspace_profile_artifacts(workspace: Path) -> list[str]:
+    cleaned: list[str] = []
+    for round_dir in sorted(workspace.glob("opt-round-*")):
+        if not round_dir.is_dir():
+            continue
+        for name in cleanup_round_profile_artifacts(round_dir):
+            cleaned.append(f"{round_dir.name}/{name}")
+    for name in cleanup_dir_prof_artifacts(workspace):
+        cleaned.append(name)
+    return cleaned
+
+
+def _comparison_target_dependency_issue(round_dir: Path) -> str | None:
+    state_path = baseline_dir(round_dir.parent) / "state.json"
+    if not state_path.is_file():
+        # baseline_gate_issues() already reports a missing baseline/state.json; avoid duplicating it here.
+        return None
+    try:
+        load_baseline_state(round_dir.parent)
+    except ValueError as exc:
+        return invalid_dependency_issue(
+            "comparison_target_path",
+            "baseline/state.json",
+            str(exc),
+        )
+    return None
+
+
 def load_round_state(round_dir: Path) -> RoundState:
     round_state_path = round_dir / "round-state.json"
     data = load_json_object(round_state_path, display_name="round-state.json")
+    comparison_target_path_value = data.get("comparison_target_path")
+    legacy_comparison_target_value = data.get("comparison_target")
+    if comparison_target_path_value is None and legacy_comparison_target_value is not None:
+        comparison_target_path_value = legacy_comparison_target_value
+    elif (
+        comparison_target_path_value is not None
+        and legacy_comparison_target_value is not None
+        and str(comparison_target_path_value) != str(legacy_comparison_target_value)
+    ):
+        raise ValueError(
+            "comparison_target_path and comparison_target disagree: "
+            f"{comparison_target_path_value!r} != {legacy_comparison_target_value!r}"
+        )
     missing_fields = [
-        field_name for field_name in ROUND_STATE_REQUIRED_FIELDS if field_name not in data
+        field_name
+        for field_name in ROUND_STATE_REQUIRED_FIELDS
+        if field_name not in data
+        and not (
+            field_name == "comparison_target_path"
+            and comparison_target_path_value is not None
+        )
     ]
     if missing_fields:
         raise ValueError("missing required round-state fields: " + ", ".join(missing_fields))
@@ -126,7 +297,7 @@ def load_round_state(round_dir: Path) -> RoundState:
         correctness_status=str(data["correctness_status"]),
         benchmark_status=str(data["benchmark_status"]),
         perf_artifact=str(data["perf_artifact"]),
-        comparison_target=str(data["comparison_target"]),
+        comparison_target_path=str(comparison_target_path_value),
         effective_metric_source=str(data["effective_metric_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
@@ -172,17 +343,47 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
     if attempts_path is None:
         issues.append("missing attempts.md")
     if summary_path is None:
-        issues.append(missing_issue(declared_summary, default_path="summary.md"))
+        issues.append(
+            missing_path_issue(
+                "summary_path",
+                declared_summary,
+                expected_path="summary.md",
+            )
+        )
     elif state is not None and declared_summary is not None and Path(declared_summary).name != summary_path.name:
-        issues.append("summary_path must be summary.md")
+        issues.append(
+            unexpected_path_name_issue(
+                "summary_path",
+                declared_summary,
+                expected_name="summary.md",
+            )
+        )
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
-        issues.append(missing_issue(declared_perf, default_path=expected_perf_name_value))
+        issues.append(
+            missing_path_issue(
+                "perf_artifact",
+                declared_perf,
+                expected_path=expected_perf_name_value,
+            )
+        )
     elif state is not None and declared_perf is not None and Path(declared_perf).name != perf_path.name:
-        issues.append(f"perf_artifact must be {expected_perf_name_value}")
+        issues.append(
+            unexpected_path_name_issue(
+                "perf_artifact",
+                declared_perf,
+                expected_name=expected_perf_name_value,
+            )
+        )
     if declared_analysis is not None and perf_analysis_path is None:
-        issues.append(missing_issue(declared_analysis, default_path="perf-analysis.md"))
+        issues.append(
+            missing_path_issue(
+                "perf_analysis_path",
+                declared_analysis,
+                expected_path="perf-analysis.md",
+            )
+        )
     if operator_path is None:
         issues.append(f"missing {expected_operator_name_value}")
 
@@ -226,12 +427,53 @@ def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
     )
 
 
+def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
+    try:
+        baseline = load_baseline_state(workspace)
+    except ValueError:
+        return None
+    baseline_perf_path = declared_state_file(
+        baseline_dir(workspace),
+        workspace,
+        baseline.perf_artifact,
+    )
+    if baseline_perf_path is None:
+        return None
+
+    best_speedup: float | None = None
+    for round_dir in iter_completed_round_directories(workspace):
+        geomean_speedup = compute_round_geomean_speedup(
+            round_dir,
+            baseline_perf_path=baseline_perf_path,
+        )
+        if geomean_speedup is None:
+            continue
+        if best_speedup is None or geomean_speedup > best_speedup:
+            best_speedup = geomean_speedup
+    return best_speedup
+
+
+def _min_speedup_pending_prefix(
+    *,
+    best_speedup: float | None,
+    min_speedup: float | None,
+) -> str:
+    if min_speedup is None or best_speedup is None:
+        return "round check passed. "
+    return (
+        "round check passed. "
+        f"Minimum speedup target not yet satisfied: best completed-round geomean speedup "
+        f"is {best_speedup:.2f}x (target {min_speedup:.2f}x). "
+    )
+
+
 def check_round(
     round_dir: Path,
     *,
     current_round: int | None = None,
     final_round: int | None = None,
     optimize_target: Literal["kernel", "operator"] | None = None,
+    min_speedup: float | None = None,
 ) -> OptimizeCheckResult:
     artifact_inspection, round_state, state_error = _inspect_round_minimum_artifact_package(round_dir)
     artifact_issues = artifact_inspection.issues
@@ -265,10 +507,14 @@ def check_round(
 
     baseline_issues = baseline_gate_issues(round_dir.parent)
     if baseline_issues:
+        issues = list(baseline_issues)
+        comparison_dependency_issue = _comparison_target_dependency_issue(round_dir)
+        if comparison_dependency_issue is not None:
+            issues.append(comparison_dependency_issue)
         return build_check_result(
             kind="round",
             status="fail",
-            issues=baseline_issues,
+            issues=tuple(issues),
         )
 
     semantic_issues: list[str] = []
@@ -283,16 +529,20 @@ def check_round(
         comparison_target_path = declared_state_file(
             round_dir,
             round_dir.parent,
-            round_state.comparison_target,
+            round_state.comparison_target_path,
         )
         expected_comparison_target = None
         if baseline_perf_path is not None:
-            expected_comparison_target = os.path.relpath(baseline_perf_path.resolve(), round_dir)
+            expected_comparison_target = os.path.relpath(
+                baseline_perf_path.resolve(),
+                round_dir.resolve(),
+            )
         if comparison_target_path is None:
             semantic_issues.append(
-                missing_issue(
-                    round_state.comparison_target,
-                    default_path=expected_comparison_target or round_state.comparison_target,
+                missing_path_issue(
+                    "comparison_target_path",
+                    round_state.comparison_target_path,
+                    expected_path=expected_comparison_target,
                 )
             )
         elif (
@@ -300,11 +550,20 @@ def check_round(
             and comparison_target_path.resolve() != baseline_perf_path.resolve()
         ):
             semantic_issues.append(
-                f"comparison_target={round_state.comparison_target} "
-                f"(expected {expected_comparison_target or baseline.perf_artifact})"
+                noncanonical_path_issue(
+                    "comparison_target_path",
+                    round_state.comparison_target_path,
+                    expected_path=expected_comparison_target or baseline.perf_artifact,
+                )
             )
-    except ValueError:
-        semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
+    except ValueError as exc:
+        semantic_issues.append(
+            invalid_dependency_issue(
+                "comparison_target_path",
+                "baseline/state.json",
+                str(exc),
+            )
+        )
     if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
         semantic_issues.append(
             f"effective_metric_source={round_state.effective_metric_source}"
@@ -346,7 +605,8 @@ def check_round(
 
     if ordinary_optimize_pt_cleanup_enabled():
         cleanup_dir_pt_files(round_dir)
-    cleanup_dir_prof_artifacts(round_dir)
+    cleanup_round_profile_artifacts(round_dir)
+    cleanup_dir_prof_artifacts(round_dir.parent)
     local_optimum_warnings: tuple[str, ...] = ()
     if baseline_perf_path is not None:
         local_optimum_warnings = collect_local_optimum_warnings(
@@ -359,15 +619,38 @@ def check_round(
         issues=(*tuple(runtime_warnings), *local_optimum_warnings),
     )
 
+    best_speedup = None
+    if min_speedup is not None:
+        best_speedup = best_completed_round_geomean_speedup(round_dir.parent)
+    target_speedup = min_speedup
+
     if current_round is not None and final_round is not None:
-        if current_round < final_round:
+        if best_speedup is not None and target_speedup is not None and best_speedup >= target_speedup:
+            result = build_check_result(
+                kind="round",
+                status="pass",
+                issues=result.issues,
+                summary=append_pass_issues_to_summary(
+                    "round check passed. "
+                    f"Minimum speedup target satisfied: best completed-round geomean speedup "
+                    f"is {best_speedup:.2f}x (target {target_speedup:.2f}x). "
+                    "Stop the optimize session immediately instead of opening another round.",
+                    result.issues,
+                ),
+                next_option=None,
+            )
+        elif current_round < final_round:
             next_round_name = f"opt-round-{current_round + 1}"
             result = build_check_result(
                 kind="round",
                 status="pass",
                 issues=result.issues,
                 summary=append_pass_issues_to_summary(
-                    f"round check passed. "
+                    _min_speedup_pending_prefix(
+                        best_speedup=best_speedup,
+                        min_speedup=target_speedup,
+                    )
+                    +
                     f"Round {current_round}/{final_round} in the current worker batch is complete. "
                     f"Next round: {next_round_name}. "
                     f"Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand "
@@ -382,11 +665,30 @@ def check_round(
                 status="pass",
                 issues=result.issues,
                 summary=append_pass_issues_to_summary(
-                    "round check passed. This round satisfied the current worker batch target.",
+                    _min_speedup_pending_prefix(
+                        best_speedup=best_speedup,
+                        min_speedup=target_speedup,
+                    )
+                    +
+                    "This round satisfied the current worker batch target.",
                     result.issues,
                 ),
                 next_option=None,
             )
+    elif target_speedup is not None and best_speedup is not None and best_speedup >= target_speedup:
+        result = build_check_result(
+            kind="round",
+            status="pass",
+            issues=result.issues,
+            summary=append_pass_issues_to_summary(
+                "round check passed. "
+                f"Minimum speedup target satisfied: best completed-round geomean speedup "
+                f"is {best_speedup:.2f}x (target {target_speedup:.2f}x). "
+                "Stop the optimize session immediately instead of opening another round.",
+                result.issues,
+            ),
+            next_option=None,
+        )
 
     return result
 

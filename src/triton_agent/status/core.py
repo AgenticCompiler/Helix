@@ -7,9 +7,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol, cast
 
-from triton_agent.optimize.baseline import baseline_dir
+from triton_agent.optimize.baseline import baseline_dir, load_baseline_state
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
-from triton_agent.optimize.naming import resolve_round_perf_file
+from triton_agent.optimize.models import RoundState
 from triton_agent.optimize.round_contract import load_round_state
 from triton_agent.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.skills.loader import load_operator_eval_script_module
@@ -51,10 +51,12 @@ class BenchPerfParserModule(Protocol):
 def _load_bench_perf_parser() -> BenchPerfParserModule:
     return cast(BenchPerfParserModule, load_operator_eval_script_module("perf_artifacts"))
 
+
 def inspect_optimize_status_workspace(
     workspace: Path,
     *,
     verbose: bool = False,
+    metric_source: str | None = None,
 ) -> OptimizeStatusWorkspace:
     del verbose
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
@@ -108,16 +110,24 @@ def inspect_optimize_status_workspace(
     comparable_rounds: list[OptimizeStatusRound] = []
 
     for round_dir in round_dirs:
-        perf_path = find_round_perf_file(round_dir)
+        round_state, round_warning = _load_comparable_round_state(round_dir)
+        if round_warning is not None:
+            warnings.append(round_warning)
+            continue
+        assert round_state is not None
+        perf_path = find_round_perf_file(round_dir, round_state)
         if perf_path is None:
             warnings.append(f"missing perf artifact for {round_dir.name}")
             continue
-        metric_source = _metric_source_for_round_status(round_dir)
+        round_metric_source = _resolve_status_metric_source(
+            round_state,
+            metric_source=metric_source,
+        )
         try:
             baseline_values, round_values = _parse_perf_pair_for_metric_source(
                 baseline_path,
                 perf_path,
-                metric_source=metric_source,
+                metric_source=round_metric_source,
                 baseline_cache=baseline_values_by_source,
             )
         except (ValueError, OSError) as exc:
@@ -149,7 +159,7 @@ def inspect_optimize_status_workspace(
         comparable_rounds.append(
             OptimizeStatusRound(
                 round_name=f"round-{round_number(round_dir.name)}",
-                effective_metric_source=metric_source,
+                effective_metric_source=round_metric_source,
                 avg_improvement=mean_value(improvement_values),
                 geomean_speedup=geomean_value(speedup_values),
                 mean_latency=mean_value(valid_round_values),
@@ -203,9 +213,18 @@ def inspect_optimize_status_workspace(
     )
 
 
-def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> list[OptimizeStatusWorkspace]:
+def scan_optimize_status_workspaces(
+    root: Path,
+    *,
+    verbose: bool = False,
+    metric_source: str | None = None,
+) -> list[OptimizeStatusWorkspace]:
     return [
-        inspect_optimize_status_workspace(workspace, verbose=verbose)
+        inspect_optimize_status_workspace(
+            workspace,
+            verbose=verbose,
+            metric_source=metric_source,
+        )
         for workspace in sorted(
             path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
         )
@@ -301,14 +320,41 @@ def _optional_float(value: object) -> float | None:
     return None
 
 
+def resolve_declared_baseline_perf_file(workspace: Path) -> tuple[Path | None, str | None, bool]:
+    try:
+        baseline_state = load_baseline_state(workspace)
+    except ValueError:
+        return None, None, False
+
+    declared_path = Path(str(baseline_state.perf_artifact))
+    candidate_paths = (declared_path,)
+    if not declared_path.is_absolute():
+        baseline_dir_path = baseline_dir(workspace)
+        candidate_paths = (
+            baseline_dir_path / declared_path,
+            workspace / declared_path,
+        )
+    for candidate_path in candidate_paths:
+        if candidate_path.is_file():
+            return candidate_path, None, True
+    return None, f"perf_artifact points to a missing file: {baseline_state.perf_artifact}", True
+
+
 def select_baseline_perf_file(
     workspace: Path,
     paths: list[Path],
     warnings: list[str],
 ) -> tuple[Path | None, bool]:
-    baseline_perf = baseline_dir(workspace) / "perf.txt"
-    if baseline_perf.is_file():
-        return baseline_perf, False
+    declared_baseline_perf, declared_issue, has_declared_state = (
+        resolve_declared_baseline_perf_file(workspace)
+    )
+    if declared_baseline_perf is not None:
+        return declared_baseline_perf, False
+    if declared_issue is not None:
+        warnings.append(declared_issue)
+        return None, True
+    if has_declared_state:
+        return None, False
 
     baseline_dir_path = baseline_dir(workspace)
     if baseline_dir_path.is_dir():
@@ -351,21 +397,47 @@ def resolve_workspace_operator_perf_file(workspace: Path, paths: list[Path]) -> 
     return next((path for path in paths if path.name == expected_name), None)
 
 
-def find_round_perf_file(round_dir: Path) -> Path | None:
-    return resolve_round_perf_file(round_dir)
+def find_round_perf_file(round_dir: Path, round_state: RoundState) -> Path | None:
+    declared_path = Path(round_state.perf_artifact)
+    if not declared_path.is_absolute():
+        declared_path = round_dir / declared_path
+    if declared_path.is_file():
+        return declared_path
+    return None
 
 
-def _metric_source_for_round_status(round_dir: Path) -> str:
+def _load_comparable_round_state(round_dir: Path) -> tuple[RoundState | None, str | None]:
+    state_path = round_dir / "round-state.json"
+    if not state_path.is_file():
+        return None, f"skipping {round_dir.name} because round-state.json is missing"
     try:
         state = load_round_state(round_dir)
-    except ValueError:
-        return "auto"
+    except ValueError as exc:
+        return None, f"skipping {round_dir.name} because round-state.json is invalid: {exc}"
+    if state.correctness_status != "passed":
+        return None, f"skipping {round_dir.name} because correctness_status={state.correctness_status}"
+    if state.benchmark_status != "passed":
+        return None, f"skipping {round_dir.name} because benchmark_status={state.benchmark_status}"
+    return state, None
+
+
+def _metric_source_for_round_status(state: RoundState) -> str:
     effective_metric_source = state.effective_metric_source
     if effective_metric_source == "kernel":
         return "kernel"
     if effective_metric_source == "total-op":
         return "total-op"
     return "auto"
+
+
+def _resolve_status_metric_source(
+    state: RoundState,
+    *,
+    metric_source: str | None,
+) -> str:
+    if metric_source is not None:
+        return metric_source
+    return _metric_source_for_round_status(state)
 
 
 def _parse_baseline_values_for_metric_source(

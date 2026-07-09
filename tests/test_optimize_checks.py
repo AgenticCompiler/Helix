@@ -140,7 +140,10 @@ class OptimizeCheckTests(unittest.TestCase):
 
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "baseline")
-            self.assertIn("missing baseline/perf.txt", result.issues)
+            self.assertIn(
+                "perf_artifact points to a missing file: baseline/perf.txt",
+                result.issues,
+            )
 
     def test_check_round_passes_with_complete_round_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,6 +253,43 @@ class OptimizeCheckTests(unittest.TestCase):
 
             self.assertEqual(result.status, "pass")
 
+    def test_check_round_reports_summary_path_field_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertIn(
+                "summary_path points to a missing file: summary.md (expected summary.md)",
+                result.issues,
+            )
+
     def test_check_round_flags_missing_declared_perf_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -263,7 +303,115 @@ class OptimizeCheckTests(unittest.TestCase):
             result = optimize_checks.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
-            self.assertIn("missing perf-analysis.md", result.issues)
+            self.assertIn(
+                "perf_analysis_path points to a missing file: perf-analysis.md (expected perf-analysis.md)",
+                result.issues,
+            )
+
+    def test_check_round_reports_missing_comparison_target_path_with_field_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1")
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["comparison_target_path"] = "../baseline/missing_perf.txt"
+            payload.pop("comparison_target", None)
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertTrue(
+                any(
+                    issue.startswith(
+                        "comparison_target_path points to a missing file: ../baseline/missing_perf.txt"
+                    )
+                    for issue in result.issues
+                )
+            )
+            self.assertTrue(
+                any("expected ../baseline/perf.txt" in issue for issue in result.issues),
+            )
+
+    def test_check_round_reports_noncanonical_comparison_target_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            (workdir / "baseline" / "other_perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            round_dir = self._write_round(workdir, "opt-round-1")
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["comparison_target_path"] = "../baseline/other_perf.txt"
+            payload.pop("comparison_target", None)
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertIn(
+                "comparison_target_path must point to the canonical baseline perf artifact ../baseline/perf.txt (got ../baseline/other_perf.txt)",
+                result.issues,
+            )
+
+    def test_check_round_reports_baseline_invalid_reason_when_comparison_target_cannot_be_validated(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            baseline_payload = json.loads(
+                (workdir / "baseline" / "state.json").read_text(encoding="utf-8")
+            )
+            baseline_payload.pop("perf_artifact")
+            (workdir / "baseline" / "state.json").write_text(
+                json.dumps(baseline_payload),
+                encoding="utf-8",
+            )
+            round_dir = self._write_round(workdir, "opt-round-1")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertTrue(
+                any(
+                    issue.startswith(
+                        "cannot validate comparison_target_path because baseline/state.json is invalid:"
+                    )
+                    for issue in result.issues
+                )
+            )
+
+    def test_check_baseline_reports_declared_operator_field_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            result = optimize_checks.check_baseline(baseline_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertIn(
+                "baseline_operator points to a missing file: baseline/kernel.py",
+                result.issues,
+            )
 
     def test_check_round_rejects_pure_pytorch_operator_rewrite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -320,7 +468,7 @@ class OptimizeCheckTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "perf.txt",
-                        "comparison_target": "baseline/perf.txt",
+                        "comparison_target_path": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -355,7 +503,7 @@ class OptimizeCheckTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "perf.txt",
-                        "comparison_target": "baseline/kernel_perf.txt",
+                        "comparison_target_path": "baseline/kernel_perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -476,6 +624,108 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.status, "pass")
             self.assertFalse(
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
+            )
+
+    def test_check_round_does_not_warn_when_recent_window_contains_a_collapse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 10.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 1.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 5.0\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 8.3\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertFalse(
+                any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
+            )
+            self.assertFalse(
+                any("may be stuck in a local optimum" in issue for issue in result.issues)
+            )
+
+    def test_check_round_warns_when_recent_rounds_stagnate_with_slight_decline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 10.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 8.3\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 8.4\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 8.5\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertTrue(
+                any("may be stuck in a local optimum" in issue for issue in result.issues)
+            )
+            self.assertTrue(
+                any("only marginal baseline-relative geomean speedup changes" in issue for issue in result.issues)
+            )
+            self.assertFalse(
+                any("only marginal baseline-relative geomean speedup gains" in issue for issue in result.issues)
+            )
+
+    def test_check_round_warns_when_recent_rounds_hit_symmetric_gain_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(
+                workdir,
+                perf_text="latency-a: 100.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                round_perf_text="latency-a: 100.0\n",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                round_perf_text="latency-a: 98.0392156862745\n",
+            )
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-3",
+                round_perf_text="latency-a: 100.0\n",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertTrue(
+                any("only marginal baseline-relative geomean speedup changes" in issue for issue in result.issues)
+            )
+            self.assertTrue(
+                any("+0.02x, -0.02x" in issue for issue in result.issues)
             )
 
     def test_check_round_does_not_warn_when_recent_rounds_mix_metric_bases(self) -> None:
@@ -616,7 +866,7 @@ class OptimizeCheckTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "opt_kernel_perf.txt",
-                        "comparison_target": "../baseline/perf.txt",
+                        "comparison_target_path": "../baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
@@ -710,7 +960,7 @@ class OptimizeCheckTests(unittest.TestCase):
             "benchmark_status": "passed",
             "perf_artifact": "opt_kernel_perf.txt",
             "canonical_baseline": "baseline",
-            "comparison_target": "baseline/perf.txt",
+            "comparison_target_path": "baseline/perf.txt",
             "perf_summary_source": "compare-perf",
             "effective_metric_source": effective_metric_source,
             "summary_path": "summary.md",

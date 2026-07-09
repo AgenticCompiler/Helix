@@ -7,7 +7,7 @@
     "correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check.",
     "benchmark_status": "record the final benchmark result for this round; use `passed` only after the round benchmark succeeds and the round perf artifact is written.",
     "perf_artifact": "record the path from the directory that contains `round-state.json` to the canonical round perf artifact, normally `opt_<operator>_perf.txt`.",
-    "comparison_target": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`.",
+    "comparison_target_path": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`.",
     "effective_metric_source": "record the resolved `compare-perf` basis that decided the round outcome: `kernel`, `total-op`, or `mixed`.",
     "summary_path": "record the path from the directory that contains `round-state.json` to the final round summary markdown, normally `summary.md`.",
     "opt_note_updated": "set this to `true` only after the top-level `opt-note.md` entry for this round has been updated."

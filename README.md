@@ -86,11 +86,13 @@ Uploads are stored as `<timestamp>-<workspace_slug>-<uid>.tar.gz` with a matchin
 
 These are the environment variables that `triton-agent` reads directly at runtime.
 
+For batch NPU affinity, prefer the CLI options `--npu-devices` and `--workers-per-npu`. The legacy `TRITON_AGENT_BATCH_*` variables remain supported as compatibility fallback when those options are omitted.
+
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
 | `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
-| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--npu-devices`. Accepts a comma-separated Ascend device list and inclusive numeric ranges such as `0,3-5,8-9`. When resolved, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--workers-per-npu`. Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when batch NPU devices are configured; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. Managed `run-eval-mcp-server` accepts this setting for compatibility but ignores it for runtime device leasing. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
@@ -99,7 +101,7 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_RUN_TEST_RTOL` | No | `dtype-close` correctness comparison | Relative tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-state` `submit-baseline` flow, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
 | `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum absolute adjacent baseline-relative geomean speedup change that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
 | `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
@@ -108,13 +110,23 @@ These are the environment variables that `triton-agent` reads directly at runtim
 Examples:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
 export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
 export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4
 export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01
 export TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR=$HOME/.triton-agent
+uv run triton-agent optimize-batch \
+  --input operators_root \
+  --concurrency max \
+  --npu-devices 0,3-5,8-9 \
+  --workers-per-npu 2
+```
+
+Legacy compatibility form:
+
+```bash
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
+export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
 uv run triton-agent optimize-batch --input operators_root --concurrency max
 ```
 
@@ -129,7 +141,7 @@ uv run triton-agent gen-test --input a.py --agent openhands
 
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
-- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured. Multiple concurrent workspaces may receive the same device when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is greater than `1`.
+- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when batch NPU affinity is configured through `--npu-devices` / `--workers-per-npu` or their legacy `TRITON_AGENT_BATCH_*` fallback variables. Multiple concurrent workspaces may receive the same device when per-device sharing is greater than `1`.
 
 ## Debug The Run-Eval MCP Server
 
@@ -145,18 +157,20 @@ What it does:
 - prints the base endpoint, for example `http://127.0.0.1:38745/mcp`
 - prints a workspace URL template of the form `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
 - keeps running until you stop it with `Ctrl-C`
-- defaults to NPU device `0` when the batch NPU environment variables are not set
+- defaults to NPU device `0` when neither `--npu-devices` nor `TRITON_AGENT_BATCH_NPU_DEVICES` is set
 
 Common options:
 
 - `--port <int>`: bind a fixed local port instead of using an ephemeral one
-- `TRITON_AGENT_BATCH_NPU_DEVICES`: override the managed NPU device pool
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: accepted for compatibility, but ignored by the managed MCP runtime
+- `--npu-devices <list>`: set the managed NPU device pool explicitly
+- `--workers-per-npu <int>`: accepted for compatibility, but ignored by the managed MCP runtime
+- `TRITON_AGENT_BATCH_NPU_DEVICES`: legacy compatibility fallback when `--npu-devices` is omitted
+- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: legacy compatibility fallback when `--workers-per-npu` is omitted; still ignored by the managed MCP runtime
 
 Example:
 
 ```bash
-uv run triton-agent run-eval-mcp-server --port 8765
+uv run triton-agent run-eval-mcp-server --port 8765 --npu-devices 0,1
 ```
 
 ## Generate Tests
@@ -495,15 +509,16 @@ The switch is based on whether `--concurrency` is present. `--concurrency 1` sti
 
 ### Batch NPU Affinity
 
-Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to be pinned to specific Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
+Prefer `--npu-devices` when you want concurrent batch workspaces to be pinned to specific Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
-uv run triton-agent optimize-batch --input operators_root --concurrency 4
-uv run triton-agent optimize --input operators_root --concurrency 4
+uv run triton-agent optimize-batch --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
+uv run triton-agent optimize --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
 ```
 
-When this variable is set:
+If `--npu-devices` is omitted, the CLI falls back to `TRITON_AGENT_BATCH_NPU_DEVICES` for compatibility.
+
+When batch NPU affinity is configured:
 
 - `gen-eval`, `convert`, and `optimize` in explicit `--concurrency` batch mode assign one device per running workspace, as do their `*-batch` spellings.
 - `-c, --concurrency` may be a positive integer or `max`.
@@ -511,21 +526,21 @@ When this variable is set:
 - numeric `-c` / `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
 - The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
 
-By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
+By default each device hosts at most one concurrent workspace. Prefer `--workers-per-npu` to allow multiple workers to share the same device:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch --input operators_root --concurrency max
+uv run triton-agent optimize-batch --input operators_root --concurrency max --npu-devices 0,1 --workers-per-npu 2
 ```
 
-When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
+If `--workers-per-npu` is omitted, the CLI falls back to `TRITON_AGENT_BATCH_WORKERS_PER_NPU` for compatibility.
+
+When per-device sharing is configured:
 
 - Effective capacity is `device_count × workers_per_npu`.
 - numeric `-c` / `--concurrency` values must not exceed the effective capacity.
 - `-c max` / `--concurrency max` resolves to that effective capacity.
 - Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
-- This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
+- `--workers-per-npu` / `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is ignored when batch NPU devices are unset.
 
 ### Generate Evaluation Assets In Batch
 
@@ -569,6 +584,7 @@ uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent status --input operators_root --format json
 uv run triton-agent status --input operators_root --view trend
 uv run triton-agent status --input operators_root --view trend --format json
+uv run triton-agent status --input operators_root --metric-source total-op
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
@@ -577,6 +593,11 @@ It keeps baseline perf files strict, but round `perf.txt` artifacts may include 
 `mean_ms` as long as the required `latency-*` entries are still present.
 When multiple top-level perf files exist, baseline selection prefers `<original-operator>_perf.txt`,
 then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
+
+`-m, --metric-source auto|kernel|total-op` optionally forces one comparison basis for every
+round considered in that `status` invocation. Omit the flag to preserve each round's recorded
+effective metric source. `status` does not accept `all`; unlike `compare-perf`, it renders one
+summary view per invocation instead of separate metric sections.
 
 `--view best` is the default view. It reports each workspace's best numeric round,
 average improvement, geomean speedup, logged best round, verification status, and warnings.

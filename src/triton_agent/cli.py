@@ -30,6 +30,7 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
+from triton_agent.optimize.env import optimize_min_speedup_env_name
 from triton_agent.remote.env import (
     apply_remote_execution_env,
     remote_target_env_name,
@@ -117,12 +118,16 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "PT cleanup policy: never, round, or run-test. Default round; --reset-optimize still deletes reset artifacts.",
             ),
             (
+                optimize_min_speedup_env_name(),
+                "Injected optimize speedup target for optimize worker child processes; `submit-round` uses it automatically when present.",
+            ),
+            (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
                 "Recent comparable round count for advisory local-optimum warnings in `ascend-npu-optimize-state` `submit-round` (default: 3).",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
-                "Maximum adjacent baseline-relative geomean gain that still counts as flat for local-optimum warnings (default: 0.02).",
+                "Maximum absolute adjacent baseline-relative geomean change that still counts as flat for local-optimum warnings (default: 0.02).",
             ),
             (
                 "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR",
@@ -198,6 +203,7 @@ class _CommandSpec:
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
     has_npu_devices: bool = False
+    has_batch_affinity: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
     concurrency_default: int | None = None
@@ -234,6 +240,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_log_tools=True,
         optional_concurrency=True,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_operator_filter=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
@@ -252,6 +259,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_log_tools=True,
         has_operator_filter=True,
     ),
@@ -272,6 +280,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_log_tools=True,
         optional_concurrency=True,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_operator_filter=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
@@ -289,6 +298,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_log_tools=True,
         has_operator_filter=True,
     ),
@@ -431,6 +441,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Start the shared run-eval HTTP MCP server in the foreground for standalone debugging.",
         has_output=False,
         has_verbose=False,
+        has_batch_affinity=True,
         input_mode="run-eval-mcp-server",
     ),
     CommandKind.VERIFY: _CommandSpec(
@@ -474,6 +485,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_log_tools=True,
         optional_concurrency=True,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_operator_filter=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
@@ -492,6 +504,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
+        has_batch_affinity=True,
         has_log_tools=True,
         has_operator_filter=True,
     ),
@@ -593,12 +606,18 @@ def _collect_command_names() -> tuple[str, ...]:
 def build_parser() -> argparse.ArgumentParser:
     parser = TritonArgumentParser(
         prog="triton-agent",
-        usage="triton-agent [-h] COMMAND ...",
+        usage="triton-agent [-h] [-v] COMMAND ...",
         description=_TOP_LEVEL_DESCRIPTION,
         epilog=_build_top_level_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         env_var_names=_collect_env_var_names(),
         command_names=_collect_command_names(),
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=get_build_info_display(),
     )
     subparsers = parser.add_subparsers(
         dest="command", required=True, metavar="COMMAND", parser_class=TritonArgumentParser
@@ -625,6 +644,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
         if command_kind == CommandKind.STATUS:
             subparser.add_argument("--view", default="best", choices=_STATUS_VIEW_CHOICES)
+            subparser.add_argument(
+                "-m",
+                "--metric-source",
+                default=None,
+                choices=("auto", "kernel", "total-op"),
+            )
         if spec.has_language:
             subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
@@ -676,11 +701,20 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=_BENCH_MODE_CHOICES,
             )
         if spec.has_npu_devices:
-            subparser.add_argument("--npu-devices")
+            subparser.add_argument("--npu-devices", "--npu-device", dest="npu_devices")
+        if spec.has_batch_affinity:
+            subparser.add_argument("--npu-devices", "--npu-device", dest="npu_devices")
+            subparser.add_argument("--workers-per-npu", "--worker-per-npu", dest="workers_per_npu")
         if spec.has_optimize_options:
             # Round control
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5,
                                    help="Minimum number of optimization rounds to run.")
+            subparser.add_argument(
+                "--min-speedup",
+                type=float,
+                default=None,
+                help="Allow optimize to stop early once the session reaches at least this baseline-relative geomean speedup.",
+            )
             subparser.add_argument("--round-batch-size", type=int, default=5,
                                    help="Number of candidate kernels to sample per optimization round.")
             subparser.add_argument(
@@ -860,6 +894,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.print_help()
         return 0
     args = parser.parse_args(_normalize_command_aliases(argv))
+    _normalize_batch_affinity_args(args)
     try:
         _ensure_explicit_remote_ssh_ready_from_args(args)
     except (RuntimeError, ValueError) as exc:
@@ -868,6 +903,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     _apply_remote_execution_env_from_args(args)
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _normalize_batch_affinity_args(args: argparse.Namespace) -> None:
+    if not hasattr(args, "npu_devices"):
+        return
+    if getattr(args, "npu_devices", None) is None:
+        args.npu_devices = os.environ.get("TRITON_AGENT_BATCH_NPU_DEVICES")
+    if hasattr(args, "workers_per_npu") and getattr(args, "workers_per_npu", None) is None:
+        args.workers_per_npu = os.environ.get("TRITON_AGENT_BATCH_WORKERS_PER_NPU")
 
 
 def _ensure_explicit_remote_ssh_ready_from_args(args: argparse.Namespace) -> None:
@@ -919,6 +963,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--baseline-operator-file")
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),
@@ -929,6 +974,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--baseline-operator-file", required=True)
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op"),
@@ -954,6 +1000,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--compare", required=True)
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
+            "-m",
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),

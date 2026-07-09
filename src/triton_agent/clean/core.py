@@ -53,6 +53,8 @@ def is_cleanable_workspace(path: Path) -> bool:
         return True
     if any(path.glob("PROF_*")):
         return True
+    if any(path.glob("OPPROF_*")):
+        return True
     if any(path.glob("*_result.pt")):
         return True
     if any(path.glob("*_perf.txt")):
@@ -101,6 +103,7 @@ def _workspace_cleanup_targets(
     targets.extend(sorted(path for path in workspace.glob("*_perf.txt")))
     targets.extend(sorted(path for path in workspace.glob("opt-round-*")))
     targets.extend(sorted(path for path in workspace.glob("PROF_*")))
+    targets.extend(sorted(path for path in workspace.glob("OPPROF_*")))
     targets.extend(sorted(path for path in workspace.glob("triton_*.py")))
     targets.extend(sorted(path for path in workspace.glob("opt_*.py")))
 

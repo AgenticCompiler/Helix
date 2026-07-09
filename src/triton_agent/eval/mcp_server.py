@@ -64,25 +64,43 @@ class NpuDevicePool:
                 self._condition.notify()
 
 
-def configured_slot_pool() -> NpuDevicePool:
-    raw_devices = os.environ.get("TRITON_AGENT_BATCH_NPU_DEVICES")
-    normalized_devices = raw_devices.strip() if raw_devices is not None else ""
-    devices = parse_batch_npu_devices(normalized_devices or "0")
+def configured_slot_pool(
+    *,
+    npu_devices: str | None = None,
+    workers_per_npu: str | None = None,
+) -> NpuDevicePool:
+    if npu_devices is None:
+        raw_devices = os.environ.get("TRITON_AGENT_BATCH_NPU_DEVICES")
+        devices = ("0",) if raw_devices is None else parse_batch_npu_devices(raw_devices)
+    else:
+        devices = parse_batch_npu_devices(npu_devices)
     if devices is None:
         raise ValueError("Managed run-eval MCP server resolved no NPU devices.")
-    raw_workers = os.environ.get("TRITON_AGENT_BATCH_WORKERS_PER_NPU")
-    workers_per_npu = parse_batch_workers_per_npu(raw_workers if raw_workers and raw_workers.strip() else None)
-    return NpuDevicePool(build_slot_pool(",".join(devices), workers_per_npu))
+    raw_workers = (
+        os.environ.get("TRITON_AGENT_BATCH_WORKERS_PER_NPU")
+        if workers_per_npu is None
+        else workers_per_npu
+    )
+    parsed_workers = parse_batch_workers_per_npu(raw_workers)
+    return NpuDevicePool(build_slot_pool(",".join(devices), parsed_workers))
 
 
-def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
+def create_server(
+    *,
+    slot_pool: NpuDevicePool | None = None,
+    npu_devices: str | None = None,
+    workers_per_npu: str | None = None,
+) -> "FastMCP":
     FastMCP, _ = _load_fastmcp_dependencies()
-    pool = slot_pool or configured_slot_pool()
+    pool = slot_pool or configured_slot_pool(
+        npu_devices=npu_devices,
+        workers_per_npu=workers_per_npu,
+    )
     server = FastMCP(RUN_EVAL_MCP_SERVER_NAME)
 
     @server.tool(
         name="run-test-baseline",
-        description="Run the baseline operator against a test case and optionally compare an archived differential result.",
+        description="Run the baseline operator against a test case and return any archived differential result it produces.",
     )
     def run_test_baseline(
         test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
@@ -109,6 +127,48 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
                 "run-test-baseline",
+                arguments,
+                leased_device=leased_device,
+                workspace=workspace,
+            )
+
+    @server.tool(
+        name="run-test-convert",
+        description="Run the converted operator against a test case and compare it with reference evidence.",
+    )
+    def run_test_convert(
+        test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the converted operator implementation file.")],
+        ref_operator_file: Annotated[
+            str | None,
+            Field(description="Absolute path to the reference operator file used to produce comparison output."),
+        ] = None,
+        ref_result: Annotated[
+            str | None,
+            Field(description="Absolute path to an archived reference result used for differential comparison."),
+        ] = None,
+        test_mode: Annotated[
+            str | None,
+            Field(description="Optional test mode override. Supported values: standalone, differential."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
+    ) -> dict[str, object]:
+        workspace = current_workspace()
+        arguments = _build_run_test_arguments(
+            test_file=test_file,
+            operator_file=operator_file,
+            test_mode=test_mode,
+            ref_result=ref_result,
+            ref_operator_file=ref_operator_file,
+            remote=remote,
+            remote_workdir=remote_workdir,
+            keep_remote_workdir=False,
+            verbose=False,
+        )
+        with _lease_device(pool) as leased_device:
+            return _run_subcommand(
+                "run-test-convert",
                 arguments,
                 leased_device=leased_device,
                 workspace=workspace,
@@ -472,9 +532,17 @@ class RunningHttpMCPServer:
             raise RuntimeError("Timed out while stopping managed run-eval MCP server.")
 
 
-def start_http_server(*, port: int = 0) -> RunningHttpMCPServer:
+def start_http_server(
+    *,
+    port: int = 0,
+    npu_devices: str | None = None,
+    workers_per_npu: str | None = None,
+) -> RunningHttpMCPServer:
     uvicorn = _load_uvicorn()
-    server = create_server()
+    server = create_server(
+        npu_devices=npu_devices,
+        workers_per_npu=workers_per_npu,
+    )
     app = server.http_app(path=_MCP_PATH, transport="http")
     sock = _reserved_socket() if port == 0 else _reserved_socket_for_port(port)
     port = cast_port(sock)
@@ -524,8 +592,17 @@ def start_http_server(*, port: int = 0) -> RunningHttpMCPServer:
     )
 
 
-def serve_http_server_forever(*, port: int = 0) -> int:
-    server = start_http_server(port=port)
+def serve_http_server_forever(
+    *,
+    port: int = 0,
+    npu_devices: str | None = None,
+    workers_per_npu: str | None = None,
+) -> int:
+    server = start_http_server(
+        port=port,
+        npu_devices=npu_devices,
+        workers_per_npu=workers_per_npu,
+    )
     try:
         print(f"Run-eval MCP server listening at {server.endpoint}")
         print(f"Workspace URL template: {build_mcp_url(port=server.port, workspace=Path('/abs/workspace'))}")
