@@ -38,6 +38,8 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    npu_devices: str | None = None
+    workers_per_npu: str | None = None
     min_speedup: float | None = None
     post_optimize_command: str | None = None
     language: Literal["triton", "tilelang"] = "triton"

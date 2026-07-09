@@ -277,7 +277,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(
@@ -302,6 +302,52 @@ class GenerationBatchHelpersTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_devices, [None, None])
+
+    def test_run_gen_eval_batch_passes_explicit_affinity_into_managed_mcp_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            class _DummyScope:
+                def __enter__(self):
+                    return None
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            with patch("triton_agent.generation.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        stream_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="torch-npu-profiler",
+                        npu_devices="0,1",
+                        workers_per_npu="2",
+                        prompt=None,
+                        enable_mcp=True,
+                    ),
+                    max_concurrency=1,
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(npu_devices="0,1", workers_per_npu="2")
 
     def test_run_gen_eval_batch_preserves_affinity_capacity_validation_without_mcp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -340,7 +386,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             mocked.assert_called_once()
 
-    def test_run_gen_eval_batch_skips_affinity_capacity_validation_when_mcp_enabled(self) -> None:
+    def test_run_gen_eval_batch_validates_physical_capacity_when_mcp_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "alpha"
@@ -363,6 +409,8 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                         output=None,
                         test_mode="differential",
                         bench_mode="torch-npu-profiler",
+                        npu_devices="0",
+                        workers_per_npu="2",
                         prompt=None,
                         enable_mcp=True,
                     ),
@@ -375,7 +423,12 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_not_called()
+            mocked.assert_called_once_with(
+                ("0",),
+                max_concurrency=8,
+                workers_per_npu_raw="2",
+                ignore_workers_per_npu=True,
+            )
 
 
 if __name__ == "__main__":

@@ -81,6 +81,8 @@ def build_generation_request(
         workdir=workdir,
         remote=options.remote,
         remote_workdir=options.remote_workdir,
+        npu_devices=options.npu_devices,
+        workers_per_npu=options.workers_per_npu,
         extra_env=extra_env,
         run_id=run_id,
         min_rounds=options.min_rounds,
@@ -109,7 +111,14 @@ def run_generation_request(
     if request.verbose:
         emit_verbose_lines(stderr or sys.stderr, "skills", manager.describe_prepare(links))
     try:
-        scope = managed_mcp_scope() if request.mcp_servers else nullcontext()
+        scope = (
+            managed_mcp_scope(
+                npu_devices=request.npu_devices,
+                workers_per_npu=request.workers_per_npu,
+            )
+            if request.mcp_servers
+            else nullcontext()
+        )
         with scope:
             runner = create_runner(request.agent_name)
             if stdout is not None or stderr is not None:

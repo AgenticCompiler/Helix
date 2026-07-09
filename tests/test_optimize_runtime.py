@@ -3084,7 +3084,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+            with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 with patch(
                     "triton_agent.optimize.batch.render_batch_optimize_results",
                     return_value=0,
@@ -3099,6 +3099,102 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_devices, [None, None])
+
+    def test_run_optimize_batch_passes_explicit_affinity_into_managed_mcp_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                npu_devices="0,1",
+                workers_per_npu="2",
+                enable_mcp=True,
+            )
+
+            class _DummyScope:
+                def __enter__(self):
+                    return None
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            with patch("triton_agent.optimize.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+                with patch(
+                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    return_value=0,
+                ):
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(npu_devices="0,1", workers_per_npu="2")
+
+    def test_run_optimize_batch_rejects_concurrency_beyond_physical_capacity_when_mcp_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                npu_devices="0",
+                workers_per_npu="2",
+                enable_mcp=True,
+            )
+
+            with self.assertRaisesRegex(ValueError, "--concurrency"):
+                run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=2,
+                    stdout=StringIO(),
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
 
     def test_run_optimize_batch_rejects_concurrency_beyond_effective_capacity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

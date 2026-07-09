@@ -55,27 +55,68 @@ def configured_batch_workers_per_npu() -> int:
     return parse_batch_workers_per_npu(os.environ.get(_BATCH_WORKERS_PER_NPU_ENV))
 
 
-def configured_batch_npu_slots() -> tuple[str, ...] | None:
-    devices = configured_batch_npu_devices()
+def configured_batch_npu_slots(
+    npu_devices_raw: str | None = None,
+    workers_per_npu_raw: str | None = None,
+) -> tuple[str, ...] | None:
+    devices = (
+        configured_batch_npu_devices()
+        if npu_devices_raw is None
+        else parse_batch_npu_devices(npu_devices_raw)
+    )
     if devices is None:
         return None
-    workers = configured_batch_workers_per_npu()
+    workers = (
+        configured_batch_workers_per_npu()
+        if workers_per_npu_raw is None
+        else parse_batch_workers_per_npu(workers_per_npu_raw)
+    )
     slots: list[str] = []
     for device in devices:
         slots.extend([device] * workers)
     return tuple(slots)
 
 
-def effective_batch_affinity_capacity() -> int | None:
-    devices = configured_batch_npu_devices()
+def effective_batch_affinity_capacity(
+    npu_devices_raw: str | None = None,
+    workers_per_npu_raw: str | None = None,
+    *,
+    ignore_workers_per_npu: bool = False,
+) -> int | None:
+    devices = (
+        configured_batch_npu_devices()
+        if npu_devices_raw is None
+        else parse_batch_npu_devices(npu_devices_raw)
+    )
     if devices is None:
         return None
-    return len(devices) * configured_batch_workers_per_npu()
+    if ignore_workers_per_npu:
+        if workers_per_npu_raw is None:
+            configured_batch_workers_per_npu()
+        else:
+            parse_batch_workers_per_npu(workers_per_npu_raw)
+        return len(devices)
+    workers = (
+        configured_batch_workers_per_npu()
+        if workers_per_npu_raw is None
+        else parse_batch_workers_per_npu(workers_per_npu_raw)
+    )
+    return len(devices) * workers
 
 
-def resolve_batch_concurrency(requested: int | str) -> int:
+def resolve_batch_concurrency(
+    requested: int | str,
+    npu_devices_raw: str | None = None,
+    workers_per_npu_raw: str | None = None,
+    *,
+    ignore_workers_per_npu: bool = False,
+) -> int:
     if requested == "max":
-        capacity = effective_batch_affinity_capacity()
+        capacity = effective_batch_affinity_capacity(
+            npu_devices_raw,
+            workers_per_npu_raw,
+            ignore_workers_per_npu=ignore_workers_per_npu,
+        )
         if capacity is None:
             raise ValueError(
                 f"--concurrency max requires {_BATCH_NPU_DEVICES_ENV} to be set."
@@ -92,10 +133,30 @@ def validate_batch_affinity_capacity(
     devices: tuple[str, ...] | None,
     *,
     max_concurrency: int,
+    workers_per_npu_raw: str | None = None,
+    ignore_workers_per_npu: bool = False,
 ) -> None:
     if devices is None:
         return
-    workers = configured_batch_workers_per_npu()
+    if ignore_workers_per_npu:
+        if workers_per_npu_raw is None:
+            configured_batch_workers_per_npu()
+        else:
+            parse_batch_workers_per_npu(workers_per_npu_raw)
+        effective_capacity = len(devices)
+        if max_concurrency > effective_capacity:
+            raise ValueError(
+                f"--concurrency ({max_concurrency}) must not exceed the managed MCP "
+                f"capacity ({effective_capacity}) derived from "
+                f"{_BATCH_NPU_DEVICES_ENV} ({len(devices)} device(s)); "
+                f"{_BATCH_WORKERS_PER_NPU_ENV} is ignored when --enable-mcp is set."
+            )
+        return
+    workers = (
+        configured_batch_workers_per_npu()
+        if workers_per_npu_raw is None
+        else parse_batch_workers_per_npu(workers_per_npu_raw)
+    )
     effective_capacity = len(devices) * workers
     if max_concurrency > effective_capacity:
         raise ValueError(

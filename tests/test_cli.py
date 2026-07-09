@@ -313,6 +313,31 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["run-eval-mcp-server", "--port", "8765"])
         self.assertEqual(args.port, 8765)
 
+    def test_run_eval_mcp_server_accepts_batch_affinity_cli_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run-eval-mcp-server", "--npu-devices", "0,1", "--workers-per-npu", "2"]
+        )
+        self.assertEqual(args.npu_devices, "0,1")
+        self.assertEqual(args.workers_per_npu, "2")
+
+    def test_run_eval_mcp_server_accepts_batch_affinity_cli_aliases(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run-eval-mcp-server", "--npu-device", "0,1", "--worker-per-npu", "2"]
+        )
+        self.assertEqual(args.npu_devices, "0,1")
+        self.assertEqual(args.workers_per_npu, "2")
+
+    def test_handle_run_eval_mcp_server_passes_explicit_batch_affinity_values(self) -> None:
+        from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
+
+        args = argparse.Namespace(port=1234, npu_devices="0,1", workers_per_npu="2")
+        with patch("triton_agent.commands.mcp_server.serve_http_server_forever", return_value=0) as mocked:
+            exit_code = handle_run_eval_mcp_server(argparse.ArgumentParser(), args)
+        self.assertEqual(exit_code, 0)
+        mocked.assert_called_once_with(port=1234, npu_devices="0,1", workers_per_npu="2")
+
     def test_generation_run_eval_commands_accept_enable_mcp_option(self) -> None:
         from triton_agent.commands.generation import generation_options_from_args
 
@@ -469,6 +494,41 @@ class CliParserTests(unittest.TestCase):
         self.assertIsInstance(options, GenerationOptions)
         self.assertEqual(options.prompt, "Keep benchmark shapes small.")
 
+    def test_build_generation_request_carries_batch_affinity_values(self) -> None:
+        from triton_agent.generation.models import GenerationOptions
+        from triton_agent.generation.orchestration import build_generation_request
+
+        options = GenerationOptions(
+            interact=False,
+            verbose=False,
+            stream_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            remote=None,
+            remote_workdir=None,
+            min_rounds=None,
+            continue_optimize=False,
+            output=None,
+            test_mode=None,
+            bench_mode=None,
+            npu_devices="0,1",
+            workers_per_npu="2",
+            prompt=None,
+            log_tools=False,
+            enable_mcp=True,
+        )
+
+        request = build_generation_request(
+            CommandKind.GEN_EVAL,
+            Path("kernel.py"),
+            Path("kernel.py"),
+            Path.cwd(),
+            options,
+        )
+
+        self.assertEqual(request.npu_devices, "0,1")
+        self.assertEqual(request.workers_per_npu, "2")
+
     def test_snake_case_aliases_map_to_same_command_kind(self) -> None:
         parser = build_parser()
         cases = [
@@ -532,7 +592,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
             exit_code = main(["run-eval-mcp-server", "--port", "8765"])
 
         self.assertEqual(exit_code, 7)
-        mocked.assert_called_once_with(port=8765)
+        mocked.assert_called_once_with(port=8765, npu_devices=None, workers_per_npu=None)
 
     def test_main_prints_build_commit_for_long_version_flag(self) -> None:
         stdout = StringIO()
@@ -3257,6 +3317,186 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["max_concurrency"], 4)
 
+    def test_main_optimize_batch_mcp_max_concurrency_ignores_workers_per_npu(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_optimize_batch(root, options, max_concurrency, operator_filter=None):
+                del root, options, operator_filter
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_batch",
+                side_effect=_fake_run_optimize_batch,
+            ):
+                exit_code = main(
+                    [
+                        "optimize-batch",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "max",
+                        "--enable-mcp",
+                        "--npu-devices",
+                        "0,1",
+                        "--workers-per-npu",
+                        "2",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["max_concurrency"], 2)
+
+    def test_main_prefers_explicit_batch_affinity_options_over_legacy_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_handler(parser, args):
+                del parser
+                captured["npu_devices"] = args.npu_devices
+                captured["workers_per_npu"] = args.workers_per_npu
+                return 0
+
+            original = cli_module._COMMAND_SPECS[CommandKind.OPTIMIZE_BATCH]
+            patched = cli_module._CommandSpec(
+                handler=_fake_handler,
+                help_group=original.help_group,
+                help_summary=original.help_summary,
+                description=original.description,
+                input_mode=original.input_mode,
+                input_default=original.input_default,
+                has_output=original.has_output,
+                has_verbose=original.has_verbose,
+                has_remote=original.has_remote,
+                keep_remote_workdir=original.keep_remote_workdir,
+                has_agent=original.has_agent,
+                agent_default=original.agent_default,
+                has_interact=original.has_interact,
+                has_show_output=original.has_show_output,
+                has_test_mode=original.has_test_mode,
+                test_mode_default=original.test_mode_default,
+                test_mode_choices=original.test_mode_choices,
+                has_bench_mode=original.has_bench_mode,
+                bench_mode_default=original.bench_mode_default,
+                has_npu_devices=original.has_npu_devices,
+                has_batch_affinity=original.has_batch_affinity,
+                has_optimize_options=original.has_optimize_options,
+                has_prompt=original.has_prompt,
+                concurrency_default=original.concurrency_default,
+                optional_concurrency=original.optional_concurrency,
+                concurrency_accepts_max=original.concurrency_accepts_max,
+                has_force_overwrite=original.has_force_overwrite,
+                has_format=original.has_format,
+                has_language=original.has_language,
+                has_verify_phase=original.has_verify_phase,
+                has_force_verify=original.has_force_verify,
+                has_log_tools=original.has_log_tools,
+                has_url=original.has_url,
+                has_distill_options=original.has_distill_options,
+                has_operator_filter=original.has_operator_filter,
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+                },
+                clear=False,
+            ):
+                with patch.dict(
+                    cli_module._COMMAND_SPECS,
+                    {CommandKind.OPTIMIZE_BATCH: patched},
+                    clear=False,
+                ):
+                    exit_code = main(
+                        [
+                            "optimize-batch",
+                            "-i",
+                            str(root),
+                            "--npu-devices",
+                            "0,1",
+                            "--workers-per-npu",
+                            "2",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["npu_devices"], "0,1")
+            self.assertEqual(captured["workers_per_npu"], "2")
+
+    def test_main_uses_legacy_env_when_batch_affinity_options_are_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_handler(parser, args):
+                del parser
+                captured["npu_devices"] = args.npu_devices
+                captured["workers_per_npu"] = args.workers_per_npu
+                return 0
+
+            original = cli_module._COMMAND_SPECS[CommandKind.OPTIMIZE_BATCH]
+            patched = cli_module._CommandSpec(
+                handler=_fake_handler,
+                help_group=original.help_group,
+                help_summary=original.help_summary,
+                description=original.description,
+                input_mode=original.input_mode,
+                input_default=original.input_default,
+                has_output=original.has_output,
+                has_verbose=original.has_verbose,
+                has_remote=original.has_remote,
+                keep_remote_workdir=original.keep_remote_workdir,
+                has_agent=original.has_agent,
+                agent_default=original.agent_default,
+                has_interact=original.has_interact,
+                has_show_output=original.has_show_output,
+                has_test_mode=original.has_test_mode,
+                test_mode_default=original.test_mode_default,
+                test_mode_choices=original.test_mode_choices,
+                has_bench_mode=original.has_bench_mode,
+                bench_mode_default=original.bench_mode_default,
+                has_npu_devices=original.has_npu_devices,
+                has_batch_affinity=original.has_batch_affinity,
+                has_optimize_options=original.has_optimize_options,
+                has_prompt=original.has_prompt,
+                concurrency_default=original.concurrency_default,
+                optional_concurrency=original.optional_concurrency,
+                concurrency_accepts_max=original.concurrency_accepts_max,
+                has_force_overwrite=original.has_force_overwrite,
+                has_format=original.has_format,
+                has_language=original.has_language,
+                has_verify_phase=original.has_verify_phase,
+                has_force_verify=original.has_force_verify,
+                has_log_tools=original.has_log_tools,
+                has_url=original.has_url,
+                has_distill_options=original.has_distill_options,
+                has_operator_filter=original.has_operator_filter,
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch.dict(
+                    cli_module._COMMAND_SPECS,
+                    {CommandKind.OPTIMIZE_BATCH: patched},
+                    clear=False,
+                ):
+                    exit_code = main(["optimize-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["npu_devices"], "0,1")
+            self.assertEqual(captured["workers_per_npu"], "2")
+
     def test_main_optimize_batch_forwards_operator_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3681,6 +3921,38 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["max_concurrency"], 2)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
+    def test_main_gen_eval_batch_mcp_max_concurrency_ignores_workers_per_npu(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del root_path, options, operator_filter
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch(
+                "triton_agent.commands.generation.run_gen_eval_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "gen-eval-batch",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "max",
+                        "--enable-mcp",
+                        "--npu-devices",
+                        "0,1",
+                        "--workers-per-npu",
+                        "2",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["max_concurrency"], 2)
+
     def test_main_convert_batch_forwards_operator_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3730,6 +4002,38 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["root"], root.resolve())
             self.assertEqual(captured["max_concurrency"], 2)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
+
+    def test_main_convert_batch_mcp_max_concurrency_ignores_workers_per_npu(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del root_path, options, operator_filter
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch(
+                "triton_agent.commands.convert.run_convert_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "convert-batch",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "max",
+                        "--enable-mcp",
+                        "--npu-devices",
+                        "0,1",
+                        "--workers-per-npu",
+                        "2",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["max_concurrency"], 2)
 
     def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -5765,6 +6069,21 @@ class PathResolutionTests(unittest.TestCase):
                 verbose=False,
                 output=None,
             )
+
+    def test_run_bench_accepts_npu_device_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench.py",
+                "--operator-file",
+                "kernel.py",
+                "--npu-device",
+                "0,2-3",
+            ]
+        )
+        self.assertEqual(args.npu_devices, "0,2-3")
 
     def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
