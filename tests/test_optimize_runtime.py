@@ -2097,6 +2097,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
             self.assertIn("opt-round-2", runner.requests[1].prompt)
             self.assertIn("opt-round-3", runner.requests[1].prompt)
+            self.assertIn(
+                "Do not use an already-benchmarked round for another code-changing optimization attempt.",
+                runner.requests[1].prompt,
+            )
+            self.assertIn(
+                "Carry any next optimization idea into the new round range owned by this invocation.",
+                runner.requests[1].prompt,
+            )
             self.assertNotIn("not yet accepted as session progress", runner.requests[1].prompt)
 
     def test_multi_invocation_controller_recovers_transient_worker_failure_by_retrying_same_range(

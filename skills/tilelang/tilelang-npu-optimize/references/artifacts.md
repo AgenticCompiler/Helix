@@ -101,7 +101,7 @@ Each completed round must also include `round-state.json`.
 ```json
 {
   "round": "record the completed round directory name, for example `opt-round-1`.",
-  "parent_round": "record the baseline or prior round that directly seeded this round, for example `round-0` or `opt-round-2`.",
+  "parent_round": "record the baseline or prior round that directly seeded this round, for example `opt-round-2`.",
   "hypothesis": "record the concrete optimization idea that this round tested.",
   "evidence_sources": "record the ordered list of evidence sources that justified the round conclusion, such as `benchmark`, `profile`, `ir`, or `compiler-source`.",
   "correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check.",

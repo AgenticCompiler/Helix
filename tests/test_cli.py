@@ -6930,6 +6930,18 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("This invocation owns rounds 2 through 4.", prompt)
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
+        self.assertIn(
+            "Each round in this invocation gets exactly one code-changing optimization attempt.",
+            prompt,
+        )
+        self.assertIn(
+            "After the first canonical `run-bench` plus `compare-perf` conclusion for that attempt, stop editing that round and record the outcome.",
+            prompt,
+        )
+        self.assertIn(
+            "If the result is slower, inconclusive, or not worth promoting, carry the next optimization idea into a new round instead of revising the current round again.",
+            prompt,
+        )
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
         self.assertIn(
             "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M` with the actual round numbers from this worker batch.",

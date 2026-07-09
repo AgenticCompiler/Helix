@@ -720,7 +720,9 @@ class MultiInvocationOptimizeController:
             "but before that, fix the previous batch issues.",
             "CLI batch follow-up from the previous worker batch:",
             issues,
-            "Repair those issues first using the existing round directories and artifacts, then continue to optimize.",
+            "Repair those issues first using the existing round directories and artifacts.",
+            "Do not use an already-benchmarked round for another code-changing optimization attempt.",
+            "Carry any next optimization idea into the new round range owned by this invocation.",
         ]
         return replace(
             worker_request,
