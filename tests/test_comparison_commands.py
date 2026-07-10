@@ -41,6 +41,49 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn("latency-a", stdout.getvalue())
 
+    def test_compare_result_payload_objects_loads_bundled_npu_compare_helper(self) -> None:
+        ref_payload = {
+            "compute": True,
+            "cases": [{"id": "case-a", "inputs": (), "result": 1.0}],
+        }
+        new_payload = {
+            "compute": True,
+            "cases": [{"id": "case-a", "inputs": (), "result": 1.0}],
+        }
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            exit_code = comparison_module.compare_result_payload_objects(ref_payload, new_payload)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("PASS:", stdout.getvalue())
+
+    def test_compare_result_files_loads_bundled_npu_compare_helper(self) -> None:
+        import torch
+
+        ref_payload = {
+            "compute": True,
+            "cases": [{"id": "case-a", "inputs": (), "result": torch.tensor([1.0])}],
+        }
+        new_payload = {
+            "compute": True,
+            "cases": [{"id": "case-a", "inputs": (), "result": torch.tensor([1.0])}],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref_result = root / "ref_result.pt"
+            new_result = root / "new_result.pt"
+            torch.save(ref_payload, ref_result)
+            torch.save(new_payload, new_result)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = comparison_module.compare_result_files(ref_result, new_result)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("PASS:", stdout.getvalue())
+
 
 class PerfArtifactsStructureTests(unittest.TestCase):
     def test_metric_source_section_result_has_named_fields(self) -> None:

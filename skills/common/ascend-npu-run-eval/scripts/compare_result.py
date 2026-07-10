@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import os
 from collections.abc import Mapping
+from functools import lru_cache
 from pathlib import Path
+import sys
+from types import ModuleType
 from typing import Any, TextIO, cast
 
 from env_registry import (
@@ -27,13 +31,39 @@ def main() -> int:
     return compare_result_files(args.ref_result, args.new_result, accuracy_mode=args.accuracy_mode)
 
 
+@lru_cache(maxsize=1)
+def _load_npu_compare_module() -> ModuleType:
+    module_path = Path(__file__).resolve().with_name("npu_compare.py")
+    spec = importlib.util.spec_from_file_location("compare_result_npu_compare", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    scripts_root = str(module_path.parent)
+    added = False
+    if scripts_root not in sys.path:
+        sys.path.insert(0, scripts_root)
+        added = True
+    previous_module = sys.modules.get(spec.name)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if previous_module is None:
+            sys.modules.pop(spec.name, None)
+        else:
+            sys.modules[spec.name] = previous_module
+        if added:
+            sys.path.remove(scripts_root)
+    return module
+
+
 def compare_result_payload_objects(
     ref_payload: object,
     new_payload: object,
     *,
     accuracy_mode: str | None = None,
 ) -> int:
-    npu_compare = importlib.import_module("npu_compare")
+    npu_compare = _load_npu_compare_module()
     compare_result_payloads = getattr(npu_compare, "compare_result_payloads")
     format_artifact_compare_result = getattr(npu_compare, "format_artifact_compare_result")
     result = compare_result_payloads(
