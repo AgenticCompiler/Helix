@@ -211,10 +211,11 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 Common options:
 
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
-- `--case-id <id>`: in `differential` mode, rerun only one declared test case.
+- `--case-id <id>`: in `differential` mode, rerun only one declared test case. This single-case path compares in memory and does not write a new `*_result.pt` archive for either the candidate or any reference rerun.
 - `--ref-result <path>`: in `differential` mode, automatically compare the new archived result against an existing reference payload.
-  When combined with `--case-id`, the reference payload must cover the same selected case.
+  When combined with `--case-id`, the reference payload must already contain the selected case or the command fails without rerunning anything.
 - `--ref-operator-file <path>`: in `differential` mode, derive the reference payload path from the reference operator and auto-run the reference test first if the payload does not exist yet.
+  When combined with `--case-id`, `run-test` first reuses the selected case from the derived payload if it exists; otherwise it reruns only that one reference case in memory and compares it without saving a new archive.
 - `--accuracy-mode npu-contract|dtype-close`: choose the comparison mode for standalone validation and automatic differential result comparison. Default is `npu-contract`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.

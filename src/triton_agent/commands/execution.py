@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import TextIO
 
 from triton_agent.commands.comparison import compare_perf_files
-from triton_agent.commands.comparison import compare_remote_result_files, compare_result_files
+from triton_agent.commands.comparison import (
+    compare_remote_result_files,
+    compare_result_files,
+    compare_result_payload_objects,
+    find_case_result_payload,
+    load_case_result_payload,
+)
 from triton_agent.eval.runners import (
     AgentResult,
     resolve_bench_mode_default,
@@ -15,9 +21,11 @@ from triton_agent.eval.runners import (
     run_local_probe_bench,
     run_local_simulator,
     run_local_test,
+    run_local_test_case_payload,
     run_remote_bench,
     run_remote_probe_bench,
     run_remote_test,
+    run_remote_test_case_payload,
 )
 from triton_agent.optimize.pt_cleanup import (
     cleanup_run_test_pt_files,
@@ -37,6 +45,24 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
     )
+    if case_id is not None:
+        _validate_run_test_comparison_inputs(
+            parser,
+            resolved_test_mode,
+            ref_result,
+            ref_operator_file,
+            case_id=case_id,
+        )
+        return _handle_run_test_case_id(
+            args,
+            test_file,
+            operator_file,
+            ref_result,
+            ref_operator_file,
+            case_id,
+            remote,
+            remote_workdir,
+        )
     ref_result = resolve_run_test_comparison_inputs(
         parser,
         args,
@@ -102,6 +128,155 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     return final_code
+
+
+def _handle_run_test_case_id(
+    args: argparse.Namespace,
+    test_file: Path,
+    operator_file: Path,
+    ref_result: Path | None,
+    ref_operator_file: Path | None,
+    case_id: str,
+    remote: str | None,
+    remote_workdir: str | None,
+) -> int:
+    try:
+        ref_payload = _resolve_run_test_case_reference_payload(
+            args,
+            test_file,
+            ref_result,
+            ref_operator_file,
+            case_id=case_id,
+            remote=remote,
+            remote_workdir=remote_workdir,
+        )
+        result, candidate_payload, remote_workspace = _run_test_case_payload_once(
+            test_file,
+            operator_file,
+            remote,
+            remote_workdir,
+            case_id=case_id,
+            accuracy_mode=args.accuracy_mode,
+            keep_remote_workdir=args.keep_remote_workdir,
+            verbose=args.verbose,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _render_case_run_result(
+        result,
+        remote=remote,
+        keep_remote_workdir=args.keep_remote_workdir,
+        remote_workspace=remote_workspace,
+    )
+    if result.return_code != 0:
+        return result.return_code
+    if ref_payload is None:
+        return 0
+    if candidate_payload is None:
+        print(
+            "Differential run-test single-case execution did not produce a result payload required for automatic comparison.",
+            file=sys.stderr,
+        )
+        return 1
+    return compare_result_payload_objects(
+        ref_payload,
+        candidate_payload,
+        accuracy_mode=args.accuracy_mode,
+    )
+
+
+def _resolve_run_test_case_reference_payload(
+    args: argparse.Namespace,
+    test_file: Path,
+    ref_result: Path | None,
+    ref_operator_file: Path | None,
+    *,
+    case_id: str,
+    remote: str | None,
+    remote_workdir: str | None,
+) -> object | None:
+    if ref_result is not None:
+        return load_case_result_payload(ref_result, case_id)
+    if ref_operator_file is None:
+        return None
+
+    derived_ref_result = _derived_result_path(ref_operator_file)
+    if derived_ref_result.exists():
+        ref_payload = find_case_result_payload(derived_ref_result, case_id)
+        if ref_payload is not None:
+            return ref_payload
+
+    try:
+        ref_run_result, ref_payload, remote_workspace = _run_test_case_payload_once(
+            test_file,
+            ref_operator_file,
+            remote,
+            remote_workdir,
+            case_id=case_id,
+            accuracy_mode=args.accuracy_mode,
+            keep_remote_workdir=args.keep_remote_workdir,
+            verbose=args.verbose,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    _render_case_run_result(
+        ref_run_result,
+        remote=remote,
+        keep_remote_workdir=args.keep_remote_workdir,
+        remote_workspace=remote_workspace,
+    )
+    if ref_run_result.return_code != 0 or ref_payload is None:
+        raise SystemExit(ref_run_result.return_code or 1)
+    return ref_payload
+
+
+def _run_test_case_payload_once(
+    test_file: Path,
+    operator_file: Path,
+    remote: str | None,
+    remote_workdir: str | None,
+    *,
+    case_id: str,
+    accuracy_mode: str,
+    keep_remote_workdir: bool,
+    verbose: bool,
+) -> tuple[AgentResult, object | None, str | None]:
+    if remote is not None:
+        result, payload, remote_workspace = run_remote_test_case_payload(
+            test_file,
+            operator_file,
+            remote,
+            remote_workdir,
+            case_id=case_id,
+            accuracy_mode=accuracy_mode,
+            keep_remote_workdir=keep_remote_workdir,
+            verbose=verbose,
+            stderr=sys.stderr,
+        )
+        return result, payload, remote_workspace
+    result, payload = run_local_test_case_payload(
+        test_file,
+        operator_file,
+        case_id=case_id,
+        accuracy_mode=accuracy_mode,
+        verbose=verbose,
+    )
+    return result, payload, None
+
+
+def _render_case_run_result(
+    result: AgentResult,
+    *,
+    remote: str | None,
+    keep_remote_workdir: bool,
+    remote_workspace: str | None,
+) -> None:
+    render_result(result, skip_stdout=remote is not None)
+    print(f"Return code: {result.return_code}")
+    if remote is not None and keep_remote_workdir and remote_workspace is not None:
+        print(f"Remote workspace: {remote_workspace}")
 
 
 def _compare_run_test_result(
@@ -298,6 +473,24 @@ def _derived_result_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_result.pt"
 
 
+def _validate_run_test_comparison_inputs(
+    parser: argparse.ArgumentParser,
+    resolved_test_mode: str,
+    ref_result: Path | None,
+    ref_operator_file: Path | None,
+    *,
+    case_id: str | None,
+) -> None:
+    if case_id is not None and resolved_test_mode != "differential":
+        parser.error("run-test standalone mode does not accept --case-id")
+    if ref_result is not None and ref_operator_file is not None:
+        parser.error("run-test differential mode accepts at most one of --ref-result or --ref-operator-file")
+    if ref_result is not None and resolved_test_mode != "differential":
+        parser.error("--ref-result is supported only with --test-mode differential")
+    if ref_operator_file is not None and resolved_test_mode != "differential":
+        parser.error("--ref-operator-file is supported only with --test-mode differential")
+
+
 def resolve_run_test_comparison_inputs(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
@@ -310,14 +503,13 @@ def resolve_run_test_comparison_inputs(
     remote: str | None,
     remote_workdir: str | None,
 ) -> Path | None:
-    if case_id is not None and resolved_test_mode != "differential":
-        parser.error("run-test standalone mode does not accept --case-id")
-    if ref_result is not None and ref_operator_file is not None:
-        parser.error("run-test differential mode accepts at most one of --ref-result or --ref-operator-file")
-    if ref_result is not None and resolved_test_mode != "differential":
-        parser.error("--ref-result is supported only with --test-mode differential")
-    if ref_operator_file is not None and resolved_test_mode != "differential":
-        parser.error("--ref-operator-file is supported only with --test-mode differential")
+    _validate_run_test_comparison_inputs(
+        parser,
+        resolved_test_mode,
+        ref_result,
+        ref_operator_file,
+        case_id=case_id,
+    )
     if ref_operator_file is None:
         return ref_result
     derived_ref_result = _derived_result_path(ref_operator_file)

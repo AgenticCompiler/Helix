@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ import importlib.util
 import inspect
 import json
 import os
+import pickle
 import sys
 import tempfile
 import textwrap
@@ -44,7 +46,10 @@ from run_runtime import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
+_LOCAL_TEST_PAYLOAD_WORKER_COMMAND = "local-test-payload-worker"
 _WARNING_PREFIX = "[WARNING]"
+_SERIALIZED_PAYLOAD_BEGIN = "__TRITON_AGENT_SERIALIZED_PAYLOAD_BEGIN__"
+_SERIALIZED_PAYLOAD_END = "__TRITON_AGENT_SERIALIZED_PAYLOAD_END__"
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,7 @@ def _write_local_test_worker_payload(
     result_file: Path,
     result: ResultPayload,
     archived_result: Path | None,
+    serialized_payload: str | None = None,
 ) -> None:
     result_file.write_text(
         json.dumps(
@@ -74,13 +80,14 @@ def _write_local_test_worker_payload(
                     "session_id": result["session_id"],
                 },
                 "archived_result": None if archived_result is None else str(archived_result.resolve()),
+                "serialized_payload": serialized_payload,
             }
         ),
         encoding="utf-8",
     )
 
 
-def _read_local_test_worker_payload(result_file: Path) -> tuple[ResultPayload, Path | None]:
+def _read_local_test_worker_payload(result_file: Path) -> tuple[ResultPayload, Path | None, object | None]:
     payload = json.loads(result_file.read_text(encoding="utf-8"))
     result_payload = payload["result"]
     result = make_result(
@@ -92,14 +99,27 @@ def _read_local_test_worker_payload(result_file: Path) -> tuple[ResultPayload, P
     )
     archived_raw = payload.get("archived_result")
     archived_result = None if archived_raw is None else Path(str(archived_raw)).expanduser().resolve()
-    return result, archived_result
+    serialized_payload = payload.get("serialized_payload")
+    case_payload = None
+    if serialized_payload is not None:
+        case_payload = _deserialize_payload_object(str(serialized_payload))
+    return result, archived_result, case_payload
 
 
 def _merge_failed_worker_result(result: ResultPayload) -> tuple[ResultPayload, None]:
     return result, None
 
 
+def _serialize_payload_object(payload: object) -> str:
+    return base64.b64encode(pickle.dumps(payload)).decode("ascii")
+
+
+def _deserialize_payload_object(serialized_payload: str) -> object:
+    return pickle.loads(base64.b64decode(serialized_payload.encode("ascii")))
+
+
 def _local_test_worker_command(
+    command_name: str,
     test_file: Path,
     operator_file: Path,
     test_mode: str,
@@ -111,7 +131,7 @@ def _local_test_worker_command(
     command = [
         local_python_executable(),
         str(Path(__file__).resolve()),
-        _LOCAL_TEST_WORKER_COMMAND,
+        command_name,
         "--test-file",
         str(test_file.resolve()),
         "--operator-file",
@@ -130,7 +150,7 @@ def _local_test_worker_command(
 
 def _build_local_test_worker_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=Path(__file__).name)
-    parser.add_argument("command", choices=[_LOCAL_TEST_WORKER_COMMAND])
+    parser.add_argument("command", choices=[_LOCAL_TEST_WORKER_COMMAND, _LOCAL_TEST_PAYLOAD_WORKER_COMMAND])
     parser.add_argument("--test-file", required=True)
     parser.add_argument("--operator-file", required=True)
     parser.add_argument("--test-mode", choices=["standalone", "differential"], required=True)
@@ -170,16 +190,60 @@ def _run_local_test_worker(
     return 0
 
 
+def _run_local_test_payload_worker(
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+    result_file: Path,
+    *,
+    case_id: str | None,
+    verbose: bool,
+) -> int:
+    if test_mode != "differential":
+        raise ValueError("Single-case payload execution is supported only with differential tests.")
+    if case_id is None:
+        raise ValueError("Single-case payload execution requires --case-id.")
+    result, case_payload = _run_declarative_differential_test_payload(
+        test_file,
+        operator_file,
+        case_id=case_id,
+        verbose=verbose,
+    )
+    serialized_payload = None if case_payload is None else _serialize_payload_object(case_payload)
+    _write_local_test_worker_payload(
+        result_file,
+        result,
+        archived_result=None,
+        serialized_payload=serialized_payload,
+    )
+    return 0
+
+
 def _run_local_test_worker_main(argv: list[str] | None = None) -> int:
     parser = _build_local_test_worker_parser()
     args = parser.parse_args(argv)
+    test_file = Path(args.test_file).expanduser().resolve()
+    operator_file = Path(args.operator_file).expanduser().resolve()
+    test_mode = cast(str, args.test_mode)
+    result_file = Path(args.result_file).expanduser().resolve()
+    case_id = cast(str | None, args.case_id)
+    verbose = bool(args.verbose)
+    if args.command == _LOCAL_TEST_PAYLOAD_WORKER_COMMAND:
+        return _run_local_test_payload_worker(
+            test_file,
+            operator_file,
+            test_mode,
+            result_file,
+            case_id=case_id,
+            verbose=verbose,
+        )
     return _run_local_test_worker(
-        Path(args.test_file).expanduser().resolve(),
-        Path(args.operator_file).expanduser().resolve(),
-        cast(str, args.test_mode),
-        Path(args.result_file).expanduser().resolve(),
-        case_id=cast(str | None, args.case_id),
-        verbose=bool(args.verbose),
+        test_file,
+        operator_file,
+        test_mode,
+        result_file,
+        case_id=case_id,
+        verbose=verbose,
     )
 
 
@@ -196,6 +260,7 @@ def run_local_test(
     with tempfile.TemporaryDirectory() as tmp:
         result_file = Path(tmp) / "local-test-result.json"
         command = _local_test_worker_command(
+            _LOCAL_TEST_WORKER_COMMAND,
             test_file,
             operator_file,
             test_mode,
@@ -231,9 +296,75 @@ def run_local_test(
                         session_id=runner_result["session_id"],
                     )
                 )
-            result, archived_result = _read_local_test_worker_payload(result_file)
+            result, archived_result, _case_payload = _read_local_test_worker_payload(result_file)
             return _filter_result_payload(result, verbose=verbose), archived_result
         return _merge_failed_worker_result(runner_result)
+
+
+def run_local_test_case_payload(
+    test_file: Path,
+    operator_file: Path,
+    *,
+    case_id: str,
+    accuracy_mode: str | None = None,
+    verbose: bool = False,
+) -> tuple[ResultPayload, object | None]:
+    maybe_print_visible_devices()
+    with tempfile.TemporaryDirectory() as tmp:
+        result_file = Path(tmp) / "local-test-result.json"
+        command = _local_test_worker_command(
+            _LOCAL_TEST_PAYLOAD_WORKER_COMMAND,
+            test_file,
+            operator_file,
+            "differential",
+            result_file,
+            case_id=case_id,
+            verbose=verbose,
+        )
+        if verbose:
+            runner_result = run_streaming_process(
+                command,
+                str(test_file.resolve().parent),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
+            )
+        else:
+            runner_result = run_buffered_process(
+                command,
+                str(test_file.resolve().parent),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                extra_env=_run_test_accuracy_env(accuracy_mode),
+            )
+        if result_succeeded(runner_result):
+            if not result_file.exists():
+                failed_result, _archived = _merge_failed_worker_result(
+                    make_result(
+                        return_code=1,
+                        stdout=str(runner_result["stdout"]),
+                        stderr=(
+                            str(runner_result["stderr"])
+                            + f"Local test payload worker did not write result payload: {result_file}"
+                        ),
+                        stalled=bool(runner_result["stalled"]),
+                        session_id=runner_result["session_id"],
+                    )
+                )
+                return failed_result, None
+            result, _archived_result, case_payload = _read_local_test_worker_payload(result_file)
+            if case_payload is None:
+                return (
+                    make_result(
+                        return_code=1,
+                        stdout=str(result["stdout"]),
+                        stderr=str(result["stderr"]) + "Local test payload worker did not return case payload.",
+                        stalled=bool(result["stalled"]),
+                        session_id=result["session_id"],
+                    ),
+                    None,
+                )
+            return _filter_result_payload(result, verbose=verbose), case_payload
+        failed_result, _archived = _merge_failed_worker_result(runner_result)
+        return failed_result, None
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:
@@ -261,7 +392,7 @@ def load_differential_test_cases(
 ) -> list[DifferentialTestCase]:
     test_path = test_file.resolve()
     operator_path = operator_file.resolve()
-    _bootstrap_torch_npu()
+    _bootstrap_torch_npu(test_path.parent, operator_path.parent)
     with _temporary_sys_path_entries(test_path.parent, operator_path.parent, SCRIPT_DIR):
         test_module = _load_module(test_path, f"differential_test_{test_path.stem}")
         build_operator_api = _require_callable(test_module, "build_operator_api", test_path)
@@ -357,7 +488,7 @@ def _run_import_only_standalone_test(
             print(f"[run-test] operator file: {operator_path}", file=real_stderr)
             print(f"[run-test] operator api: {metadata.get('api-name', '?')} ({metadata.get('api-kind', '?')})", file=real_stderr)
             print("[run-test] running...", file=real_stderr)
-        _bootstrap_torch_npu()
+        _bootstrap_torch_npu(test_path.parent, operator_path.parent)
         with _temporary_sys_path_entries(test_path.parent, operator_path.parent, SCRIPT_DIR):
             test_module = _load_module(test_path, f"standalone_test_{test_path.stem}")
             main_fn = _require_callable(test_module, "main", test_path, kind="Standalone test module")
@@ -396,15 +527,40 @@ def _run_declarative_differential_test(
     case_id: str | None = None,
     verbose: bool = False,
 ) -> ResultPayload:
+    result, case_payload = _run_declarative_differential_test_payload(
+        test_file,
+        operator_file,
+        case_id=case_id,
+        verbose=verbose,
+    )
+    if not result_succeeded(result) or case_payload is None:
+        return result
+    torch = importlib.import_module("torch")
+    torch.save(case_payload, archive_path)
+    if verbose:
+        print(f"[run-test] archive saved: {archive_path}", file=sys.stderr)
+    return result
+
+
+def _run_declarative_differential_test_payload(
+    test_file: Path,
+    operator_file: Path,
+    *,
+    case_id: str | None = None,
+    verbose: bool = False,
+) -> tuple[ResultPayload, object | None]:
     real_stderr = sys.stderr
     try:
-        _bootstrap_torch_npu()
+        _bootstrap_torch_npu(test_file.resolve().parent, operator_file.resolve().parent)
         torch = importlib.import_module("torch")
     except ImportError as exc:
-        return make_result(
-            return_code=1,
-            stdout="",
-            stderr=f"Missing differential test dependency: {exc}",
+        return (
+            make_result(
+                return_code=1,
+                stdout="",
+                stderr=f"Missing differential test dependency: {exc}",
+            ),
+            None,
         )
     prev = os.environ.get(TRITON_ALWAYS_COMPILE)
     os.environ[TRITON_ALWAYS_COMPILE] = "1"
@@ -440,21 +596,24 @@ def _run_declarative_differential_test(
                 _synchronize(torch)
                 if verbose:
                     print(" ok", file=real_stderr)
-        torch.save({"compute": compute, "cases": records}, archive_path)
-        if verbose:
-            print(f"[run-test] archive saved: {archive_path}", file=real_stderr)
-        return make_result(
-            return_code=0,
-            stdout=stdout_buffer.getvalue(),
-            stderr=stderr_buffer.getvalue(),
+        return (
+            make_result(
+                return_code=0,
+                stdout=stdout_buffer.getvalue(),
+                stderr=stderr_buffer.getvalue(),
+            ),
+            {"compute": compute, "cases": records},
         )
     except Exception:
         if verbose:
             print("[run-test] FAILED", file=real_stderr)
-        return make_result(
-            return_code=1,
-            stdout=stdout_buffer.getvalue(),
-            stderr=stderr_buffer.getvalue() + traceback.format_exc(),
+        return (
+            make_result(
+                return_code=1,
+                stdout=stdout_buffer.getvalue(),
+                stderr=stderr_buffer.getvalue() + traceback.format_exc(),
+            ),
+            None,
         )
     finally:
         if prev is None:
@@ -463,7 +622,7 @@ def _run_declarative_differential_test(
             os.environ[TRITON_ALWAYS_COMPILE] = prev
 
 
-def _bootstrap_torch_npu() -> None:
+def _bootstrap_torch_npu(*import_paths: Path) -> None:
     loaded_torch = sys.modules.get("torch")
     if loaded_torch is not None and hasattr(loaded_torch, "npu"):
         return
@@ -477,7 +636,11 @@ def _bootstrap_torch_npu() -> None:
     previous = os.environ.get(TORCH_DEVICE_BACKEND_AUTOLOAD)
     os.environ[TORCH_DEVICE_BACKEND_AUTOLOAD] = "0"
     try:
-        importlib.import_module("torch")
+        try:
+            importlib.import_module("torch")
+        except ImportError:
+            with _temporary_sys_path_entries(*(path.resolve() for path in import_paths)):
+                importlib.import_module("torch")
         try:
             importlib.import_module("torch_npu")
         except ImportError:
@@ -654,6 +817,72 @@ def run_remote_test(
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
 
 
+def run_remote_test_case_payload(
+    test_file: Path,
+    operator_file: Path,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    case_id: str,
+    accuracy_mode: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[ResultPayload, object | None, str]:
+    maybe_print_visible_devices()
+    spec, remote_workspace = create_remote_workspace(
+        remote, remote_workdir, verbose=verbose, stderr=stderr
+    )
+    remote_test = f"{remote_workspace}/{test_file.name}"
+    remote_operator = f"{remote_workspace}/{operator_file.name}"
+    remote_compare_helper = f"{remote_workspace}/npu_compare.py"
+    try:
+        copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
+        copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
+        copy_file_to_remote(
+            spec,
+            SCRIPT_DIR / "npu_compare.py",
+            remote_compare_helper,
+            verbose=verbose,
+            stderr=stderr,
+        )
+        result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            _build_remote_differential_command(
+                test_file.name,
+                operator_file.name,
+                case_id,
+                archive_result=False,
+                emit_serialized_payload=True,
+            ),
+            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            verbose=verbose,
+            stderr=stderr,
+            extra_env={
+                TRITON_ALWAYS_COMPILE: "1",
+                **_run_test_accuracy_env(accuracy_mode),
+            },
+        )
+        result, case_payload = _extract_serialized_payload_result(result)
+        if result_succeeded(result) and case_payload is None:
+            return (
+                make_result(
+                    return_code=1,
+                    stdout=str(result["stdout"]),
+                    stderr=str(result["stderr"]) + "Remote test payload helper did not return case payload.",
+                    stalled=bool(result["stalled"]),
+                    session_id=result["session_id"],
+                ),
+                None,
+                remote_workspace,
+            )
+        return _filter_result_payload(result, verbose=verbose), case_payload, remote_workspace
+    finally:
+        if not keep_remote_workdir:
+            cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
 def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:
@@ -780,10 +1009,15 @@ def _build_remote_differential_command(
     test_name: str,
     operator_name: str,
     case_id: str | None = None,
+    *,
+    archive_result: bool = True,
+    emit_serialized_payload: bool = False,
 ) -> list[str]:
     remote_script = f"""
+import base64
 import importlib
 import importlib.util
+import pickle
 import sys
 import traceback
 from collections.abc import Iterable, Mapping
@@ -862,12 +1096,39 @@ try:
             case_fn = case_record["fn"]
             records.append({{"id": case_record["id"], "inputs": case_record["inputs"], "result": case_fn()}})
             _synchronize(torch)
-    torch.save({{"compute": compute, "cases": records}}, archive_file)
+    payload = {{"compute": compute, "cases": records}}
+    if {archive_result!r}:
+        torch.save(payload, archive_file)
+    if {emit_serialized_payload!r}:
+        print({_SERIALIZED_PAYLOAD_BEGIN!r})
+        print(base64.b64encode(pickle.dumps(payload)).decode("ascii"))
+        print({_SERIALIZED_PAYLOAD_END!r})
 except Exception:
     traceback.print_exc()
     raise SystemExit(1)
 """
     return ["python3", "-c", remote_script]
+
+
+def _extract_serialized_payload_result(result: ResultPayload) -> tuple[ResultPayload, object | None]:
+    stdout = str(result["stdout"])
+    marker_start = f"{_SERIALIZED_PAYLOAD_BEGIN}\n"
+    if marker_start not in stdout:
+        return result, None
+    prefix, remainder = stdout.split(marker_start, 1)
+    marker_end = f"\n{_SERIALIZED_PAYLOAD_END}"
+    if marker_end not in remainder:
+        return result, None
+    serialized_payload, suffix = remainder.split(marker_end, 1)
+    clean_stdout = prefix + suffix.lstrip("\n")
+    clean_result = make_result(
+        return_code=int(result["return_code"]),
+        stdout=clean_stdout,
+        stderr=str(result["stderr"]),
+        stalled=bool(result["stalled"]),
+        session_id=result["session_id"],
+    )
+    return clean_result, _deserialize_payload_object(serialized_payload.strip())
 
 
 def _remote_function_source(function: Callable[..., Any]) -> str:

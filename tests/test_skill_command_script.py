@@ -2164,6 +2164,132 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_script_run_test_case_id_uses_existing_derived_baseline_case_without_archiving(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_case_payload", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "baseline.py"
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            derived_baseline_result = root / "baseline_result.pt"
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            derived_baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            observed_calls: list[tuple[Path, Path, str | None]] = []
+            baseline_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "BASE"}],
+            }
+            candidate_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "OPT"}],
+            }
+
+            def fake_run_local_test_case_payload(
+                test_path: Path,
+                operator_path: Path,
+                *,
+                case_id: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], object]:
+                del verbose
+                observed_calls.append((test_path, operator_path, case_id))
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    candidate_payload,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("full-run local test helper should not be used in case-id mode")
+                        ),
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("full-run remote test helper should not be used in local case-id mode")
+                        ),
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_test_payload_functions",
+                    return_value=(
+                        fake_run_local_test_case_payload,
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("remote case payload helper should not be used in local mode")
+                        ),
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_compare_result_payload_functions",
+                    return_value=(
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("explicit ref-result loader should not be used for derived payload reuse")
+                        ),
+                        lambda result_path, case_id: (
+                            baseline_payload
+                            if result_path == derived_baseline_result.resolve() and case_id == "case-b"
+                            else (_ for _ in ()).throw(AssertionError("unexpected baseline payload request"))
+                        ),
+                        lambda ref_payload, new_payload: (
+                            0 if ref_payload == baseline_payload and new_payload == candidate_payload else 2
+                        ),
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--ref-operator-file",
+                            str(baseline_operator),
+                            "--case-id",
+                            "case-b",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_calls, [(test_file.resolve(), operator.resolve(), "case-b")])
+        self.assertEqual(stdout.getvalue(), "Return code: 0\n")
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_script_run_test_auto_runs_baseline_when_derived_result_missing(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -2185,25 +2311,32 @@ class SkillCommandScriptTests(unittest.TestCase):
             operator = root / "kernel.py"
             test_file = root / "differential_test_kernel.py"
             baseline_archive = root / "baseline_result.pt"
-            archive = root / "kernel_result.pt"
             baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
             operator.write_text("print('x')\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_archive.write_text("stale baseline\n", encoding="utf-8")
 
-            observed_calls: list[tuple[Path, Path, str, str | None]] = []
+            observed_calls: list[tuple[Path, Path, str]] = []
+            baseline_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "BASE"}],
+            }
+            candidate_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "OPT"}],
+            }
 
-            def fake_run_local_test(
+            def fake_run_local_test_case_payload(
                 test_path: Path,
                 operator_path: Path,
-                test_mode: str,
                 *,
-                case_id: str | None = None,
+                case_id: str,
                 verbose: bool = False,
                 **_kwargs: object,
-            ) -> tuple[dict[str, object], Path]:
-                observed_calls.append((test_path, operator_path, test_mode, case_id))
+            ) -> tuple[dict[str, object], object]:
+                del verbose
+                observed_calls.append((test_path, operator_path, case_id))
                 if operator_path == baseline_operator.resolve():
-                    baseline_archive.write_text("baseline\n", encoding="utf-8")
                     return (
                         {
                             "return_code": 0,
@@ -2212,7 +2345,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                             "stalled": False,
                             "session_id": None,
                         },
-                        baseline_archive,
+                        baseline_payload,
                     )
                 self.assertEqual(operator_path, operator.resolve())
                 return (
@@ -2223,7 +2356,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "stalled": False,
                         "session_id": None,
                     },
-                    archive,
+                    candidate_payload,
                 )
 
             stdout = StringIO()
@@ -2238,36 +2371,52 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "_load_test_functions",
                     return_value=(
                         lambda _path: {"test-mode": "differential"},
-                        fake_run_local_test,
-                        lambda *_args, **_kwargs: None,
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("full-run local test helper should not be used in case-id mode")
+                        ),
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("full-run remote test helper should not be used in local case-id mode")
+                        ),
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_test_payload_functions",
+                    return_value=(
+                        fake_run_local_test_case_payload,
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("remote case payload helper should not be used in local mode")
+                        ),
+                    ),
+                ), patch.object(
+                    module,
+                    "_load_compare_result_payload_functions",
+                    return_value=(
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            ValueError("missing case")
+                        ),
+                        lambda result_path, case_id: (
+                            None
+                            if result_path == baseline_archive.resolve() and case_id == "case-b"
+                            else (_ for _ in ()).throw(AssertionError("unexpected derived payload lookup"))
+                        ),
+                        lambda ref_payload, new_payload: (
+                            0 if ref_payload == baseline_payload and new_payload == candidate_payload else 2
+                        ),
                     ),
                 ):
-                    with patch.object(
-                        module,
-                        "_load_compare_result_functions",
-                        return_value=(
-                            lambda baseline_path, new_path: (
-                                0
-                                if baseline_path == baseline_archive.resolve()
-                                and new_path == archive
-                                else 2
-                            ),
-                            lambda *_args, **_kwargs: 0,
-                        ),
-                    ):
-                        exit_code = module.main(
-                            [
-                                "run-test-optimize",
-                                "--test-file",
-                                str(test_file),
-                                "--operator-file",
-                                str(operator),
-                                "--ref-operator-file",
-                                str(baseline_operator),
-                                "--case-id",
-                                "case-b",
-                            ]
-                        )
+                    exit_code = module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--ref-operator-file",
+                            str(baseline_operator),
+                            "--case-id",
+                            "case-b",
+                        ]
+                    )
             finally:
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
@@ -2276,12 +2425,11 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(
             observed_calls,
             [
-                (test_file.resolve(), baseline_operator.resolve(), "differential", "case-b"),
-                (test_file.resolve(), operator.resolve(), "differential", "case-b"),
+                (test_file.resolve(), baseline_operator.resolve(), "case-b"),
+                (test_file.resolve(), operator.resolve(), "case-b"),
             ],
         )
-        self.assertIn(f"Archived result: {baseline_archive}\n", stdout.getvalue())
-        self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
+        self.assertEqual(stdout.getvalue(), "Return code: 0\nReturn code: 0\n")
         self.assertEqual(stderr.getvalue(), "")
 
     def test_run_test_baseline_parser_accepts_test_flags(self) -> None:

@@ -58,6 +58,30 @@ class TestRunnerModule(Protocol):
         stderr: TextIO | None = None,
     ) -> tuple[_RunSkillPayload, Path | None, str]: ...
 
+    def run_local_test_case_payload(
+        self,
+        test_file: Path,
+        operator_file: Path,
+        *,
+        case_id: str,
+        accuracy_mode: str | None = None,
+        verbose: bool = False,
+    ) -> tuple[_RunSkillPayload, object | None]: ...
+
+    def run_remote_test_case_payload(
+        self,
+        test_file: Path,
+        operator_file: Path,
+        remote: str,
+        remote_workdir: str | None,
+        *,
+        case_id: str,
+        accuracy_mode: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> tuple[_RunSkillPayload, object | None, str]: ...
+
     def parse_test_metadata(self, test_file: Path) -> dict[str, str]: ...
 
 
@@ -158,6 +182,50 @@ def run_remote_test(
         stderr=stderr,
     )
     return _normalize_agent_result(result), archived, remote_workspace
+
+
+def run_local_test_case_payload(
+    test_file: Path,
+    operator_file: Path,
+    *,
+    case_id: str,
+    accuracy_mode: str | None = None,
+    verbose: bool = False,
+) -> tuple[AgentResult, object | None]:
+    result, payload = _load_test_runner().run_local_test_case_payload(
+        test_file,
+        operator_file,
+        case_id=case_id,
+        accuracy_mode=accuracy_mode,
+        verbose=verbose,
+    )
+    return _normalize_agent_result(result), payload
+
+
+def run_remote_test_case_payload(
+    test_file: Path,
+    operator_file: Path,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    case_id: str,
+    accuracy_mode: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[AgentResult, object | None, str]:
+    result, payload, remote_workspace = _load_test_runner().run_remote_test_case_payload(
+        test_file,
+        operator_file,
+        remote,
+        remote_workdir,
+        case_id=case_id,
+        accuracy_mode=accuracy_mode,
+        keep_remote_workdir=keep_remote_workdir,
+        verbose=verbose,
+        stderr=stderr,
+    )
+    return _normalize_agent_result(result), payload, remote_workspace
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:

@@ -22,7 +22,9 @@ Rules:
 - Standalone mode never accepts `--case-id`, `--ref-result`, or `--ref-operator-file`.
 - Differential mode optionally accepts `--case-id <id>` when you want to rerun only one declared test case during a repair loop.
 - If `--case-id <id>` is omitted in differential mode, the command runs every declared test case.
-- If you combine `--case-id <id>` with `--ref-result <path>`, the reference payload must cover the same selected case; mixed single-case vs multi-case comparisons are not defined.
+- If you combine `--case-id <id>` with `--ref-result <path>`, the reference payload must already contain the same selected case; otherwise the command fails because there is no reference operator available to regenerate it.
+- In `--case-id` mode, the command compares a single in-memory payload and does not write a new `*_result.pt` archive for the candidate or any reference rerun.
+- If you combine `--case-id <id>` with `--ref-operator-file <path>`, the command first checks the derived `<ref_operator>_result.pt` for that one case and reruns only the missing reference case in memory when needed.
 - `run-test-baseline` differential mode accepts at most one of `--ref-result` or `--ref-operator-file`, and it may omit both when you want to produce a reusable archived baseline result.
 - `run-test-convert` differential mode requires exactly one of `--ref-result` or `--ref-operator-file`.
 - In convert differential mode, `run-test-convert` requires `--ref-operator-file` or `--ref-result`.
