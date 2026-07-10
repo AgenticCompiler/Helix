@@ -170,13 +170,16 @@ def main(operator_api):
         module = load_test_runner_module()
         events: list[str] = []
 
-        def fake_bootstrap() -> None:
+        def fake_bootstrap(*_args: object) -> None:
             events.append("bootstrap")
 
         def fake_import(name: str, package: Optional[str] = None):
             events.append(f"import:{name}")
             if name == "torch":
-                return SimpleNamespace(save=lambda *_args, **_kwargs: None)
+                return SimpleNamespace(
+                    save=lambda *_args, **_kwargs: None,
+                    npu=SimpleNamespace(synchronize=lambda: None),
+                )
             return original_import(name, package)
 
         with tempfile.TemporaryDirectory() as tmp:

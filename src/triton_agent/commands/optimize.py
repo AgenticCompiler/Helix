@@ -21,6 +21,7 @@ from triton_agent.terminal.render import render_result
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if getattr(args, "concurrency", None) is not None:
         return handle_optimize_batch(parser, args)
+    args.system_prompt = _resolve_system_prompt_argument(parser, args)
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:
@@ -103,6 +104,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 
 
 def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    args.system_prompt = _resolve_system_prompt_argument(parser, args)
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args, options)
     try:
@@ -153,6 +155,35 @@ def _validate_round_mode(args: argparse.Namespace) -> Literal["checked", "superv
     return cast(Literal["checked", "supervised"], round_mode)
 
 
+def _resolve_system_prompt_argument(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> str | None:
+    value = getattr(args, "system_prompt", None)
+    if value is None:
+        return None
+    raw_value = str(value)
+    if raw_value.startswith("@"):
+        path_text = raw_value[1:].strip()
+        if not path_text:
+            parser.error("--system-prompt file reference must be in the form @path")
+        path = Path(path_text).expanduser().resolve()
+        if not path.exists():
+            parser.error(f"--system-prompt file does not exist: {path}")
+        if not path.is_file():
+            parser.error(f"--system-prompt path is not a file: {path}")
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            parser.error(f"--system-prompt file is not valid UTF-8: {path}: {exc}")
+        except OSError as exc:
+            parser.error(f"Failed to read --system-prompt file {path}: {exc}")
+        stripped_content = content.strip()
+        return stripped_content or None
+    stripped_value = raw_value.strip()
+    return stripped_value or None
+
+
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
     interact = bool(getattr(args, "interact", False))
     target_chip = cast(Literal["A3", "A5"], getattr(args, "target_chip", "A5"))
@@ -198,6 +229,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         npu_devices=getattr(args, "npu_devices", None),
         workers_per_npu=getattr(args, "workers_per_npu", None),
         prompt=getattr(args, "prompt", None),
+        system_prompt=getattr(args, "system_prompt", None),
         post_optimize_command=post_optimize_command,
         target_chip=target_chip,
         optimize_target=optimize_target,

@@ -35,6 +35,15 @@ def _render_line_block(lines: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_system_prompt_appendix_block(system_prompt_appendix: str | None) -> str:
+    if system_prompt_appendix is None:
+        return ""
+    stripped = system_prompt_appendix.strip()
+    if not stripped:
+        return ""
+    return f"\n## Additional System Prompt\n\n{stripped}\n"
+
+
 def _render_high_priority_pattern_block(*, optimize_knowledge_skill_name: str | None) -> str:
     if optimize_knowledge_skill_name is None:
         return ""
@@ -177,6 +186,7 @@ class MemoryFileManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> MemoryFileState:
         """Write the shared orchestration memory file used by supervised optimize."""
         return self._prepare(
@@ -192,6 +202,7 @@ class MemoryFileManager:
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+                system_prompt_appendix=system_prompt_appendix,
             ),
         )
 
@@ -209,6 +220,7 @@ class MemoryFileManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> MemoryFileState:
         """Write the round-gated optimize memory file for checked/supervised modes."""
         guidance_filename = self.guidance_filename(agent_name)
@@ -226,6 +238,7 @@ class MemoryFileManager:
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+                system_prompt_appendix=system_prompt_appendix,
             ),
         )
 
@@ -305,8 +318,9 @@ class MemoryFileManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> str:
-        return _SHARED_GUIDANCE_TEMPLATE.format(
+        base = _SHARED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
             analysis_block=_render_bullet_block(
                 layered_analysis_lines(round_scope="each round", language=language)
@@ -343,6 +357,7 @@ class MemoryFileManager:
                 cann_ext_api_lines(enabled=enable_cann_ext_api, language=language)
             ),
         )
+        return base + _render_system_prompt_appendix_block(system_prompt_appendix)
 
     def _render_round_gated_guidance(
         self,
@@ -357,6 +372,7 @@ class MemoryFileManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> str:
         base = _ROUND_GATED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
@@ -399,4 +415,4 @@ class MemoryFileManager:
             base += (
                 "\nUse `supervisor-report.md` as the supervisor audit report file.\n"
             )
-        return base
+        return base + _render_system_prompt_appendix_block(system_prompt_appendix)
