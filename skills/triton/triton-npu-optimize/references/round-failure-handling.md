@@ -55,7 +55,7 @@ Do not promote a slower round to current best status.
 
 After every repair:
 
-1. run `run-test`
+1. run `run-test --verbose`
 2. only if correctness passes, run `run-bench`
 3. update the round summary with what was tried and what changed
 

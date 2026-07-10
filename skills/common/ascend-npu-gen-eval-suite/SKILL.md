@@ -57,6 +57,7 @@ If the successful fix is a new pattern not covered there, append a short entry t
 ## Validation Commands
 
 - Use the `ascend-npu-run-eval` skill for correctness validation, typically through its `run-test-baseline` helper.
+- During repair loops, prefer `--verbose` on `run-test` so you can see failing-case details before editing again.
 - Use the `ascend-npu-run-eval` skill for benchmark validation, typically through its `run-bench` helper.
 - If the outer task is remote-aware, carry the same remote flags into every validation command and reuse `--remote-workdir` when provided.
 

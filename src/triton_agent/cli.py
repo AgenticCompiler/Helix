@@ -951,6 +951,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--ref-result", "--baseline-result", dest="ref_result")
         subparser.add_argument("--ref-operator-file", "--baseline-operator-file", dest="ref_operator_file")
+        subparser.add_argument("--case-id")
         subparser.add_argument(
             "--accuracy-mode",
             choices=("npu-contract", "dtype-close"),
