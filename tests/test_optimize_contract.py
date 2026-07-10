@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.contract import (
     BASELINE_STATE_REQUIRED_FIELDS,
+    ROUND_STATE_OPTIONAL_FIELDS,
     ROUND_STATE_REQUIRED_FIELDS,
     baseline_state_contract_lines,
 )
@@ -52,11 +53,15 @@ class OptimizeContractTests(unittest.TestCase):
         self.assertNotIn("baseline_state_required_fields", data)
 
         field_map = data["round_state_required_fields"]
-        self.assertIn("comparison_target_path", field_map)
+        optional_field_map = data["round_state_optional_fields"]
+        self.assertIn("comparison_target_path", optional_field_map)
         self.assertNotIn("comparison_target", field_map)
         for key in ROUND_STATE_REQUIRED_FIELDS:
             self.assertIn(key, field_map)
             self.assertIsInstance(field_map[key], str)
+        for key in ROUND_STATE_OPTIONAL_FIELDS:
+            self.assertIn(key, optional_field_map)
+            self.assertIsInstance(optional_field_map[key], str)
 
     def test_baseline_contract_lines_match_required_fields(self) -> None:
         lines = baseline_state_contract_lines()

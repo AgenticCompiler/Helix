@@ -90,10 +90,14 @@ class OptimizeCheckTests(unittest.TestCase):
                 issues=(),
                 summary=f"checked {path.name}",
             ),
+            count_completed_round_directories=lambda path: 7 if path.name == "workspace" else 0,
+            count_terminal_round_directories=lambda path: 9 if path.name == "workspace" else 0,
         )
         with patch("triton_agent.optimize.checks.load_skill_script_module", return_value=module) as mocked:
             baseline_result = optimize_checks.check_baseline(Path("/tmp/baseline"))
             round_result = optimize_checks.check_round(Path("/tmp/opt-round-1"))
+            completed_count = optimize_checks.count_completed_round_directories(Path("/tmp/workspace"))
+            terminal_count = optimize_checks.count_terminal_round_directories(Path("/tmp/workspace"))
 
         self.assertEqual(baseline_result.status, "fail")
         self.assertEqual(baseline_result.kind, "baseline")
@@ -102,6 +106,8 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.status, "pass")
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.summary, "checked opt-round-1")
+        self.assertEqual(completed_count, 7)
+        self.assertEqual(terminal_count, 9)
         mocked.assert_any_call(
             "ascend-npu-optimize-state",
             "baseline/check",
@@ -156,6 +162,60 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
             self.assertEqual(result.issues, ())
+
+    def test_terminal_round_counter_counts_rejected_terminal_rounds_only_when_statuses_are_valid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            self._write_round(workdir, "opt-round-1")
+            rejected_round = self._write_round(workdir, "opt-round-2")
+            invalid_round = self._write_round(workdir, "opt-round-3")
+
+            rejected_state_path = rejected_round / "round-state.json"
+            rejected_state = json.loads(rejected_state_path.read_text(encoding="utf-8"))
+            rejected_state["correctness_status"] = "failed"
+            rejected_state["benchmark_status"] = "not_run"
+            rejected_state.pop("perf_artifact")
+            rejected_state.pop("comparison_target_path")
+            rejected_state.pop("effective_metric_source")
+            rejected_state_path.write_text(
+                json.dumps(rejected_state),
+                encoding="utf-8",
+            )
+
+            invalid_state_path = invalid_round / "round-state.json"
+            invalid_state = json.loads(invalid_state_path.read_text(encoding="utf-8"))
+            invalid_state["correctness_status"] = "maybe"
+            invalid_state["benchmark_status"] = "not_run"
+            invalid_state_path.write_text(
+                json.dumps(invalid_state),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(optimize_checks.count_terminal_round_directories(workdir), 2)
+
+    def test_check_round_reports_status_not_missing_perf_when_benchmark_not_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1")
+
+            state_path = round_dir / "round-state.json"
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            payload["correctness_status"] = "failed"
+            payload["benchmark_status"] = "not_run"
+            payload.pop("perf_artifact")
+            payload.pop("comparison_target_path")
+            payload.pop("effective_metric_source")
+            state_path.write_text(json.dumps(payload), encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").unlink()
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "fail")
+            self.assertEqual(result.issues, ("correctness_status=failed",))
 
     def test_check_round_deletes_pt_files_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

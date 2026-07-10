@@ -331,6 +331,7 @@ def complete_round(
     round_dir: str,
     *,
     current_round_arg: int | None = None,
+    final_status: str = "passed",
 ) -> None:
     payload = load_state(state_path)
     round_number = _parse_round_number(round_dir)
@@ -356,8 +357,10 @@ def complete_round(
     round_entry = cast(dict[str, object], round_entry_obj)
     if round_entry.get("status") != "active":
         raise ValueError(f"cannot complete non-active round {round_dir}")
+    if final_status not in {"passed", "failed"}:
+        raise ValueError(f"unsupported final_status for {round_dir}: {final_status!r}")
 
-    round_entry["status"] = "passed"
+    round_entry["status"] = final_status
     round_entry.pop("started_at", None)
     round_entry.pop("ended_at", None)
     payload["phase"] = PHASE_AWAITING_ROUND_START
@@ -447,7 +450,7 @@ def _validate_state(payload: dict[str, object]) -> None:
             raise ValueError(f"workflow state round {round_key} must be an object")
         round_state_dict = cast(dict[str, object], round_state)
         status = round_state_dict.get("status")
-        if status not in {"active", "passed"}:
+        if status not in {"active", "passed", "failed"}:
             raise ValueError(f"unknown round status for {round_key}: {status!r}")
         round_dir = round_state_dict.get("round_dir")
         if not isinstance(round_dir, str) or not round_dir:

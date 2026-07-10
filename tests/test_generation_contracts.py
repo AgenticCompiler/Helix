@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -50,7 +51,7 @@ class GenerationContractTests(unittest.TestCase):
             agents,
         )
         self.assertIn(
-            "python3 skills/triton/triton-npu-optimize/script/update-artifacts.py",
+            "uv run python -m triton_agent.optimize_knowledge.update_artifacts",
             agents,
         )
 
@@ -725,6 +726,26 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("analysis_comparison_sources", artifacts)
         self.assertNotIn("validated_candidate", artifacts)
 
+    def test_optimize_artifacts_reference_documents_status_enum_ranges_inline(self) -> None:
+        artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
+
+        self.assertIn(
+            '"correctness_status": "record the final baseline correctness result; use `passed` only after correctness succeeds. Allowed values: `passed`, `failed`, `not_run`.",',
+            artifacts,
+        )
+        self.assertIn(
+            '"benchmark_status": "record the final baseline benchmark result; use `passed` only after the benchmark succeeds. Allowed values: `passed`, `failed`, `not_run`.",',
+            artifacts,
+        )
+        self.assertIn(
+            '"correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check. Allowed values: `passed`, `failed`, `not_run`.",',
+            artifacts,
+        )
+        self.assertIn(
+            '"benchmark_status": "record the final benchmark result for this round; use `passed` only after the round benchmark succeeds and the round perf artifact is written. Allowed values: `passed`, `failed`, `not_run`.",',
+            artifacts,
+        )
+
     def test_optimize_state_skill_keeps_path_rules_out_of_user_facing_skill_text(self) -> None:
         state_skill = _read("skills/common/ascend-npu-optimize-state/SKILL.md")
 
@@ -735,27 +756,35 @@ class GenerationContractTests(unittest.TestCase):
             state_skill,
         )
 
-    def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
+    def test_optimize_artifacts_reference_matches_generator_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for relative_path in (
                 "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
                 "skills/common/ascend-npu-optimize-state/references/round-contract.json",
                 "skills/triton/triton-npu-optimize/references/artifacts.md",
-                "skills/triton/triton-npu-optimize/script/update-artifacts.py",
+                "src/triton_agent/__init__.py",
+                "src/triton_agent/models.py",
+                "src/triton_agent/paths.py",
+                "src/triton_agent/optimize_knowledge/__init__.py",
+                "src/triton_agent/optimize_knowledge/update_artifacts.py",
             ):
                 source = REPO_ROOT / relative_path
                 target = root / relative_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
 
-            script_path = root / "skills" / "triton" / "triton-npu-optimize" / "script" / "update-artifacts.py"
             completed = subprocess.run(
-                [sys.executable, str(script_path)],
+                [
+                    sys.executable,
+                    "-m",
+                    "triton_agent.optimize_knowledge.update_artifacts",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
                 cwd=root,
+                env=dict(os.environ, PYTHONPATH=str(root / "src")),
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -1018,7 +1047,10 @@ class GenerationContractTests(unittest.TestCase):
             "After the first canonical `run-bench` plus `compare-perf` conclusion for that attempt, stop editing the current round.",
             optimize,
         )
+        self.assertIn("close the round as a rejected terminal round instead of exiting silently", optimize)
+        self.assertIn("When `benchmark_status` is `failed` or `not_run`", optimize)
         self.assertIn("move the next optimization idea into a new round", failure_handling)
+        self.assertIn("Close the round as a failed terminal branch", failure_handling)
         self.assertNotIn("if yes, keep iterating within the same round", failure_handling)
 
     def test_optimize_skill_records_learned_lessons(self) -> None:

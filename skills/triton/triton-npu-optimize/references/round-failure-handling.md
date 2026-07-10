@@ -40,6 +40,7 @@
 - If the benchmark harness is broken, repair only what is necessary to recover a valid measurement.
 - If the operator regressed, revise the operator code first.
 - Preserve the evidence that explains why the round did not help.
+- If canonical benchmark execution fails repeatedly, produces no perf artifact, or is no longer worth the time cost for this round, stop retrying blindly. Close the round as a failed terminal branch, record `benchmark_status` as `failed` or `not_run` as appropriate, and submit the round instead of leaving it unresolved.
 
 ## Regression Handling
 

@@ -48,9 +48,9 @@ class RoundState:
     evidence_sources: tuple[str, ...]
     correctness_status: str
     benchmark_status: str
-    perf_artifact: str
-    comparison_target_path: str
-    effective_metric_source: str
+    perf_artifact: str | None
+    comparison_target_path: str | None
+    effective_metric_source: str | None
     summary_path: str
     opt_note_updated: bool
     analysis_skipped_reason: str | None = None

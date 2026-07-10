@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from round.check import check_round
+from round.check import check_round, is_terminal_round_directory
 from shared.cli import build_check_payload, build_workflow_failure_payload
 from shared.results import build_check_result
 from state_manage.state_machine import complete_round
@@ -148,6 +148,31 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
                 round_dir.name,
                 current_round_arg=args.current_round,
             )
+            print(json.dumps(build_check_payload(result), ensure_ascii=True))
+            return 0
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(
+                json.dumps(
+                    build_workflow_failure_payload(
+                        kind="round",
+                        issue=str(exc),
+                        guideline=_workflow_failure_guideline(str(exc)),
+                    ),
+                    ensure_ascii=True,
+                )
+            )
+            return 1
+
+    if state_path.exists() and is_terminal_round_directory(round_dir):
+        try:
+            complete_round(
+                state_path,
+                round_dir.name,
+                current_round_arg=args.current_round,
+                final_status="failed",
+            )
+            print(json.dumps(build_check_payload(result), ensure_ascii=True))
+            return 1
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(
                 json.dumps(
@@ -162,8 +187,6 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
             return 1
 
     print(json.dumps(build_check_payload(result), ensure_ascii=True))
-    if result.status == "pass":
-        return 0
     return 1
 
 

@@ -46,6 +46,22 @@ def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
     return _normalize_optional_float(module.best_completed_round_geomean_speedup(workspace))
 
 
+def count_completed_round_directories(workspace: Path) -> int:
+    module = load_skill_script_module(
+        "ascend-npu-optimize-state",
+        "round/check",
+    )
+    return _normalize_int(module.count_completed_round_directories(workspace))
+
+
+def count_terminal_round_directories(workspace: Path) -> int:
+    module = load_skill_script_module(
+        "ascend-npu-optimize-state",
+        "round/check",
+    )
+    return _normalize_int(module.count_terminal_round_directories(workspace))
+
+
 def _normalize_result(raw_result: object) -> OptimizeCheckResult:
     if isinstance(raw_result, OptimizeCheckResult):
         return raw_result
@@ -123,3 +139,13 @@ def _normalize_optional_float(value: object) -> float | None:
     if isinstance(value, (int, float, str)):
         return float(value)
     raise TypeError("Optimize speedup helper must return a float-compatible value")
+
+
+def _normalize_int(value: object) -> int:
+    if isinstance(value, bool):
+        raise TypeError("Optimize round counter helpers must return an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    raise TypeError("Optimize round counter helpers must return an integer")

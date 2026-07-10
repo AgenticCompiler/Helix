@@ -16,11 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.batch import run_optimize_batch
+from triton_agent.optimize import checks as optimize_checks
 import triton_agent.optimize.execution as execution_module
 from triton_agent.optimize.compiler_source import CompilerSourceInfo
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.execution import (
-    _count_round_directories,
     _latest_round_dir,
 )
 from triton_agent.optimize.env import optimize_min_speedup_env_name
@@ -54,45 +54,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._report_patcher.stop()
         super().tearDown()
-
-    def test_optimize_recovery_classifies_stall_before_transient_text(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
-
-        self.assertEqual(
-            recovery.classify_worker_failure(
-                AgentResult(
-                    return_code=1,
-                    stdout="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
-                    stderr="",
-                    stalled=True,
-                )
-            ),
-            "stall",
-        )
-
-    def test_optimize_recovery_classifies_transient_and_fatal_failures(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
-
-        self.assertEqual(
-            recovery.classify_worker_failure(
-                AgentResult(
-                    return_code=1,
-                    stdout="",
-                    stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
-                )
-            ),
-            "transient",
-        )
-        self.assertEqual(
-            recovery.classify_worker_failure(
-                AgentResult(
-                    return_code=1,
-                    stdout="",
-                    stderr="plain error",
-                )
-            ),
-            "fatal",
-        )
 
     def test_optimize_recovery_progress_path_allowlist_includes_business_artifacts(self) -> None:
         recovery = importlib.import_module("triton_agent.optimize.recovery")
@@ -170,53 +131,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 tuple(path for path, _size, _mtime in snapshot.file_fingerprints),
                 ("opt-note.md", "opt-round-1/summary.md"),
             )
-
-    def test_optimize_recovery_compute_range_progress_is_range_local(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
-
-        with tempfile.TemporaryDirectory() as tmp:
-            workdir = Path(tmp)
-            for round_name in ("opt-round-1", "opt-round-2", "opt-round-11", "opt-round-12", "opt-round-13", "opt-round-14"):
-                (workdir / round_name).mkdir()
-
-            def fake_check_round(
-                round_dir: Path,
-                *,
-                current_round: Optional[int] = None,
-                final_round: Optional[int] = None,
-                optimize_target: Optional[str] = None,
-            ) -> SimpleNamespace:
-                del final_round, optimize_target
-                status = "pass" if current_round in (11, 12, 13) else "fail"
-                return SimpleNamespace(kind="round", status=status, issues=(), summary=status)
-
-            with patch("triton_agent.optimize.recovery.check_round", side_effect=fake_check_round):
-                progress = recovery.compute_range_progress(
-                    workdir,
-                    batch_start=11,
-                    batch_end=15,
-                    optimize_target="kernel",
-                )
-
-            self.assertEqual(progress.last_accepted_round, 13)
-            self.assertEqual(progress.first_unresolved_round, 14)
-            self.assertEqual(progress.next_batch_start, 14)
-            self.assertEqual(progress.next_batch_end, 15)
-
-    def test_optimize_recovery_budget_tracks_attempts_per_round(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
-
-        budget = recovery.RecoveryBudget(max_attempts=3)
-        budget.consume(14)
-        budget.consume(14)
-        self.assertEqual(budget.remaining(14), 1)
-        self.assertFalse(budget.exhausted(14))
-
-        budget.consume(14)
-        self.assertTrue(budget.exhausted(14))
-
-        budget.consume(15)
-        self.assertEqual(budget.remaining(15), 2)
 
     def test_optimize_orchestration_module_replaces_runtime_module(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.orchestration"))
@@ -352,8 +266,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
         round_name: str,
         *,
         parent_round: str,
-        perf_text: str = "case0: 1.0\n",
+        perf_text: str = "latency-a: 1.0\n",
         operator_source: Optional[str] = None,
+        correctness_status: str = "passed",
+        benchmark_status: str = "passed",
     ) -> Path:
         round_dir = workdir / round_name
         round_dir.mkdir(exist_ok=True)
@@ -378,8 +294,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "parent_round": parent_round,
                     "hypothesis": "vectorize loads",
                     "evidence_sources": ["benchmark"],
-                    "correctness_status": "passed",
-                    "benchmark_status": "passed",
+                    "correctness_status": correctness_status,
+                    "benchmark_status": benchmark_status,
                     "perf_artifact": "opt_kernel_perf.txt",
                     "comparison_target_path": "baseline/perf.txt",
                     "effective_metric_source": "kernel",
@@ -1580,10 +1496,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertEqual(len(runner.requests), 3)
+            self.assertEqual(len(runner.requests), 5)
             self.assertEqual(_optimize_invocation_kind(runner.requests[0]), "worker")
             self.assertEqual(_optimize_invocation_kind(runner.requests[1]), "supervisor")
             self.assertEqual(_optimize_invocation_kind(runner.requests[2]), "worker")
+            self.assertEqual(
+                [_optimize_invocation_kind(record) for record in runner.requests],
+                ["worker", "supervisor", "worker", "worker", "worker"],
+            )
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[2].prompt)
             self.assertNotIn("\"status\": \"pass\"", runner.requests[2].prompt)
             self.assertNotIn("Supervisor guidance:", runner.requests[2].prompt)
@@ -1832,8 +1752,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
-                with patch("triton_agent.optimize.recovery.check_round", side_effect=fake_check_round):
-                    result = controller.run_round_loop(request)
+                result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
             self.assertEqual(
@@ -1843,11 +1762,15 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     ("opt-round-2", 2, 2, "kernel"),
                 ],
             )
-            self.assertEqual(len(runner.requests), 2)
+            self.assertEqual(len(runner.requests), 4)
             self.assertIn("This invocation owns rounds 1 through 2.", runner.requests[0].prompt)
             self.assertIn("Execute those rounds strictly one at a time.", runner.requests[0].prompt)
             self.assertIn("This invocation owns rounds 3 through 3.", runner.requests[1].prompt)
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
+            self.assertEqual(
+                [(request.current_round, request.final_round) for request in runner.requests[1:]],
+                [(3, 3), (3, 3), (3, 3)],
+            )
 
     def test_multi_invocation_controller_stops_early_when_min_speedup_target_is_met(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1926,6 +1849,85 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.requests), 1)
             self.assertIn("This invocation owns rounds 1 through 1.", runner.requests[0].prompt)
+
+    def test_multi_invocation_controller_continues_after_nonzero_exit_with_rejected_terminal_round(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="torch-npu-profiler",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=2,
+                round_mode="checked",
+                round_batch_size=1,
+                current_round=1,
+                final_round=1,
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.requests: list[AgentRequest] = []
+                    self.worker_calls = 0
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del stdout, stderr
+                    self.requests.append(request)
+                    self.worker_calls += 1
+                    if self.worker_calls == 1:
+                        self_outer._write_round(
+                            workdir,
+                            "opt-round-1",
+                            parent_round="round-0",
+                            correctness_status="failed",
+                            benchmark_status="not_run",
+                        )
+                        return AgentResult(return_code=1, stdout="", stderr="correctness rejected")
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-2",
+                        parent_round="opt-round-1",
+                        perf_text="latency-a: 0.9\n",
+                    )
+                    return AgentResult(return_code=0, stdout="worker ok", stderr="")
+
+            self_outer = self
+            runner = FakeRunner()
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, runner),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            result = controller.run_round_loop(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(len(runner.requests), 2)
+            self.assertIn("This invocation owns rounds 2 through 2.", runner.requests[1].prompt)
+            self.assertNotIn("previous invocation stalled", runner.requests[1].prompt)
 
     def test_multi_invocation_controller_failed_worker_run_preserves_pt_files_with_round_cleanup_policy(
         self,
@@ -2092,7 +2094,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     ("opt-round-3", 3, 3),
                 ],
             )
-            self.assertEqual(len(runner.requests), 2)
+            self.assertEqual(len(runner.requests), 4)
             self.assertIn("This invocation owns rounds 4 through 4.", runner.requests[1].prompt)
             self.assertIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
             self.assertIn("opt-round-2", runner.requests[1].prompt)
@@ -2106,8 +2108,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 runner.requests[1].prompt,
             )
             self.assertNotIn("not yet accepted as session progress", runner.requests[1].prompt)
+            self.assertEqual(
+                [(request.current_round, request.final_round) for request in runner.requests[1:]],
+                [(4, 4), (4, 4), (4, 4)],
+            )
 
-    def test_multi_invocation_controller_recovers_transient_worker_failure_by_retrying_same_range(
+    def test_multi_invocation_controller_retries_same_range_after_non_progress_worker_failure(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2201,8 +2207,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(runner.requests[0].progress_probe)
             self.assertTrue(runner.requests[1].disable_backend_retry)
             self.assertIsNotNone(runner.requests[1].progress_probe)
-            self.assertIn("previous invocation ended in a transient backend failure", runner.requests[1].prompt)
             self.assertIn("This invocation owns rounds 1 through 2.", runner.requests[1].prompt)
+            self.assertNotIn("previous invocation ended in a transient backend failure", runner.requests[1].prompt)
 
     def test_multi_invocation_controller_transient_recovery_records_distinct_launch_artifacts(
         self,
@@ -2303,7 +2309,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 "session-r2",
             )
 
-    def test_multi_invocation_controller_recovers_stalled_worker_from_first_unresolved_round(
+    def test_multi_invocation_controller_uses_terminal_round_progress_to_resume_next_range(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2328,11 +2334,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
-                min_rounds=15,
+                min_rounds=5,
                 round_mode="checked",
                 round_batch_size=5,
-                current_round=11,
-                final_round=15,
+                current_round=1,
+                final_round=5,
             )
 
             class FakeRunner:
@@ -2352,20 +2358,20 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     if self.worker_calls == 1:
                         self_outer._write_round(
                             workdir,
-                            "opt-round-11",
-                            parent_round="opt-round-10",
+                            "opt-round-1",
+                            parent_round="round-0",
                         )
                         self_outer._write_round(
                             workdir,
-                            "opt-round-12",
-                            parent_round="opt-round-11",
+                            "opt-round-2",
+                            parent_round="opt-round-1",
                         )
                         self_outer._write_round(
                             workdir,
-                            "opt-round-13",
-                            parent_round="opt-round-12",
+                            "opt-round-3",
+                            parent_round="opt-round-2",
                         )
-                        (workdir / "opt-round-14").mkdir(exist_ok=True)
+                        (workdir / "opt-round-4").mkdir(exist_ok=True)
                         return AgentResult(
                             return_code=1,
                             stdout="",
@@ -2374,13 +2380,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         )
                     self_outer._write_round(
                         workdir,
-                        "opt-round-14",
-                        parent_round="opt-round-13",
+                        "opt-round-4",
+                        parent_round="opt-round-3",
                     )
                     self_outer._write_round(
                         workdir,
-                        "opt-round-15",
-                        parent_round="opt-round-14",
+                        "opt-round-5",
+                        parent_round="opt-round-4",
                     )
                     return AgentResult(return_code=0, stdout="worker ok", stderr="")
 
@@ -2392,8 +2398,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 optimize_target: Optional[str] = None,
             ) -> SimpleNamespace:
                 del final_round, optimize_target
-                status = "pass" if current_round in (11, 12, 13) else "fail"
-                if current_round in (14, 15) and (round_dir / "round-state.json").exists():
+                status = "pass" if current_round in (1, 2, 3) else "fail"
+                if current_round in (4, 5) and (round_dir / "round-state.json").exists():
                     status = "pass"
                 return SimpleNamespace(
                     kind="round",
@@ -2412,19 +2418,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
-                with patch("triton_agent.optimize.recovery.check_round", side_effect=fake_check_round):
-                    result = controller.run_round_loop(request)
+                result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.requests), 2)
-            self.assertEqual((runner.requests[0].current_round, runner.requests[0].final_round), (11, 15))
-            self.assertEqual((runner.requests[1].current_round, runner.requests[1].final_round), (14, 15))
-            self.assertIn("previous invocation stalled", runner.requests[1].prompt)
-            self.assertIn("Resume from round 14", runner.requests[1].prompt)
-            self.assertIn("Inspect existing artifacts for round 14", runner.requests[1].prompt)
-            self.assertNotIn("This invocation owns rounds 11 through 15.", runner.requests[1].prompt)
+            self.assertEqual((runner.requests[0].current_round, runner.requests[0].final_round), (1, 5))
+            self.assertEqual((runner.requests[1].current_round, runner.requests[1].final_round), (4, 5))
+            self.assertIn("This invocation owns rounds 4 through 5.", runner.requests[1].prompt)
+            self.assertNotIn("previous invocation stalled", runner.requests[1].prompt)
 
-    def test_multi_invocation_controller_non_recoverable_worker_failure_exits_immediately(
+    def test_multi_invocation_controller_stops_after_no_progress_limit_on_worker_failures(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2478,10 +2481,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertEqual(len(runner.requests), 1)
-            self.assertEqual(result.stderr, "plain worker launch failure")
+            self.assertEqual(len(runner.requests), 3)
+            self.assertIn("no new terminal round progress", result.stderr)
+            self.assertIn("plain worker launch failure", result.stderr)
 
-    def test_multi_invocation_controller_batch_validation_failure_does_not_enter_recovery(
+    def test_multi_invocation_controller_terminal_failed_round_can_satisfy_min_rounds_without_retry(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2550,9 +2554,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             ):
                 result = controller.run_round_loop(request)
 
-            self.assertEqual(result.return_code, 1)
+            self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.requests), 1)
-            self.assertIn("round metadata is incomplete", result.stderr)
+            self.assertEqual(result.stderr, "")
 
     def test_run_optimize_batch_preserves_round_mode_mode(self) -> None:
         for round_mode_mode in ("checked", "supervised"):
@@ -2610,6 +2614,158 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     batch_request = captured_requests[0]
                     self.assertEqual(batch_request.round_mode, round_mode_mode)
                     self.assertEqual(_optimize_invocation_kind(batch_request), "worker")
+
+    def test_multi_invocation_controller_writes_progress_loop_trace_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="torch-npu-profiler",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=1,
+                round_mode="checked",
+                current_round=1,
+                final_round=1,
+                log_tools=True,
+            )
+
+            class FakeRunner:
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, stdout, stderr
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        perf_text="latency-a: 0.9\n",
+                    )
+                    return AgentResult(return_code=0, stdout="worker ok", stderr="")
+
+            self_outer = self
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, FakeRunner()),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            result = controller.run_round_loop(request)
+            trace_path = guidance_state.archive.trace_path("batch-1-1-r1")
+            trace_events = [
+                json.loads(line)
+                for line in trace_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            event_names = [event["event"] for event in trace_events]
+
+            self.assertEqual(result.return_code, 0)
+            self.assertIn("optimize_loop_start", event_names)
+            self.assertIn("optimize_iteration_start", event_names)
+            self.assertIn("optimize_worker_result", event_names)
+            self.assertIn("optimize_progress_check", event_names)
+            self.assertIn("optimize_iteration_decision", event_names)
+            self.assertIn("optimize_loop_stop", event_names)
+
+    def test_multi_invocation_controller_trace_marks_mixed_completed_and_rejected_terminal_progress(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="torch-npu-profiler",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=2,
+                round_mode="checked",
+                current_round=1,
+                final_round=2,
+                log_tools=True,
+            )
+
+            class FakeRunner:
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, stdout, stderr
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        perf_text="latency-a: 0.9\n",
+                    )
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-2",
+                        parent_round="round-1",
+                        perf_text="latency-a: 1.1\n",
+                        correctness_status="failed",
+                        benchmark_status="not_run",
+                    )
+                    return AgentResult(return_code=0, stdout="worker ok", stderr="")
+
+            self_outer = self
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, FakeRunner()),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            result = controller.run_round_loop(request)
+            trace_path = guidance_state.archive.trace_path("batch-1-2-r1")
+            trace_events = [
+                json.loads(line)
+                for line in trace_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            progress_event = next(
+                event for event in trace_events if event["event"] == "optimize_progress_check"
+            )
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(
+                progress_event["latest_round_outcome"],
+                "completed_and_rejected_terminal",
+            )
 
     def test_run_optimize_batch_applies_user_prompt_to_each_workspace_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4001,10 +4157,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertEqual(len(runner.requests), 3)
+            self.assertEqual(len(runner.requests), 5)
             self.assertEqual(_optimize_invocation_kind(runner.requests[0]), "worker")
             self.assertEqual(_optimize_invocation_kind(runner.requests[1]), "supervisor")
             self.assertEqual(_optimize_invocation_kind(runner.requests[2]), "worker")
+            self.assertEqual(
+                [_optimize_invocation_kind(record) for record in runner.requests],
+                ["worker", "supervisor", "worker", "worker", "worker"],
+            )
             self.assertIn("Read this CLI round follow-up summary before auditing the round:", runner.requests[1].prompt)
             self.assertIn("may be stuck in a local optimum", runner.requests[1].prompt)
             self.assertIn("CLI batch follow-up from the previous worker batch:", runner.requests[2].prompt)
@@ -4078,7 +4238,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertEqual(len(runner.requests), 2)
+            self.assertEqual(len(runner.requests), 4)
             self.assertIn("Remote execution target: alice@example.com:2200", runner.requests[0].prompt)
             self.assertIn("Additional user instructions:", runner.requests[0].prompt)
             self.assertIn("Focus on occupancy.", runner.requests[0].prompt)
@@ -4095,6 +4255,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn(
                 "State the optimization hypothesis and why it may help before editing code for each round.",
                 runner.requests[1].prompt,
+            )
+            self.assertEqual(
+                [(request.current_round, request.final_round) for request in runner.requests[1:]],
+                [(2, 2), (2, 2), (2, 2)],
             )
 
     def test_multi_invocation_controller_checked_continue_carries_local_optimum_warning(
@@ -4172,11 +4336,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
-            self.assertEqual(len(runner.requests), 2)
+            self.assertEqual(len(runner.requests), 4)
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
             self.assertNotIn("may be stuck in a local optimum", runner.requests[1].prompt)
 
-    def test_run_optimize_request_final_failed_batch_stops_without_repair_rerun(self) -> None:
+    def test_run_optimize_request_final_failed_batch_can_finish_without_rerun(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -4241,9 +4405,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ):
                     result = run_optimize_request(request)
 
-            self.assertEqual(result.return_code, 1)
+            self.assertEqual(result.return_code, 0)
             self.assertEqual(runner.worker_calls, 1)
-            self.assertIn("round metadata is incomplete", result.stderr)
+            self.assertEqual(result.stderr, "")
 
     def test_multi_invocation_controller_converts_invalid_supervisor_report_to_gate_result(
         self,
@@ -4494,7 +4658,31 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-2")
-            self.assertEqual(_count_round_directories(workdir), 1)
+            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
+
+    def test_round_helpers_treat_rejected_terminal_round_as_latest_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                parent_round="opt-round-1",
+                correctness_status="failed",
+                benchmark_status="not_run",
+            )
+
+            latest = _latest_round_dir(workdir)
+
+            self.assertIsNotNone(latest)
+            assert latest is not None
+            self.assertEqual(latest.name, "opt-round-2")
+            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
 
     def test_round_helpers_ignore_incomplete_precreated_round_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4512,7 +4700,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-1")
-            self.assertEqual(_count_round_directories(workdir), 1)
+            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
 
     def test_run_optimize_batch_auto_upload_on_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

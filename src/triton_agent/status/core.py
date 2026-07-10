@@ -398,6 +398,8 @@ def resolve_workspace_operator_perf_file(workspace: Path, paths: list[Path]) -> 
 
 
 def find_round_perf_file(round_dir: Path, round_state: RoundState) -> Path | None:
+    if round_state.perf_artifact is None:
+        return None
     declared_path = Path(round_state.perf_artifact)
     if not declared_path.is_absolute():
         declared_path = round_dir / declared_path
@@ -418,6 +420,8 @@ def _load_comparable_round_state(round_dir: Path) -> tuple[RoundState | None, st
         return None, f"skipping {round_dir.name} because correctness_status={state.correctness_status}"
     if state.benchmark_status != "passed":
         return None, f"skipping {round_dir.name} because benchmark_status={state.benchmark_status}"
+    if state.perf_artifact is None or state.effective_metric_source is None:
+        return None, f"skipping {round_dir.name} because benchmark metadata is incomplete"
     return state, None
 
 
