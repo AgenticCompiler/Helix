@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from baseline.contract import BASELINE_STATE_REQUIRED_FIELDS
+from baseline.contract import (
+    BASELINE_BENCHMARK_STATUS_VALUES,
+    BASELINE_CORRECTNESS_STATUS_VALUES,
+    BASELINE_STATE_REQUIRED_FIELDS,
+)
 from shared.json_io import load_json_object, optional_str
 from shared.models import BaselineArtifactsInspection, BaselineState, OptimizeCheckResult
 from shared.paths import (
@@ -18,6 +22,8 @@ _BASELINE_METADATA_FILENAMES = {
     "state.json",
     "perf.txt",
 }
+_ALLOWED_CORRECTNESS_STATUS_VALUES = frozenset(BASELINE_CORRECTNESS_STATUS_VALUES)
+_ALLOWED_BENCHMARK_STATUS_VALUES = frozenset(BASELINE_BENCHMARK_STATUS_VALUES)
 
 
 def load_baseline_state(workspace: Path) -> BaselineState:
@@ -28,6 +34,16 @@ def load_baseline_state(workspace: Path) -> BaselineState:
     ]
     if missing_fields:
         raise ValueError("missing required baseline-state fields: " + ", ".join(missing_fields))
+    correctness_status = _validated_status_value(
+        "correctness_status",
+        data["correctness_status"],
+        allowed_values=_ALLOWED_CORRECTNESS_STATUS_VALUES,
+    )
+    benchmark_status = _validated_status_value(
+        "benchmark_status",
+        data["benchmark_status"],
+        allowed_values=_ALLOWED_BENCHMARK_STATUS_VALUES,
+    )
     return BaselineState(
         baseline_kind=str(data["baseline_kind"]),
         source_operator=str(data["source_operator"]),
@@ -37,8 +53,8 @@ def load_baseline_state(workspace: Path) -> BaselineState:
         bench_file=str(data["bench_file"]),
         bench_mode=str(data["bench_mode"]),
         perf_artifact=str(data["perf_artifact"]),
-        correctness_status=str(data["correctness_status"]),
-        benchmark_status=str(data["benchmark_status"]),
+        correctness_status=correctness_status,
+        benchmark_status=benchmark_status,
         baseline_established=bool(data["baseline_established"]),
         preparation_notes=optional_str(data.get("preparation_notes")),
         baseline_repairs_summary=optional_str(data.get("baseline_repairs_summary")),
@@ -156,3 +172,16 @@ def _find_fallback_perf_artifact(root: Path) -> Path | None:
     if len(candidates) == 1:
         return candidates[0]
     return None
+
+
+def _validated_status_value(
+    field_name: str,
+    raw_value: object,
+    *,
+    allowed_values: frozenset[str],
+) -> str:
+    value = str(raw_value)
+    if value not in allowed_values:
+        allowed_text = ", ".join(sorted(allowed_values))
+        raise ValueError(f"baseline/state.json {field_name} must be one of: {allowed_text}")
+    return value

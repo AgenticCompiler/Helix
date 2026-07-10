@@ -142,6 +142,8 @@ def prepare_verify_target(
     if round_artifacts.operator_path is None:
         raise ValueError(f"Best round is missing round-local operator output: {round_dir}")
     round_state = load_round_state(round_dir)
+    if round_state.effective_metric_source is None:
+        raise ValueError(f"Best round is missing effective_metric_source: {round_dir}")
 
     verify_dir = _create_unique_verify_dir(workspace, timestamp_label=timestamp_label)
     copied_operator = verify_dir / round_artifacts.operator_path.name

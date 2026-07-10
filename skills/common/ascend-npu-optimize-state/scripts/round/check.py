@@ -9,7 +9,11 @@ from baseline.check import (
     baseline_gate_issues,
     load_baseline_state,
 )
-from round.contract import ROUND_STATE_REQUIRED_FIELDS
+from round.contract import (
+    ROUND_BENCHMARK_STATUS_VALUES,
+    ROUND_CORRECTNESS_STATUS_VALUES,
+    ROUND_STATE_REQUIRED_FIELDS,
+)
 from round.kernel_continuity import analyze_triton_kernel_continuity
 from round.local_optimum import (
     collect_local_optimum_warnings,
@@ -43,6 +47,13 @@ _ROUND_METADATA_FILENAMES = {
     "round-state.json",
 }
 _PROFILE_ARTIFACT_PREFIXES = ("PROF_", "OPPROF_")
+_ALLOWED_CORRECTNESS_STATUS_VALUES = frozenset(ROUND_CORRECTNESS_STATUS_VALUES)
+_ALLOWED_BENCHMARK_STATUS_VALUES = frozenset(ROUND_BENCHMARK_STATUS_VALUES)
+_BENCHMARK_REQUIRED_FIELDS = (
+    "perf_artifact",
+    "comparison_target_path",
+    "effective_metric_source",
+)
 
 
 def ordinary_optimize_pt_cleanup_mode() -> OptimizePtCleanupMode:
@@ -289,16 +300,49 @@ def load_round_state(round_dir: Path) -> RoundState:
             raise ValueError("round-state evidence_sources must be a list of strings")
         evidence_sources.append(item)
 
+    correctness_status = _validated_status_value(
+        "correctness_status",
+        data["correctness_status"],
+        allowed_values=_ALLOWED_CORRECTNESS_STATUS_VALUES,
+    )
+    benchmark_status = _validated_status_value(
+        "benchmark_status",
+        data["benchmark_status"],
+        allowed_values=_ALLOWED_BENCHMARK_STATUS_VALUES,
+    )
+    if benchmark_status == "passed":
+        missing_benchmark_fields = [
+            field_name
+            for field_name in _BENCHMARK_REQUIRED_FIELDS
+            if field_name not in data
+            and not (
+                field_name == "comparison_target_path"
+                and comparison_target_path_value is not None
+            )
+        ]
+        if missing_benchmark_fields:
+            raise ValueError(
+                "missing required benchmark round-state fields: "
+                + ", ".join(missing_benchmark_fields)
+            )
+        perf_artifact = str(data["perf_artifact"])
+        comparison_target_path = str(comparison_target_path_value)
+        effective_metric_source = str(data["effective_metric_source"])
+    else:
+        perf_artifact = optional_str(data.get("perf_artifact"))
+        comparison_target_path = optional_str(comparison_target_path_value)
+        effective_metric_source = optional_str(data.get("effective_metric_source"))
+
     return RoundState(
         round_name=str(data["round"]),
         parent_round=str(data["parent_round"]),
         hypothesis=str(data["hypothesis"]),
         evidence_sources=tuple(evidence_sources),
-        correctness_status=str(data["correctness_status"]),
-        benchmark_status=str(data["benchmark_status"]),
-        perf_artifact=str(data["perf_artifact"]),
-        comparison_target_path=str(comparison_target_path_value),
-        effective_metric_source=str(data["effective_metric_source"]),
+        correctness_status=correctness_status,
+        benchmark_status=benchmark_status,
+        perf_artifact=perf_artifact,
+        comparison_target_path=comparison_target_path,
+        effective_metric_source=effective_metric_source,
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
         analysis_skipped_reason=optional_str(data.get("analysis_skipped_reason")),
@@ -360,7 +404,7 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         )
     if round_state_path is None:
         issues.append("missing round-state.json")
-    if perf_path is None:
+    if perf_path is None and (state is None or state.benchmark_status == "passed"):
         issues.append(
             missing_path_issue(
                 "perf_artifact",
@@ -368,7 +412,12 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
                 expected_path=expected_perf_name_value,
             )
         )
-    elif state is not None and declared_perf is not None and Path(declared_perf).name != perf_path.name:
+    elif (
+        state is not None
+        and declared_perf is not None
+        and perf_path is not None
+        and Path(declared_perf).name != perf_path.name
+    ):
         issues.append(
             unexpected_path_name_issue(
                 "perf_artifact",
@@ -419,12 +468,42 @@ def is_completed_round_directory(round_dir: Path) -> bool:
     )
 
 
+def is_terminal_round_directory(round_dir: Path) -> bool:
+    if not round_dir.is_dir():
+        return False
+    name = round_dir.name
+    if not name.startswith("opt-round-"):
+        return False
+    suffix = name[len("opt-round-"):]
+    if not suffix.isdigit():
+        return False
+
+    inspection, round_state, _state_error = _inspect_round_minimum_artifact_package(round_dir)
+    return not inspection.issues and round_state is not None
+
+
+def iter_terminal_round_directories(workspace: Path) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in sorted(workspace.glob("opt-round-*"))
+        if is_terminal_round_directory(path)
+    )
+
+
+def count_terminal_round_directories(workspace: Path) -> int:
+    return len(iter_terminal_round_directories(workspace))
+
+
 def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
     return tuple(
         path
         for path in sorted(workspace.glob("opt-round-*"))
         if is_completed_round_directory(path)
     )
+
+
+def count_completed_round_directories(workspace: Path) -> int:
+    return len(iter_completed_round_directories(workspace))
 
 
 def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
@@ -451,6 +530,19 @@ def best_completed_round_geomean_speedup(workspace: Path) -> float | None:
         if best_speedup is None or geomean_speedup > best_speedup:
             best_speedup = geomean_speedup
     return best_speedup
+
+
+def _validated_status_value(
+    field_name: str,
+    raw_value: object,
+    *,
+    allowed_values: frozenset[str],
+) -> str:
+    value = str(raw_value)
+    if value not in allowed_values:
+        allowed_text = ", ".join(sorted(allowed_values))
+        raise ValueError(f"round-state {field_name} must be one of: {allowed_text}")
+    return value
 
 
 def _min_speedup_pending_prefix(
@@ -504,6 +596,9 @@ def check_round(
             status="fail",
             issues=(f"benchmark_status={round_state.benchmark_status}",),
         )
+    assert round_state.perf_artifact is not None
+    assert round_state.comparison_target_path is not None
+    assert round_state.effective_metric_source is not None
 
     baseline_issues = baseline_gate_issues(round_dir.parent)
     if baseline_issues:

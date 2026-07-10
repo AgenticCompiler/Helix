@@ -12,15 +12,10 @@ from triton_agent.optimize.checks import (
     best_completed_round_geomean_speedup,
     check_baseline,
     check_round,
+    count_completed_round_directories,
+    count_terminal_round_directories,
 )
-from triton_agent.optimize.recovery import (
-    RecoveryBudget,
-    build_optimize_progress_probe,
-    classify_worker_failure,
-    compute_range_progress,
-    render_stall_recovery_note,
-    render_transient_recovery_note,
-)
+from triton_agent.optimize.recovery import build_optimize_progress_probe
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skills.loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
@@ -43,6 +38,7 @@ from triton_agent.trace.core import (
     TRACE_PATH_ENV,
     TRACE_RUN_ID_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
+    append_trace_event,
 )
 from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
 
@@ -76,18 +72,17 @@ def _request_user_prompt(request: AgentRequest) -> str | None:
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:
-    round_dirs = sorted(_iter_completed_round_dirs(workdir), key=lambda path: _round_sort_key(path.name))
+    module = load_skill_script_module(
+        "ascend-npu-optimize-state",
+        "round/check",
+    )
+    round_dirs = sorted(
+        cast(tuple[Path, ...], module.iter_terminal_round_directories(workdir)),
+        key=lambda path: _round_sort_key(path.name),
+    )
     if not round_dirs:
         return None
     return round_dirs[-1]
-
-
-def _count_round_directories(workdir: Path) -> int:
-    return len(_iter_completed_round_dirs(workdir))
-
-
-def count_round_directories(workdir: Path) -> int:
-    return _count_round_directories(workdir)
 
 
 def _round_sort_key(name: str) -> tuple[int, str]:
@@ -97,12 +92,11 @@ def _round_sort_key(name: str) -> tuple[int, str]:
     return (int(match.group(1)), name)
 
 
-def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
-    module = load_skill_script_module(
-        "ascend-npu-optimize-state",
-        "round/check",
-    )
-    return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
+def _round_number(name: str) -> int | None:
+    number, _ = _round_sort_key(name)
+    if number < 0:
+        return None
+    return number
 
 
 def _parse_supervisor_status_from_report(report_content: str) -> str | None:
@@ -135,6 +129,8 @@ def _parse_supervisor_blocking_issues_from_report(report_content: str) -> tuple[
 class _BatchCheckResult:
     summary: str
     has_failures: bool
+    failed_round_numbers: tuple[int, ...] = ()
+    supervisor_failed: bool = False
     terminal_result: AgentResult | None = None
 
 
@@ -142,6 +138,13 @@ class _BatchCheckResult:
 class _SupervisorCheckResult:
     payload: dict[str, object]
     terminal_result: AgentResult | None = None
+
+
+@dataclass(frozen=True)
+class _SessionProgress:
+    terminal_round_count: int
+    completed_round_count: int
+    best_speedup: float | None
 
 
 def execute_multi_invocation_optimize(
@@ -204,22 +207,23 @@ def execute_multi_invocation_optimize(
             stderr=stderr,
             verbose_stream=verbose_stream,
         )
-        if not request.interact:
+        if request.interact:
+            return controller.run_interactive_round_request(request)
+        baseline_result = controller.preflight_baseline(request)
+        if baseline_result.state is not BaselinePreflightState.READY:
+            baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
+            if not baseline_fix_result.succeeded:
+                return baseline_fix_result
             baseline_result = controller.preflight_baseline(request)
             if baseline_result.state is not BaselinePreflightState.READY:
-                baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
-                if not baseline_fix_result.succeeded:
-                    return baseline_fix_result
-                baseline_result = controller.preflight_baseline(request)
-                if baseline_result.state is not BaselinePreflightState.READY:
-                    return AgentResult(
-                        return_code=1,
-                        stdout=baseline_fix_result.stdout,
-                        stderr=(
-                            "baseline preflight still failed after repair attempt:\n"
-                            + "\n".join(baseline_result.issues)
-                        ),
-                    )
+                return AgentResult(
+                    return_code=1,
+                    stdout=baseline_fix_result.stdout,
+                    stderr=(
+                        "baseline preflight still failed after repair attempt:\n"
+                        + "\n".join(baseline_result.issues)
+                    ),
+                )
         return controller.run_round_loop(request)
     finally:
         if request.verbose:
@@ -234,6 +238,8 @@ def execute_multi_invocation_optimize(
 
 
 class MultiInvocationOptimizeController:
+    _MAX_NO_PROGRESS_ATTEMPTS = 3
+
     def __init__(
         self,
         runner: AgentRunner,
@@ -250,7 +256,6 @@ class MultiInvocationOptimizeController:
         self._stdout = stdout
         self._stderr = stderr
         self._verbose_stream = verbose_stream
-        self._worker_recovery_budget = RecoveryBudget()
 
     def preflight_baseline(self, request: AgentRequest) -> BaselinePreflightResult:
         baseline_dir = request.workdir / "baseline"
@@ -302,48 +307,107 @@ class MultiInvocationOptimizeController:
                 workflow_phase_summary=phase_summary,
             ),
             interact=False,
-        )
+            )
         return self._run_request(baseline_request, show_output_label="baseline")
 
     def run_round_loop(self, request: AgentRequest) -> AgentResult:
         min_rounds = cast(int, request.min_rounds)
-        batch_start = request.current_round
-        batch_end = request.final_round
         previous_batch_issues: str | None = None
+        no_progress_attempts = 0
+        loop_started = False
+        batch_attempts: dict[tuple[int, int], int] = {}
 
-        if self._min_speedup_target_met(request):
-            return AgentResult(return_code=0, stdout="", stderr="")
+        iteration = 0
+        while True:
+            progress_before = self._load_session_progress(request.workdir)
+            if self._speedup_target_met(request, progress_before.best_speedup):
+                return AgentResult(return_code=0, stdout="", stderr="")
+            if progress_before.terminal_round_count >= min_rounds:
+                return AgentResult(return_code=0, stdout="", stderr="")
 
-        if request.interact:
-            worker_request = self._request_with_fresh_batch_prompt(
+            batch_start, batch_end = self._batch_bounds_from_terminal_rounds(
                 request,
-                issues=None,
+                terminal_round_count=progress_before.terminal_round_count,
+            )
+            iteration += 1
+            batch_key = (batch_start, batch_end)
+            batch_attempts[batch_key] = batch_attempts.get(batch_key, 0) + 1
+            launch_attempt = batch_attempts[batch_key]
+            launch_label = f"batch-{batch_start}-{batch_end}-r{launch_attempt}"
+            trace_path = self._trace_path_for_launch_label(request, launch_label)
+            if not loop_started:
+                loop_started = True
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_loop_start",
+                    min_rounds=min_rounds,
+                    min_speedup=request.min_speedup,
+                    max_no_progress_attempts=self._MAX_NO_PROGRESS_ATTEMPTS,
+                    round_mode=request.round_mode,
+                )
+            self._append_optimize_trace_event(
+                trace_path,
+                "optimize_iteration_start",
+                iteration=iteration,
                 batch_start=batch_start,
                 batch_end=batch_end,
-            )
-            return self._run_request(
-                worker_request,
-                show_output_label=(
-                    f"batch-{worker_request.current_round}-{worker_request.final_round}-r1"
-                ),
+                launch_attempt=launch_attempt,
+                terminal_round_count_before=progress_before.terminal_round_count,
+                completed_round_count_before=progress_before.completed_round_count,
+                best_speedup_before=progress_before.best_speedup,
+                no_progress_attempts_before=no_progress_attempts,
             )
 
-        while batch_start <= min_rounds:
             worker_request = self._request_with_fresh_batch_prompt(
                 request,
                 issues=previous_batch_issues,
                 batch_start=batch_start,
                 batch_end=batch_end,
             )
-
-            worker_request, round_result = self._run_worker_with_recovery(
-                request,
+            round_result = self._run_request(
                 worker_request,
-                issues=previous_batch_issues,
-                original_batch_start=batch_start,
+                show_output_label=launch_label,
             )
-            if not round_result.succeeded:
-                return round_result
+            self._append_optimize_trace_event(
+                trace_path,
+                "optimize_worker_result",
+                iteration=iteration,
+                batch_start=batch_start,
+                batch_end=batch_end,
+                return_code=round_result.return_code,
+                stalled=round_result.stalled,
+                retryable_failure=round_result.retryable_failure,
+                session_id=round_result.session_id,
+            )
+
+            try:
+                progress_after = self._load_session_progress(request.workdir)
+            except Exception as exc:
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_iteration_decision",
+                    iteration=iteration,
+                    decision="stop_failed_state_check",
+                    reason=str(exc),
+                    no_progress_attempts_after=no_progress_attempts,
+                )
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_loop_stop",
+                    final_terminal_round_count=progress_before.terminal_round_count,
+                    final_completed_round_count=progress_before.completed_round_count,
+                    final_best_speedup=progress_before.best_speedup,
+                    final_return_code=round_result.return_code,
+                    decision="stop_failed_state_check",
+                )
+                return AgentResult(
+                    return_code=1,
+                    stdout=round_result.stdout,
+                    stderr=f"failed to recompute optimize session progress: {exc}",
+                    stalled=round_result.stalled,
+                    session_id=round_result.session_id,
+                    retryable_failure=round_result.retryable_failure,
+                )
 
             batch_check = self.check_batch_round(
                 worker_request,
@@ -352,121 +416,133 @@ class MultiInvocationOptimizeController:
             )
             if batch_check.terminal_result is not None:
                 return batch_check.terminal_result
-
-            if not batch_check.has_failures and self._min_speedup_target_met(request):
-                return round_result
-
-            is_final_batch = batch_end >= min_rounds
-            if batch_check.has_failures:
-                if is_final_batch:
-                    return AgentResult(
-                        return_code=1,
-                        stdout=round_result.stdout,
-                        stderr=self._build_final_batch_failure_message(batch_check.summary),
-                    )
-                previous_batch_issues = batch_check.summary
-            else:
-                previous_batch_issues = None
-
-            if is_final_batch:
-                return round_result
-            batch_start, batch_end = self._advance_batch_bounds(request, current_batch_end=batch_end)
-
-        return AgentResult(return_code=0, stdout="", stderr="")
-
-    def _run_worker_with_recovery(
-        self,
-        request: AgentRequest,
-        worker_request: AgentRequest,
-        *,
-        issues: str | None,
-        original_batch_start: int,
-    ) -> tuple[AgentRequest, AgentResult]:
-        active_request = worker_request
-        attempt = 0
-        while True:
-            attempt += 1
-            result = self._run_request(
-                active_request,
-                show_output_label=(
-                    f"batch-{active_request.current_round}-{active_request.final_round}-r{attempt}"
-                ),
+            progress_made = (
+                progress_after.terminal_round_count > progress_before.terminal_round_count
             )
-            if result.succeeded:
-                return active_request, result
-
-            failure_kind = classify_worker_failure(result)
-            if failure_kind == "fatal":
-                return active_request, result
-
-            progress = compute_range_progress(
-                request.workdir,
-                batch_start=active_request.current_round,
-                batch_end=active_request.final_round,
-                optimize_target=request.optimize_target,
+            no_progress_attempts = 0 if progress_made else no_progress_attempts + 1
+            latest_round_outcome = self._latest_round_outcome(
+                progress_before=progress_before,
+                progress_after=progress_after,
             )
-            unresolved_round = progress.first_unresolved_round
-            if unresolved_round > active_request.final_round:
-                return active_request, AgentResult(
+            self._append_optimize_trace_event(
+                trace_path,
+                "optimize_progress_check",
+                iteration=iteration,
+                terminal_round_count_before=progress_before.terminal_round_count,
+                terminal_round_count_after=progress_after.terminal_round_count,
+                completed_round_count_before=progress_before.completed_round_count,
+                completed_round_count_after=progress_after.completed_round_count,
+                best_speedup_after=progress_after.best_speedup,
+                latest_round_outcome=latest_round_outcome,
+                progress_made=progress_made,
+            )
+
+            if self._speedup_target_met(request, progress_after.best_speedup):
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_iteration_decision",
+                    iteration=iteration,
+                    decision="stop_success_min_speedup",
+                    reason="best completed-round speedup satisfies min_speedup",
+                    no_progress_attempts_after=no_progress_attempts,
+                )
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_loop_stop",
+                    final_terminal_round_count=progress_after.terminal_round_count,
+                    final_completed_round_count=progress_after.completed_round_count,
+                    final_best_speedup=progress_after.best_speedup,
+                    final_return_code=round_result.return_code,
+                    decision="stop_success_min_speedup",
+                )
+                return AgentResult(
                     return_code=0,
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    session_id=result.session_id,
+                    stdout=round_result.stdout,
+                    stderr=round_result.stderr,
+                    session_id=round_result.session_id,
                 )
 
-            self._worker_recovery_budget.consume(unresolved_round)
-            if self._worker_recovery_budget.exhausted(unresolved_round):
-                return active_request, AgentResult(
+            if progress_after.terminal_round_count >= min_rounds:
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_iteration_decision",
+                    iteration=iteration,
+                    decision="stop_success_min_rounds",
+                    reason="terminal round count satisfies min_rounds",
+                    no_progress_attempts_after=no_progress_attempts,
+                )
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_loop_stop",
+                    final_terminal_round_count=progress_after.terminal_round_count,
+                    final_completed_round_count=progress_after.completed_round_count,
+                    final_best_speedup=progress_after.best_speedup,
+                    final_return_code=round_result.return_code,
+                    decision="stop_success_min_rounds",
+                )
+                return AgentResult(
+                    return_code=0,
+                    stdout=round_result.stdout,
+                    stderr=round_result.stderr,
+                    session_id=round_result.session_id,
+                )
+
+            if not progress_made and no_progress_attempts >= self._MAX_NO_PROGRESS_ATTEMPTS:
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_iteration_decision",
+                    iteration=iteration,
+                    decision="stop_failed_no_progress_limit",
+                    reason="no new terminal round progress",
+                    no_progress_attempts_after=no_progress_attempts,
+                )
+                self._append_optimize_trace_event(
+                    trace_path,
+                    "optimize_loop_stop",
+                    final_terminal_round_count=progress_after.terminal_round_count,
+                    final_completed_round_count=progress_after.completed_round_count,
+                    final_best_speedup=progress_after.best_speedup,
+                    final_return_code=round_result.return_code,
+                    decision="stop_failed_no_progress_limit",
+                )
+                return AgentResult(
                     return_code=1,
-                    stdout=result.stdout,
-                    stderr=self._build_recovery_budget_exhausted_message(
-                        unresolved_round=unresolved_round,
-                        failure_kind=failure_kind,
-                        last_error=result.stderr or result.stdout,
+                    stdout=round_result.stdout,
+                    stderr=self._build_no_progress_limit_message(
+                        attempts=no_progress_attempts,
+                        batch_summary=batch_check.summary if batch_check.has_failures else None,
+                        last_error=round_result.stderr or round_result.stdout,
                     ),
-                    stalled=result.stalled,
-                    session_id=result.session_id,
-                    retryable_failure=result.retryable_failure,
+                    stalled=round_result.stalled,
+                    session_id=round_result.session_id,
+                    retryable_failure=round_result.retryable_failure,
                 )
 
-            next_batch_start = progress.first_unresolved_round if failure_kind == "stall" else active_request.current_round
-            if failure_kind == "stall":
-                note = render_stall_recovery_note(
-                    original_batch_start=original_batch_start,
-                    last_accepted_round=progress.last_accepted_round,
-                    first_unresolved_round=progress.first_unresolved_round,
-                    batch_end=active_request.final_round,
-                )
-            else:
-                note = render_transient_recovery_note(
-                    batch_start=next_batch_start,
-                    batch_end=active_request.final_round,
-                )
-
-            active_request = self._request_with_recovery_note(
-                request,
-                issues=issues,
-                batch_start=next_batch_start,
-                batch_end=active_request.final_round,
-                note=note,
+            next_batch_start = progress_after.terminal_round_count + 1
+            previous_batch_issues = self._continue_followup_summary(
+                batch_check,
+                next_batch_start=next_batch_start,
+            )
+            self._append_optimize_trace_event(
+                trace_path,
+                "optimize_iteration_decision",
+                iteration=iteration,
+                decision="continue",
+                reason="progress not yet sufficient to stop",
+                no_progress_attempts_after=no_progress_attempts,
             )
 
-    def _request_with_recovery_note(
-        self,
-        request: AgentRequest,
-        *,
-        issues: str | None,
-        batch_start: int,
-        batch_end: int,
-        note: str,
-    ) -> AgentRequest:
+    def run_interactive_round_request(self, request: AgentRequest) -> AgentResult:
         worker_request = self._request_with_fresh_batch_prompt(
             request,
-            issues=issues,
-            batch_start=batch_start,
-            batch_end=batch_end,
+            issues=None,
+            batch_start=request.current_round,
+            batch_end=request.final_round,
         )
-        return replace(worker_request, prompt=f"{worker_request.prompt}\n\n{note}")
+        return self._run_request(
+            worker_request,
+            show_output_label=f"batch-{worker_request.current_round}-{worker_request.final_round}-r1",
+        )
 
     def check_batch_round(
         self,
@@ -477,6 +553,8 @@ class MultiInvocationOptimizeController:
     ) -> _BatchCheckResult:
         lines: list[str] = []
         has_failures = False
+        failed_round_numbers: list[int] = []
+        supervisor_failed = False
 
         for round_number in range(batch_start, batch_end + 1):
             round_name = f"opt-round-{round_number}"
@@ -511,8 +589,21 @@ class MultiInvocationOptimizeController:
             lines.append(f"{round_name}: {json.dumps(payload, ensure_ascii=True)}")
             if status == "fail":
                 has_failures = True
+                failed_round_numbers.append(round_number)
 
         if request.round_mode == "supervised":
+            latest_round_dir = _latest_round_dir(request.workdir)
+            latest_round_number = (
+                _round_number(latest_round_dir.name) if latest_round_dir is not None else None
+            )
+            should_run_supervisor = (
+                latest_round_number is not None
+                and batch_start <= latest_round_number <= batch_end
+            )
+        else:
+            should_run_supervisor = False
+
+        if should_run_supervisor:
             supervisor_check = self._run_supervisor_batch(
                 request,
                 batch_start=batch_start,
@@ -524,16 +615,19 @@ class MultiInvocationOptimizeController:
                     summary="\n".join(lines),
                     has_failures=True,
                     terminal_result=supervisor_check.terminal_result,
-                )
+            )
             lines.append(
                 f"Supervisor guidance: {json.dumps(supervisor_check.payload, ensure_ascii=True)}"
             )
             if supervisor_check.payload.get("status") == "fail":
                 has_failures = True
+                supervisor_failed = True
 
         return _BatchCheckResult(
             summary="\n".join(lines),
             has_failures=has_failures,
+            failed_round_numbers=tuple(failed_round_numbers),
+            supervisor_failed=supervisor_failed,
         )
 
     def _run_supervisor_batch(
@@ -729,47 +823,104 @@ class MultiInvocationOptimizeController:
             prompt=f"{worker_request.prompt}\n\n" + "\n".join(repair_lines),
         )
 
-    def _advance_batch_bounds(
+    def _batch_bounds_from_terminal_rounds(
         self,
         request: AgentRequest,
         *,
-        current_batch_end: int,
+        terminal_round_count: int,
     ) -> tuple[int, int]:
         min_rounds = cast(int, request.min_rounds)
-        next_batch_start = current_batch_end + 1
+        next_batch_start = terminal_round_count + 1
         if request.min_speedup is not None:
             next_batch_end = min(next_batch_start, min_rounds)
         else:
             next_batch_end = min(next_batch_start + request.round_batch_size - 1, min_rounds)
         return next_batch_start, next_batch_end
 
-    def _min_speedup_target_met(self, request: AgentRequest) -> bool:
-        if request.min_speedup is None:
-            return False
-        best_speedup = best_completed_round_geomean_speedup(request.workdir)
-        return best_speedup is not None and best_speedup >= request.min_speedup
-
-    def _build_final_batch_failure_message(self, batch_summary: str) -> str:
-        return (
-            "optimize batch check failed after the final scheduled batch.\n"
-            f"{batch_summary}"
+    def _load_session_progress(self, workdir: Path) -> _SessionProgress:
+        return _SessionProgress(
+            terminal_round_count=count_terminal_round_directories(workdir),
+            completed_round_count=count_completed_round_directories(workdir),
+            best_speedup=best_completed_round_geomean_speedup(workdir),
         )
 
-    def _build_recovery_budget_exhausted_message(
+    def _speedup_target_met(self, request: AgentRequest, best_speedup: float | None) -> bool:
+        if request.min_speedup is None or best_speedup is None:
+            return False
+        return best_speedup >= request.min_speedup
+
+    def _latest_round_outcome(
         self,
         *,
-        unresolved_round: int,
-        failure_kind: str,
+        progress_before: _SessionProgress,
+        progress_after: _SessionProgress,
+    ) -> str:
+        terminal_round_delta = (
+            progress_after.terminal_round_count - progress_before.terminal_round_count
+        )
+        completed_round_delta = (
+            progress_after.completed_round_count - progress_before.completed_round_count
+        )
+
+        if terminal_round_delta <= 0:
+            return "unresolved"
+        if completed_round_delta > 0 and terminal_round_delta > completed_round_delta:
+            return "completed_and_rejected_terminal"
+        if completed_round_delta > 0:
+            return "completed"
+        return "rejected_terminal"
+
+    def _trace_path_for_launch_label(
+        self,
+        request: AgentRequest,
+        launch_label: str,
+    ) -> Path | None:
+        if not request.log_tools:
+            return None
+        return self._artifacts_state.archive.trace_path(launch_label)
+
+    def _append_optimize_trace_event(
+        self,
+        trace_path: Path | None,
+        event: str,
+        **payload: object,
+    ) -> None:
+        append_trace_event(
+            trace_path,
+            {
+                "event": event,
+                **payload,
+            },
+        )
+
+    def _build_no_progress_limit_message(
+        self,
+        *,
+        attempts: int,
+        batch_summary: str | None,
         last_error: str,
     ) -> str:
         lines = [
-            f"optimize worker recovery budget exhausted for unresolved round {unresolved_round}.",
-            f"Last recoverable failure kind: {failure_kind}.",
+            f"optimize produced no new terminal round progress for {attempts} consecutive worker exits.",
         ]
+        if batch_summary:
+            lines.append(batch_summary)
         detail = last_error.strip()
         if detail:
             lines.append(detail)
         return "\n".join(lines)
+
+    def _continue_followup_summary(
+        self,
+        batch_check: _BatchCheckResult,
+        *,
+        next_batch_start: int,
+    ) -> str | None:
+        if batch_check.supervisor_failed:
+            return batch_check.summary
+        if any(round_number < next_batch_start for round_number in batch_check.failed_round_numbers):
+            return batch_check.summary
+        return None
 
     def _serialize_check_result(self, result: object) -> dict[str, object]:
         payload: dict[str, object] = {

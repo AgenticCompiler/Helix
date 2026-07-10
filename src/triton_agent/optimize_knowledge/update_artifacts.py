@@ -4,16 +4,15 @@ import json
 from pathlib import Path
 from typing import cast
 
-
-SKILL_ROOT = Path(__file__).resolve().parents[1]
+from triton_agent.paths import skills_root
 
 
 def _resolve_skill_source_dir(skill_name: str) -> Path:
-    skills_root = SKILL_ROOT.parents[1]
-    flat_path = skills_root / skill_name
+    root = skills_root()
+    flat_path = root / skill_name
     if flat_path.is_dir():
         return flat_path
-    for group_dir in skills_root.iterdir():
+    for group_dir in root.iterdir():
         if not group_dir.is_dir():
             continue
         grouped_path = group_dir / skill_name
@@ -32,7 +31,9 @@ ROUND_CONTRACT_PATH = (
     / "references"
     / "round-contract.json"
 )
-ARTIFACTS_PATH = SKILL_ROOT / "references" / "artifacts.md"
+ARTIFACTS_PATH = (
+    _resolve_skill_source_dir("triton-npu-optimize") / "references" / "artifacts.md"
+)
 
 BASELINE_BEGIN = "<!-- BEGIN GENERATED BASELINE STATE CONTRACT -->"
 BASELINE_END = "<!-- END GENERATED BASELINE STATE CONTRACT -->"
@@ -106,7 +107,7 @@ def _replace_section(content: str, *, begin: str, end: str, replacement: str) ->
     return content[:start] + replacement + content[finish:]
 
 
-def main() -> None:
+def main() -> int:
     baseline_contract = _load_json(BASELINE_CONTRACT_PATH)
     round_contract = _load_json(ROUND_CONTRACT_PATH)
     artifacts = ARTIFACTS_PATH.read_text(encoding="utf-8")
@@ -124,7 +125,8 @@ def main() -> None:
     )
     ARTIFACTS_PATH.write_text(artifacts, encoding="utf-8")
     print(ARTIFACTS_PATH)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

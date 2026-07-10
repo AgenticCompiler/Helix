@@ -148,6 +148,8 @@ Optimize analysis is layered.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - If the result is slower, inconclusive, or not worth promoting, close the round and carry the next optimization idea into a new round instead of revising the current round again.
+- If correctness repair is no longer worthwhile, canonical benchmark execution keeps failing, or the time cost is no longer justified, close the round as a rejected terminal round instead of exiting silently. Preserve the minimum round artifacts, write `correctness_status` and `benchmark_status` honestly, and still use `submit-round` so the workflow records the round outcome.
+- When `benchmark_status` is `passed`, `round-state.json` must include the benchmark artifact metadata fields. When `benchmark_status` is `failed` or `not_run`, those benchmark metadata fields may be omitted if no canonical perf artifact was produced.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal and follow its stop-or-continue instruction for the current session.

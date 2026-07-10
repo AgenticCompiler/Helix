@@ -500,6 +500,37 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         self.assertEqual(timing_events[1]["round"], "opt-round-1")
         self.assertEqual(timing_events[1]["run_id"], "optimize-20260622-123456-abcdef")
 
+    def test_complete_round_can_close_rejected_terminal_round_as_failed(self) -> None:
+        module = load_state_machine_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+            module.bootstrap_state(
+                state_path,
+                run_id="optimize-20260709-123456-abcdef",
+                baseline_reused=True,
+            )
+            module.start_round(
+                state_path,
+                "opt-round-1",
+                round_strategy="exploration",
+                analysis_policy="pattern_entry",
+                reason="The first attempt hit a correctness blocker.",
+            )
+
+            module.complete_round(
+                state_path,
+                "opt-round-1",
+                current_round_arg=1,
+                final_status="failed",
+            )
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["phase"], "awaiting_round_start")
+        self.assertIsNone(payload["current_round"])
+        self.assertEqual(payload["rounds"]["1"]["status"], "failed")
+
     def test_load_state_accepts_legacy_round_timestamps(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:

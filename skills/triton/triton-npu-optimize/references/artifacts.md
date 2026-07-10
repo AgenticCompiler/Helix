@@ -48,8 +48,8 @@ Required baseline artifacts:
   "bench_file": "record the path from the directory that contains `baseline/state.json` to the benchmark harness used for the baseline, normally `../bench_<operator>.py`.",
   "bench_mode": "record the resolved benchmark mode used for the baseline run.",
   "perf_artifact": "record the path from the directory that contains `baseline/state.json` to the canonical baseline perf artifact, normally `<operator>_perf.txt` or `perf.txt`.",
-  "correctness_status": "record the final baseline correctness result; use `passed` only after correctness succeeds.",
-  "benchmark_status": "record the final baseline benchmark result; use `passed` only after the benchmark succeeds.",
+  "correctness_status": "record the final baseline correctness result; use `passed` only after correctness succeeds. Allowed values: `passed`, `failed`, `not_run`.",
+  "benchmark_status": "record the final baseline benchmark result; use `passed` only after the benchmark succeeds. Allowed values: `passed`, `failed`, `not_run`.",
   "baseline_established": "set this to `true` only after `correctness_status` is `passed`, `benchmark_status` is `passed`, and the canonical baseline artifacts are written."
 }
 ```
@@ -104,11 +104,8 @@ Each completed round must also include `round-state.json`.
   "parent_round": "record the baseline or prior round that directly seeded this round, for example `opt-round-2`.",
   "hypothesis": "record the concrete optimization idea that this round tested.",
   "evidence_sources": "record the ordered list of evidence sources that justified the round conclusion, such as `benchmark`, `profile`, `ir`, or `compiler-source`.",
-  "correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check.",
-  "benchmark_status": "record the final benchmark result for this round; use `passed` only after the round benchmark succeeds and the round perf artifact is written.",
-  "perf_artifact": "record the path from the directory that contains `round-state.json` to the canonical round perf artifact, normally `opt_<operator>_perf.txt`.",
-  "comparison_target_path": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`.",
-  "effective_metric_source": "record the resolved `compare-perf` basis that decided the round outcome: `kernel`, `total-op`, or `mixed`.",
+  "correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check. Allowed values: `passed`, `failed`, `not_run`.",
+  "benchmark_status": "record the final benchmark result for this round; use `passed` only after the round benchmark succeeds and the round perf artifact is written. Allowed values: `passed`, `failed`, `not_run`.",
   "summary_path": "record the path from the directory that contains `round-state.json` to the final round summary markdown, normally `summary.md`.",
   "opt_note_updated": "set this to `true` only after the top-level `opt-note.md` entry for this round has been updated."
 }
@@ -118,6 +115,9 @@ Each completed round must also include `round-state.json`.
 
 ```json
 {
+  "perf_artifact": "record the path from the directory that contains `round-state.json` to the canonical round perf artifact, normally `opt_<operator>_perf.txt`. Required when `benchmark_status` is `passed`; optional when `benchmark_status` is `failed` or `not_run`.",
+  "comparison_target_path": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`. Required when `benchmark_status` is `passed`; optional when `benchmark_status` is `failed` or `not_run`.",
+  "effective_metric_source": "record the resolved `compare-perf` basis that decided the round outcome: `kernel`, `total-op`, or `mixed`. Required when `benchmark_status` is `passed`; optional when `benchmark_status` is `failed` or `not_run`.",
   "analysis_skipped_reason": "when deeper analysis was intentionally skipped, record the evidence-backed reason here.",
   "profile_dir": "when profiler artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local profiler directory, normally `profile`.",
   "ir_dir": "when IR artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local IR directory, normally `ir`.",

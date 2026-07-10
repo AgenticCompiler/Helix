@@ -10,6 +10,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.optimize import execution as optimize_execution
+from triton_agent.optimize.checks import count_terminal_round_directories
 from triton_agent.optimize.compiler_source import prepare_compiler_source
 from triton_agent.optimize.env import merge_optimize_session_env
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
@@ -22,11 +23,6 @@ from triton_agent.skills.selection import resolve_staged_skills
 from triton_agent.skills.staging import SkillLinkManager
 from triton_agent.terminal.verbose import emit_verbose, emit_verbose_lines
 
-
-def count_completed_round_directories(workdir: Path) -> int:
-    return optimize_execution.count_round_directories(workdir)
-
-
 def _initial_batch_bounds(
     workdir: Path,
     *,
@@ -35,14 +31,14 @@ def _initial_batch_bounds(
     round_batch_size: int,
     interact: bool = False,
 ) -> tuple[int, int]:
-    completed_rounds = count_completed_round_directories(workdir)
-    batch_start = completed_rounds + 1
+    terminal_rounds = count_terminal_round_directories(workdir)
+    batch_start = terminal_rounds + 1
     if interact:
         batch_end = min_rounds
     elif min_speedup is not None:
         batch_end = min(batch_start, min_rounds)
     else:
-        batch_end = min(completed_rounds + round_batch_size, min_rounds)
+        batch_end = min(terminal_rounds + round_batch_size, min_rounds)
     return batch_start, batch_end
 
 

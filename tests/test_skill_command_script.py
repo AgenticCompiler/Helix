@@ -5413,6 +5413,112 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIsNone(state_payload["current_round"])
         self.assertEqual(state_payload["rounds"]["4"]["status"], "passed")
 
+    def test_optimize_state_submit_round_closes_rejected_terminal_round_in_workflow_state(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "failed",
+                        "benchmark_status": "not_run",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260709-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-07-09T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-07-09T12:40:00Z",
+                                "ended_at": None,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "submit-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            payload = json.loads(completed.stdout)
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(payload["status"], "fail")
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertIsNone(state_payload["current_round"])
+        self.assertEqual(state_payload["rounds"]["4"]["status"], "failed")
+
 
 if __name__ == "__main__":
     unittest.main()
