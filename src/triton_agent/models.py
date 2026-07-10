@@ -79,6 +79,7 @@ class AgentRequest:
     current_round: int = 1
     final_round: int = 1
     user_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
     supervisor_report_path: Optional[Path] = None

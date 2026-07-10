@@ -38,6 +38,7 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    system_prompt: str | None = None
     npu_devices: str | None = None
     workers_per_npu: str | None = None
     min_speedup: float | None = None

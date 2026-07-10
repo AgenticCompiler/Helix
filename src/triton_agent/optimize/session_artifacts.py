@@ -99,6 +99,7 @@ class OptimizeSessionArtifactsManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare artifacts for checked optimize without a live handoff file."""
         archive_state = self._archives.prepare(workdir, include_shared_guidance_snapshot=True)
@@ -136,6 +137,7 @@ class OptimizeSessionArtifactsManager:
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+                system_prompt_appendix=system_prompt_appendix,
             )
         except Exception:
             if subagent_stage_set is not None:
@@ -164,6 +166,7 @@ class OptimizeSessionArtifactsManager:
         enable_cann_ext_api: bool = False,
         enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
+        system_prompt_appendix: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
         hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
@@ -209,6 +212,7 @@ class OptimizeSessionArtifactsManager:
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+                system_prompt_appendix=system_prompt_appendix,
             )
         except Exception:
             if subagent_stage_set is not None:

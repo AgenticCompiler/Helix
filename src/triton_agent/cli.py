@@ -767,6 +767,11 @@ def build_parser() -> argparse.ArgumentParser:
                 )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
+            subparser.add_argument(
+                "--system-prompt",
+                help="Append plain text or @path file contents to the temporary optimize memory file.",
+            )
         if spec.has_operator_filter:
             subparser.add_argument(
                 "--operator-filter",
