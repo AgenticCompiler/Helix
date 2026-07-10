@@ -2190,16 +2190,18 @@ class SkillCommandScriptTests(unittest.TestCase):
             operator.write_text("print('x')\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
 
-            observed_calls: list[tuple[Path, Path, str]] = []
+            observed_calls: list[tuple[Path, Path, str, str | None]] = []
 
             def fake_run_local_test(
                 test_path: Path,
                 operator_path: Path,
                 test_mode: str,
+                *,
+                case_id: str | None = None,
                 verbose: bool = False,
                 **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
-                observed_calls.append((test_path, operator_path, test_mode))
+                observed_calls.append((test_path, operator_path, test_mode, case_id))
                 if operator_path == baseline_operator.resolve():
                     baseline_archive.write_text("baseline\n", encoding="utf-8")
                     return (
@@ -2262,6 +2264,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(operator),
                                 "--ref-operator-file",
                                 str(baseline_operator),
+                                "--case-id",
+                                "case-b",
                             ]
                         )
             finally:
@@ -2272,8 +2276,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(
             observed_calls,
             [
-                (test_file.resolve(), baseline_operator.resolve(), "differential"),
-                (test_file.resolve(), operator.resolve(), "differential"),
+                (test_file.resolve(), baseline_operator.resolve(), "differential", "case-b"),
+                (test_file.resolve(), operator.resolve(), "differential", "case-b"),
             ],
         )
         self.assertIn(f"Archived result: {baseline_archive}\n", stdout.getvalue())
@@ -2304,6 +2308,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 "kernel.py",
                 "--test-mode",
                 "standalone",
+                "--case-id",
+                "case-a",
             ]
         )
 
@@ -2311,6 +2317,51 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(args.test_file, "test_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
         self.assertEqual(args.test_mode, "standalone")
+        self.assertEqual(args.case_id, "case-a")
+
+    def test_script_run_test_baseline_rejects_case_id_in_standalone_mode(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "cli.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_case_id_guard", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-baseline",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--case-id",
+                            "case-a",
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("run-test-baseline standalone mode does not accept --case-id", stderr.getvalue())
 
     def test_run_test_convert_parser_accepts_reference_flags(self) -> None:
         script = (
@@ -2791,6 +2842,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 test_mode: str,
                 remote: str,
                 remote_workdir: str | None,
+                *,
+                case_id: str | None = None,
                 keep_remote_workdir: bool = False,
                 verbose: bool = False,
                 stderr: TextIO | None = None,
@@ -2800,6 +2853,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 self.assertEqual(test_mode, "differential")
                 self.assertEqual(remote, "alice@example.com")
                 self.assertEqual(remote_workdir, "/tmp/triton-agent")
+                self.assertIsNone(case_id)
                 self.assertFalse(keep_remote_workdir)
                 self.assertFalse(verbose)
                 self.assertIs(stderr, sys.stderr)
@@ -3302,6 +3356,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertNotIn("--oracle-result", completed.stdout)
         self.assertIn("--baseline-result", completed.stdout)
         self.assertIn("--baseline-operator-file", completed.stdout)
+        self.assertIn("--case-id", completed.stdout)
         self.assertIn("--test-mode", completed.stdout)
 
     def test_script_exposes_run_test_convert_help(self) -> None:

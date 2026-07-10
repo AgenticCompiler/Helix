@@ -273,6 +273,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("run-test-convert", run_test)
         self.assertIn("run-test-optimize", run_test)
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
+        self.assertIn("--case-id <id>", run_test)
+        self.assertIn("Prefer `--verbose` while debugging failures", run_test)
+        self.assertIn("reference payload must cover the same selected case", run_test)
         self.assertNotIn("--oracle-result", run_test)
         self.assertIn("--ref-operator-file", run_test)
         self.assertIn("run-test-optimize` requires `--ref-operator-file`", run_test)
@@ -380,6 +383,19 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("carry the same remote flags", eval_gen)
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
+
+    def test_repair_facing_skill_docs_prefer_verbose_run_test_diagnostics(self) -> None:
+        eval_gen = _read("skills/common/ascend-npu-gen-eval-suite/SKILL.md")
+        run_test = _read("skills/common/ascend-npu-run-eval/references/run-test.md")
+        repair = _read("skills/triton/triton-npu-repair-guide/SKILL.md")
+        triton_round = _read("skills/triton/triton-npu-optimize/references/round-failure-handling.md")
+        tilelang_round = _read("skills/tilelang/tilelang-npu-optimize/references/round-failure-handling.md")
+
+        self.assertIn("prefer `--verbose`", eval_gen)
+        self.assertIn("Prefer `--verbose` while debugging failures", run_test)
+        self.assertIn("prefer `--verbose` on `run-test`", repair)
+        self.assertIn("run `run-test --verbose`", triton_round)
+        self.assertIn("run `run-test --verbose`", tilelang_round)
 
     def test_convert_skill_and_readme_document_convert_test_mode_support(self) -> None:
         convert_skill = _read("skills/triton/triton-npu-convert-pytorch-operator/SKILL.md")

@@ -833,6 +833,23 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.accuracy_mode, "npu-contract")
         self.assertFalse(hasattr(args, "agent"))
 
+    def test_run_test_accepts_case_id(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--case-id",
+                "case-a",
+            ]
+        )
+
+        self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
+        self.assertEqual(args.case_id, "case-a")
+
     def test_run_test_accepts_accuracy_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -4141,6 +4158,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 verbose=False,
             )
@@ -4170,6 +4188,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 verbose=False,
             )
@@ -5894,6 +5913,7 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com:2200",
                 "/tmp/runs",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,

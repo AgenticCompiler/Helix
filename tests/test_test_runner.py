@@ -72,6 +72,62 @@ class LocalTestRunnerTests(unittest.TestCase):
         self.assertEqual([case.case_id for case in cases], ["case-a"])
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
 
+    def test_load_differential_test_cases_selects_requested_case_id(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            operator.write_text(
+                "def build_api():\n"
+                "    return lambda value: value.upper()\n",
+                encoding="utf-8",
+            )
+            test_file.write_text(
+                "def build_operator_api(operator_module):\n"
+                "    return operator_module.build_api()\n\n"
+                "def build_differential_test_cases(operator_api):\n"
+                "    return [\n"
+                "        {'id': 'case-a', 'inputs': ('a',), 'fn': lambda: operator_api('a')},\n"
+                "        {'id': 'case-b', 'inputs': ('b',), 'fn': lambda: operator_api('b')},\n"
+                "    ]\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(module, "_bootstrap_torch_npu"):
+                cases = module.load_differential_test_cases(test_file, operator, case_id="case-b")
+
+        self.assertEqual([case.case_id for case in cases], ["case-b"])
+
+    def test_load_differential_test_cases_rejects_unknown_case_id(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            operator.write_text(
+                "def build_api():\n"
+                "    return lambda value: value.upper()\n",
+                encoding="utf-8",
+            )
+            test_file.write_text(
+                "def build_operator_api(operator_module):\n"
+                "    return operator_module.build_api()\n\n"
+                "def build_differential_test_cases(operator_api):\n"
+                "    return [\n"
+                "        {'id': 'case-a', 'inputs': ('a',), 'fn': lambda: operator_api('a')},\n"
+                "        {'id': 'case-b', 'inputs': ('b',), 'fn': lambda: operator_api('b')},\n"
+                "    ]\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(module, "_bootstrap_torch_npu"):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Unknown differential test case id 'case-z'. Available case ids: case-a, case-b",
+                ):
+                    module.load_differential_test_cases(test_file, operator, case_id="case-z")
+
     def test_run_import_only_standalone_test_bootstraps_torch_before_user_module_exec(self) -> None:
         module = load_test_runner_module()
         import_events: list[str] = []

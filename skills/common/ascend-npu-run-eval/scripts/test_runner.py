@@ -105,6 +105,7 @@ def _local_test_worker_command(
     test_mode: str,
     result_file: Path,
     *,
+    case_id: str | None,
     verbose: bool,
 ) -> list[str]:
     command = [
@@ -120,6 +121,8 @@ def _local_test_worker_command(
         "--result-file",
         str(result_file),
     ]
+    if case_id is not None:
+        command.extend(["--case-id", case_id])
     if verbose:
         command.append("--verbose")
     return command
@@ -132,6 +135,7 @@ def _build_local_test_worker_parser() -> argparse.ArgumentParser:
     parser.add_argument("--operator-file", required=True)
     parser.add_argument("--test-mode", choices=["standalone", "differential"], required=True)
     parser.add_argument("--result-file", required=True)
+    parser.add_argument("--case-id")
     parser.add_argument("--verbose", action="store_true")
     return parser
 
@@ -142,14 +146,23 @@ def _run_local_test_worker(
     test_mode: str,
     result_file: Path,
     *,
+    case_id: str | None,
     verbose: bool,
 ) -> int:
     if test_mode == "standalone":
+        if case_id is not None:
+            raise ValueError("--case-id is supported only with differential tests.")
         result = _run_import_only_standalone_test(test_file, operator_file, verbose=verbose)
         archived_result = None
     elif test_mode == "differential":
         archive_path = _differential_archive_path(operator_file)
-        result = _run_declarative_differential_test(test_file, operator_file, archive_path, verbose=verbose)
+        result = _run_declarative_differential_test(
+            test_file,
+            operator_file,
+            archive_path,
+            case_id=case_id,
+            verbose=verbose,
+        )
         archived_result = archive_path if result_succeeded(result) and archive_path.exists() else None
     else:
         raise ValueError(f"Unsupported test mode: {test_mode}")
@@ -165,6 +178,7 @@ def _run_local_test_worker_main(argv: list[str] | None = None) -> int:
         Path(args.operator_file).expanduser().resolve(),
         cast(str, args.test_mode),
         Path(args.result_file).expanduser().resolve(),
+        case_id=cast(str | None, args.case_id),
         verbose=bool(args.verbose),
     )
 
@@ -174,6 +188,7 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
     *,
+    case_id: str | None = None,
     accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
@@ -185,6 +200,7 @@ def run_local_test(
             operator_file,
             test_mode,
             result_file,
+            case_id=case_id,
             verbose=verbose,
         )
         if verbose:
@@ -241,6 +257,7 @@ def parse_test_metadata(test_file: Path) -> dict[str, str]:
 def load_differential_test_cases(
     test_file: Path,
     operator_file: Path,
+    case_id: str | None = None,
 ) -> list[DifferentialTestCase]:
     test_path = test_file.resolve()
     operator_path = operator_file.resolve()
@@ -252,17 +269,24 @@ def load_differential_test_cases(
         operator_module = _load_module(operator_path, f"differential_operator_{operator_path.stem}")
         operator_api = build_operator_api(operator_module)
         raw_cases = build_cases(operator_api)
-    return _normalize_differential_cases(raw_cases)
+    return _normalize_differential_cases(raw_cases, case_id=case_id)
 
 
-def _normalize_differential_cases(raw_cases: object) -> list[DifferentialTestCase]:
+def _normalize_differential_cases(
+    raw_cases: object,
+    *,
+    case_id: str | None = None,
+) -> list[DifferentialTestCase]:
     return [
         DifferentialTestCase(
             case_id=cast(str, record["id"]),
             inputs=cast(tuple[object, ...] | list[object], record["inputs"]),
             fn=cast(Callable[[], object], record["fn"]),
         )
-        for record in _normalize_differential_case_records(raw_cases)
+        for record in _select_differential_case_records(
+            _normalize_differential_case_records(raw_cases),
+            case_id,
+        )
     ]
 
 
@@ -297,6 +321,19 @@ def _normalize_differential_case_records(raw_cases: object) -> list[dict[str, ob
     if not records:
         raise ValueError("Differential test hook 'build_differential_test_cases' returned no cases")
     return records
+
+
+def _select_differential_case_records(
+    case_records: list[dict[str, object]],
+    case_id: str | None,
+) -> list[dict[str, object]]:
+    if case_id is None:
+        return case_records
+    for case_record in case_records:
+        if case_record["id"] == case_id:
+            return [case_record]
+    available = ", ".join(cast(str, case_record["id"]) for case_record in case_records)
+    raise ValueError(f"Unknown differential test case id '{case_id}'. Available case ids: {available}")
 
 
 def _run_import_only_standalone_test(
@@ -356,6 +393,7 @@ def _run_declarative_differential_test(
     operator_file: Path,
     archive_path: Path,
     *,
+    case_id: str | None = None,
     verbose: bool = False,
 ) -> ResultPayload:
     real_stderr = sys.stderr
@@ -378,8 +416,10 @@ def _run_declarative_differential_test(
             print("[run-test] mode: differential", file=real_stderr)
             print(f"[run-test] test file: {test_file}", file=real_stderr)
             print(f"[run-test] operator file: {operator_file}", file=real_stderr)
+            if case_id is not None:
+                print(f"[run-test] case-id: {case_id}", file=real_stderr)
         compute = _compute_flag_from_metadata(metadata)
-        cases = load_differential_test_cases(test_file, operator_file)
+        cases = load_differential_test_cases(test_file, operator_file, case_id=case_id)
         if verbose:
             print(f"[run-test] total cases: {len(cases)}", file=real_stderr)
         records: list[dict[str, object]] = []
@@ -547,6 +587,7 @@ def run_remote_test(
     remote: str,
     remote_workdir: str | None,
     *,
+    case_id: str | None = None,
     accuracy_mode: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
@@ -574,6 +615,8 @@ def run_remote_test(
             **_run_test_accuracy_env(accuracy_mode),
         }
         if test_mode == "standalone":
+            if case_id is not None:
+                raise ValueError("--case-id is supported only with differential tests.")
             result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
@@ -589,7 +632,7 @@ def run_remote_test(
             result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
-                _build_remote_differential_command(test_file.name, operator_file.name),
+                _build_remote_differential_command(test_file.name, operator_file.name, case_id),
                 stall_timeout_seconds=eval_stall_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
@@ -733,7 +776,11 @@ except Exception:
     return ["python3", "-c", remote_script]
 
 
-def _build_remote_differential_command(test_name: str, operator_name: str) -> list[str]:
+def _build_remote_differential_command(
+    test_name: str,
+    operator_name: str,
+    case_id: str | None = None,
+) -> list[str]:
     remote_script = f"""
 import importlib
 import importlib.util
@@ -774,6 +821,8 @@ def _parse_metadata(test_file):
 
 {_remote_function_source(_normalize_differential_case_records)}
 
+{_remote_function_source(_select_differential_case_records)}
+
 def _compute_flag(metadata):
     return _parse_compute_kind(metadata.get("compute-kind"))
 
@@ -801,7 +850,10 @@ try:
     operator_module = _load_module(operator_file, f"differential_operator_{{operator_file.stem}}")
     operator_api = build_operator_api(operator_module)
     raw_cases = build_cases(operator_api)
-    case_records = _normalize_differential_case_records(raw_cases)
+    case_records = _select_differential_case_records(
+        _normalize_differential_case_records(raw_cases),
+        {case_id!r},
+    )
     records = []
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()

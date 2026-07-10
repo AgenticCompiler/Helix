@@ -32,6 +32,7 @@ _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result ins
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     test_file, operator_file, ref_result, ref_operator_file = resolve_run_test_paths(parser, args)
     resolved_test_mode = args.test_mode or resolve_test_mode_from_metadata(test_file)
+    case_id = getattr(args, "case_id", None)
     remote, remote_workdir = resolve_remote_execution(
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
@@ -43,6 +44,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         ref_result,
         ref_operator_file,
         test_file,
+        case_id=case_id,
         remote=remote,
         remote_workdir=remote_workdir,
     )
@@ -56,6 +58,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                case_id=case_id,
                 accuracy_mode=accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
@@ -66,6 +69,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 test_file,
                 operator_file,
                 resolved_test_mode,
+                case_id=case_id,
                 accuracy_mode=accuracy_mode,
                 verbose=args.verbose,
             )
@@ -302,9 +306,12 @@ def resolve_run_test_comparison_inputs(
     ref_operator_file: Path | None,
     test_file: Path,
     *,
+    case_id: str | None,
     remote: str | None,
     remote_workdir: str | None,
 ) -> Path | None:
+    if case_id is not None and resolved_test_mode != "differential":
+        parser.error("run-test standalone mode does not accept --case-id")
     if ref_result is not None and ref_operator_file is not None:
         parser.error("run-test differential mode accepts at most one of --ref-result or --ref-operator-file")
     if ref_result is not None and resolved_test_mode != "differential":
@@ -325,6 +332,7 @@ def resolve_run_test_comparison_inputs(
                 resolved_test_mode,
                 remote,
                 remote_workdir,
+                case_id=case_id,
                 accuracy_mode=args.accuracy_mode,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
@@ -341,6 +349,7 @@ def resolve_run_test_comparison_inputs(
                 test_file,
                 ref_operator_file,
                 resolved_test_mode,
+                case_id=case_id,
                 accuracy_mode=args.accuracy_mode,
                 verbose=args.verbose,
             )

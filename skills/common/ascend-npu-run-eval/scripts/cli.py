@@ -224,6 +224,7 @@ class RunLocalTestFn(Protocol):
         operator_file: Path,
         test_mode: str,
         *,
+        case_id: str | None = None,
         verbose: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
@@ -236,6 +237,8 @@ class RunRemoteTestFn(Protocol):
         test_mode: str,
         remote: str,
         remote_workdir: str | None,
+        *,
+        case_id: str | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
@@ -399,6 +402,7 @@ def _add_run_test_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--operator-file", required=True)
     parser.add_argument("--ref-result", "--baseline-result", dest="ref_result")
     parser.add_argument("--ref-operator-file", "--baseline-operator-file", dest="ref_operator_file")
+    parser.add_argument("--case-id")
     parser.add_argument("--remote")
     parser.add_argument("--remote-workdir")
     parser.add_argument("--keep-remote-workdir", action="store_true")
@@ -444,6 +448,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             parser, getattr(args, "ref_operator_file", None), "Reference operator file"
         )
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        case_id = cast(str | None, getattr(args, "case_id", None))
         require_reference_input = args.command in {"run-test-convert", "run-test-optimize"}
         ref_result = _resolve_run_test_comparison_inputs(
             parser,
@@ -456,6 +461,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
             run_remote_test,
             remote,
             remote_workdir,
+            case_id=case_id,
             command_name=args.command,
             require_reference_input=require_reference_input,
         )
@@ -475,6 +481,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                     resolved_test_mode,
                     remote,
                     remote_workdir,
+                    case_id=case_id,
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
@@ -484,6 +491,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                     test_file,
                     operator_file,
                     resolved_test_mode,
+                    case_id=case_id,
                     verbose=args.verbose,
                 )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -750,6 +758,7 @@ def _resolve_run_test_comparison_inputs(
     remote: str | None,
     remote_workdir: str | None,
     *,
+    case_id: str | None,
     command_name: str,
     require_reference_input: bool,
 ) -> Path | None:
@@ -759,6 +768,7 @@ def _resolve_run_test_comparison_inputs(
         resolved_test_mode,
         ref_result,
         ref_operator_file,
+        case_id=case_id,
         require_reference_input=require_reference_input,
     )
     if ref_operator_file is None:
@@ -772,6 +782,7 @@ def _resolve_run_test_comparison_inputs(
         run_remote_test,
         remote,
         remote_workdir,
+        case_id=case_id,
         keep_remote_workdir=bool(args.keep_remote_workdir),
         verbose=bool(args.verbose),
     )
@@ -784,8 +795,11 @@ def _validate_run_test_comparison_inputs(
     ref_result: Path | None,
     ref_operator_file: Path | None,
     *,
+    case_id: str | None,
     require_reference_input: bool,
 ) -> None:
+    if case_id is not None and resolved_test_mode != "differential":
+        parser.error(f"{command_name} standalone mode does not accept --case-id")
     if ref_result is not None and resolved_test_mode != "differential":
         parser.error(f"{command_name} standalone mode does not accept --ref-result")
     if ref_operator_file is not None and resolved_test_mode != "differential":
@@ -817,6 +831,7 @@ def _resolve_ref_operator_result(
     remote: str | None,
     remote_workdir: str | None,
     *,
+    case_id: str | None,
     keep_remote_workdir: bool,
     verbose: bool,
 ) -> Path:
@@ -833,6 +848,7 @@ def _resolve_ref_operator_result(
                 ref_mode,
                 remote,
                 remote_workdir,
+                case_id=case_id,
                 keep_remote_workdir=keep_remote_workdir,
                 verbose=verbose,
                 stderr=sys.stderr,
@@ -854,6 +870,7 @@ def _resolve_ref_operator_result(
             test_file,
             ref_operator_file,
             ref_mode,
+            case_id=case_id,
             verbose=verbose,
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:

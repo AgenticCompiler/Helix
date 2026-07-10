@@ -38,6 +38,7 @@ class TestRunnerModule(Protocol):
         operator_file: Path,
         test_mode: str,
         *,
+        case_id: str | None = None,
         accuracy_mode: str | None = None,
         verbose: bool = False,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
@@ -50,6 +51,7 @@ class TestRunnerModule(Protocol):
         remote: str,
         remote_workdir: str | None,
         *,
+        case_id: str | None = None,
         accuracy_mode: str | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
@@ -115,6 +117,7 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
     *,
+    case_id: str | None = None,
     accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[AgentResult, Path | None]:
@@ -122,6 +125,7 @@ def run_local_test(
         test_file,
         operator_file,
         test_mode,
+        case_id=case_id,
         accuracy_mode=accuracy_mode,
         verbose=verbose,
     )
@@ -135,6 +139,7 @@ def run_remote_test(
     remote: str,
     remote_workdir: str | None,
     *,
+    case_id: str | None = None,
     accuracy_mode: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
@@ -146,6 +151,7 @@ def run_remote_test(
         test_mode,
         remote,
         remote_workdir,
+        case_id=case_id,
         accuracy_mode=accuracy_mode,
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
