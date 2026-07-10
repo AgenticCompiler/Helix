@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, Optional, TextIO, TypedDict, cast
 
@@ -24,6 +24,13 @@ from result_payload import ResultPayload, make_result
 _IS_WINDOWS = sys.platform == "win32"
 _BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
 _BLOCKS_PARALLEL_SAFE_VALUE = "0"
+_NPU_COMPARE_RUNTIME_FILES = (
+    "npu_compare.py",
+    "dtype_close_compare.py",
+    "npu_compare_common.py",
+    "npu_contract_compare.py",
+    "env_registry.py",
+)
 
 if not _IS_WINDOWS:
     import pty
@@ -288,12 +295,13 @@ def _run_streaming_pty(
 
 
 def parse_remote_spec(raw: str) -> RemoteSpec:
-    if "@" not in raw:
-        raise ValueError(f"Remote target must be in user@host[:port] form: {raw}")
-    if ":" not in raw:
-        return {"user_host": raw, "port": None}
+    candidate = raw.strip()
+    if not candidate:
+        raise ValueError("Remote target must not be empty.")
+    if ":" not in candidate:
+        return {"user_host": candidate, "port": None}
 
-    user_host, possible_port = raw.rsplit(":", 1)
+    user_host, possible_port = candidate.rsplit(":", 1)
     if not possible_port.isdigit():
         raise ValueError(f"Remote target port must be numeric: {raw}")
     return {"user_host": user_host, "port": int(possible_port)}
@@ -362,6 +370,25 @@ def copy_file_from_remote(
     result = run_buffered_process(command, local_workdir, stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {remote_path} from remote.")
+
+
+def copy_npu_compare_runtime_to_remote(
+    spec: RemoteSpec,
+    script_dir: Path,
+    remote_workspace: str,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+    copy_file_fn: Callable[[RemoteSpec, Path, str, bool, TextIO | None], None] | None = None,
+) -> None:
+    copier = copy_file_to_remote if copy_file_fn is None else copy_file_fn
+    for filename in _NPU_COMPARE_RUNTIME_FILES:
+        copier(
+            spec,
+            script_dir / filename,
+            f"{remote_workspace}/{filename}",
+            verbose,
+            stderr,
+        )
 
 
 def copy_directory_from_remote(

@@ -712,6 +712,7 @@ def runtime_support_paths() -> list[Path]:
         script_dir / "bench_contract.py",
         script_dir / "perf_artifacts.py",
         script_dir / "profile_csv_parser.py",
+        script_dir / "env_registry.py",
     ]
 
 

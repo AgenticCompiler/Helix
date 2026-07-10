@@ -476,6 +476,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "bench_contract.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
+                "env_registry.py",
             ],
         )
         self.assertIn(
@@ -550,6 +551,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "bench_contract.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
+                "env_registry.py",
             ],
         )
         self.assertIn(
@@ -622,6 +624,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "bench_contract.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
+                "env_registry.py",
             ],
         )
 

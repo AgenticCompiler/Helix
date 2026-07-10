@@ -88,6 +88,14 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(spec["user_host"], "alice@example.com")
         self.assertIsNone(spec["port"])
 
+    def test_parse_remote_spec_accepts_ssh_alias(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        spec = module.parse_remote_spec("R154_cdj")
+
+        self.assertEqual(spec["user_host"], "R154_cdj")
+        self.assertIsNone(spec["port"])
+
     def test_parse_remote_spec_rejects_invalid_port(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -621,7 +629,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
     def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
         module = load_compare_result_module()
-        runtime = load_operator_eval_script_module("run_runtime")
+        runtime = module._load_run_runtime_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -630,23 +638,22 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch.dict(sys.modules, {"run_runtime": runtime}, clear=False):
-                with patch.object(
-                    runtime,
-                    "create_remote_workspace",
-                    return_value=("spec", "/tmp/remote-compare"),
-                ), patch.object(runtime, "copy_file_to_remote") as copy_to_remote, patch.object(
-                    runtime,
-                    "run_remote_command_streaming",
-                    return_value=make_skill_result(0, "", ""),
-                ) as remote_run, patch.object(runtime, "cleanup_remote_workspace"):
-                    module.compare_remote_result_files(
-                        oracle,
-                        new,
-                        "alice@example.com",
-                        None,
-                        accuracy_mode="dtype-close",
-                    )
+            with patch.object(
+                runtime,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-compare"),
+            ), patch.object(runtime, "copy_file_to_remote") as copy_to_remote, patch.object(
+                runtime,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "", ""),
+            ) as remote_run, patch.object(runtime, "cleanup_remote_workspace"):
+                module.compare_remote_result_files(
+                    oracle,
+                    new,
+                    "alice@example.com",
+                    None,
+                    accuracy_mode="dtype-close",
+                )
 
         compare_script = copy_to_remote.call_args_list[0].args[1]
         self.assertEqual(
@@ -657,6 +664,20 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             / "ascend-npu-run-eval"
             / "scripts"
             / "compare_result.py",
+        )
+        copied_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
+        self.assertEqual(
+            copied_targets,
+            [
+                "compare_result.py",
+                "npu_compare.py",
+                "dtype_close_compare.py",
+                "npu_compare_common.py",
+                "npu_contract_compare.py",
+                "env_registry.py",
+                "oracle result.pt",
+                "new result.pt",
+            ],
         )
         self.assertEqual(
             remote_run.call_args.args[2],
@@ -716,6 +737,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("bench_runtime.py", copy_targets)
         self.assertIn("profile_csv_parser.py", copy_targets)
+        self.assertIn("env_registry.py", copy_targets)
         self.assertEqual(
             remote_run.call_args.args[2],
             [
@@ -1047,6 +1069,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     or remote_path.endswith("/bench_contract.py")
                     or remote_path.endswith("/perf_artifacts.py")
                     or remote_path.endswith("/profile_csv_parser.py")
+                    or remote_path.endswith("/env_registry.py")
                 )
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):

@@ -11,6 +11,7 @@ import inspect
 import json
 import os
 import pickle
+import re
 import sys
 import tempfile
 import textwrap
@@ -33,6 +34,7 @@ from run_runtime import (
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
+    copy_npu_compare_runtime_to_remote,
     create_remote_workspace,
     eval_stall_timeout_seconds,
     local_python_executable,
@@ -762,16 +764,16 @@ def run_remote_test(
     )
     remote_test = f"{remote_workspace}/{test_file.name}"
     remote_operator = f"{remote_workspace}/{operator_file.name}"
-    remote_compare_helper = f"{remote_workspace}/npu_compare.py"
     try:
         copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
-        copy_file_to_remote(
+        copy_npu_compare_runtime_to_remote(
             spec,
-            SCRIPT_DIR / "npu_compare.py",
-            remote_compare_helper,
+            SCRIPT_DIR,
+            remote_workspace=remote_workspace,
             verbose=verbose,
             stderr=stderr,
+            copy_file_fn=copy_file_to_remote,
         )
         extra_env = {
             TRITON_ALWAYS_COMPILE: "1",
@@ -835,16 +837,16 @@ def run_remote_test_case_payload(
     )
     remote_test = f"{remote_workspace}/{test_file.name}"
     remote_operator = f"{remote_workspace}/{operator_file.name}"
-    remote_compare_helper = f"{remote_workspace}/npu_compare.py"
     try:
         copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
-        copy_file_to_remote(
+        copy_npu_compare_runtime_to_remote(
             spec,
-            SCRIPT_DIR / "npu_compare.py",
-            remote_compare_helper,
+            SCRIPT_DIR,
+            remote_workspace=remote_workspace,
             verbose=verbose,
             stderr=stderr,
+            copy_file_fn=copy_file_to_remote,
         )
         result = run_remote_command_streaming(
             spec,
@@ -1112,15 +1114,17 @@ except Exception:
 
 def _extract_serialized_payload_result(result: ResultPayload) -> tuple[ResultPayload, object | None]:
     stdout = str(result["stdout"])
-    marker_start = f"{_SERIALIZED_PAYLOAD_BEGIN}\n"
-    if marker_start not in stdout:
+    match = re.search(
+        rf"(?s)(?P<prefix>.*?){re.escape(_SERIALIZED_PAYLOAD_BEGIN)}\r?\n"
+        rf"(?P<payload>.*?)\r?\n{re.escape(_SERIALIZED_PAYLOAD_END)}(?P<suffix>.*)",
+        stdout,
+    )
+    if match is None:
         return result, None
-    prefix, remainder = stdout.split(marker_start, 1)
-    marker_end = f"\n{_SERIALIZED_PAYLOAD_END}"
-    if marker_end not in remainder:
-        return result, None
-    serialized_payload, suffix = remainder.split(marker_end, 1)
-    clean_stdout = prefix + suffix.lstrip("\n")
+    prefix = match.group("prefix")
+    serialized_payload = match.group("payload")
+    suffix = match.group("suffix")
+    clean_stdout = prefix + suffix.lstrip("\r\n")
     clean_result = make_result(
         return_code=int(result["return_code"]),
         stdout=clean_stdout,

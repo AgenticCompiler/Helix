@@ -4338,6 +4338,35 @@ class PathResolutionTests(unittest.TestCase):
         preflight.assert_called_once_with("alice@example.com:2200")
         mocked.assert_called_once()
 
+    def test_main_explicit_remote_alias_runs_ssh_preflight_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "R154_cdj",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        preflight.assert_called_once_with("R154_cdj")
+        mocked.assert_called_once()
+
     def test_main_explicit_remote_preflight_failure_returns_1_and_skips_handler(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -6226,6 +6255,46 @@ class PathResolutionTests(unittest.TestCase):
                 output=None,
             )
 
+    def test_main_run_bench_alias_runs_ssh_preflight_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "R154_cdj",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            preflight.assert_called_once_with("R154_cdj")
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "torch-npu-profiler",
+                "R154_cdj",
+                None,
+                None,
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+                output=None,
+            )
+
     def test_main_run_bench_threads_npu_devices_to_remote_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -6378,6 +6447,41 @@ class PathResolutionTests(unittest.TestCase):
                 oracle.resolve(),
                 new.resolve(),
                 "alice@example.com:2200",
+                None,
+                accuracy_mode="npu-contract",
+                verbose=False,
+                stderr=sys.stderr,
+            )
+
+    def test_main_compare_result_alias_runs_ssh_preflight_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oracle = root / "abs_result.pt"
+            new = root / "opt_abs_result.pt"
+            oracle.write_text("oracle", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.comparison.compare_remote_result_files", return_value=0
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "compare-result",
+                        "--oracle-result",
+                        str(oracle),
+                        "--new-result",
+                        str(new),
+                        "--remote",
+                        "R154_cdj",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            preflight.assert_called_once_with("R154_cdj")
+            mocked.assert_called_once_with(
+                oracle.resolve(),
+                new.resolve(),
+                "R154_cdj",
                 None,
                 accuracy_mode="npu-contract",
                 verbose=False,

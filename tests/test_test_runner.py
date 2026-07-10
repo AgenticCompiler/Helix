@@ -675,12 +675,102 @@ def build_differential_test_cases(operator_api):
                 "stalled": False,
                 "session_id": None,
             }
+            copied_targets: list[str] = []
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
+            ), patch.object(
+                module,
+                "copy_file_to_remote",
+                side_effect=lambda _spec, _src, dst, **_kwargs: copied_targets.append(dst),
+            ), patch.object(
+                module,
+                "copy_npu_compare_runtime_to_remote",
+                side_effect=lambda _spec, _script_dir, remote_workspace, **_kwargs: copied_targets.extend(
+                    [
+                        f"{remote_workspace}/npu_compare.py",
+                        f"{remote_workspace}/dtype_close_compare.py",
+                        f"{remote_workspace}/npu_compare_common.py",
+                        f"{remote_workspace}/npu_contract_compare.py",
+                        f"{remote_workspace}/env_registry.py",
+                    ]
+                ),
+            ), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=fake_result,
+            ), patch.object(
+                module,
+                "_copy_remote_differential_archive",
+                side_effect=AssertionError("remote archive copy should not run in case payload mode"),
+            ), patch.object(module, "cleanup_remote_workspace"):
+                result, payload, remote_workspace = module.run_remote_test_case_payload(
+                    test_file,
+                    operator,
+                    "user@host",
+                    None,
+                    case_id="case-b",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(result["stdout"], "")
+        self.assertEqual(
+            payload,
+            {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
+            },
+        )
+        self.assertEqual(remote_workspace, "/tmp/remote")
+        self.assertEqual(
+            copied_targets,
+            [
+                "/tmp/remote/differential_test_abs.py",
+                "/tmp/remote/abs.py",
+                "/tmp/remote/npu_compare.py",
+                "/tmp/remote/dtype_close_compare.py",
+                "/tmp/remote/npu_compare_common.py",
+                "/tmp/remote/npu_contract_compare.py",
+                "/tmp/remote/env_registry.py",
+            ],
+        )
+
+    def test_run_remote_test_case_payload_parses_crlf_serialized_payload_without_archive(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            serialized_payload = module._serialize_payload_object(
+                {
+                    "compute": True,
+                    "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
+                }
+            )
+            fake_result = {
+                "return_code": 0,
+                "stdout": (
+                    f"{module._SERIALIZED_PAYLOAD_BEGIN}\r\n"
+                    f"{serialized_payload}\r\n"
+                    f"{module._SERIALIZED_PAYLOAD_END}\r\n"
+                ),
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
 
             with patch.object(
                 module,
                 "create_remote_workspace",
                 return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
             ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "copy_npu_compare_runtime_to_remote",
+            ), patch.object(
                 module,
                 "run_remote_command_streaming",
                 return_value=fake_result,
@@ -982,23 +1072,47 @@ def main(operator_api):
 
             with patch.object(module, "create_remote_workspace", return_value=({"user_host": "user@host", "port": None}, "/tmp/remote")):
                 with patch.object(module, "copy_file_to_remote", side_effect=lambda _spec, _src, dst, **_kwargs: copied_targets.append(dst)):
-                    with patch.object(module, "run_remote_command_streaming", side_effect=lambda _spec, _workspace, command, **_kwargs: recorded_command.extend(command) or fake_result):
-                        with patch.object(module, "cleanup_remote_workspace"):
-                            result, archived, remote_workspace = module.run_remote_test(
-                                test_file,
-                                operator,
-                                "standalone",
-                                "user@host",
-                                None,
-                                keep_remote_workdir=False,
-                                verbose=False,
-                                stderr=None,
-                            )
+                    with patch.object(
+                        module,
+                        "copy_npu_compare_runtime_to_remote",
+                        side_effect=lambda _spec, _script_dir, remote_workspace, **_kwargs: copied_targets.extend(
+                            [
+                                f"{remote_workspace}/npu_compare.py",
+                                f"{remote_workspace}/dtype_close_compare.py",
+                                f"{remote_workspace}/npu_compare_common.py",
+                                f"{remote_workspace}/npu_contract_compare.py",
+                                f"{remote_workspace}/env_registry.py",
+                            ]
+                        ),
+                    ):
+                        with patch.object(module, "run_remote_command_streaming", side_effect=lambda _spec, _workspace, command, **_kwargs: recorded_command.extend(command) or fake_result):
+                            with patch.object(module, "cleanup_remote_workspace"):
+                                result, archived, remote_workspace = module.run_remote_test(
+                                    test_file,
+                                    operator,
+                                    "standalone",
+                                    "user@host",
+                                    None,
+                                    keep_remote_workdir=False,
+                                    verbose=False,
+                                    stderr=None,
+                                )
 
         self.assertEqual(result, fake_result)
         self.assertIsNone(archived)
         self.assertEqual(remote_workspace, "/tmp/remote")
-        self.assertIn("/tmp/remote/npu_compare.py", copied_targets)
+        self.assertEqual(
+            copied_targets,
+            [
+                "/tmp/remote/test_abs.py",
+                "/tmp/remote/abs.py",
+                "/tmp/remote/npu_compare.py",
+                "/tmp/remote/dtype_close_compare.py",
+                "/tmp/remote/npu_compare_common.py",
+                "/tmp/remote/npu_contract_compare.py",
+                "/tmp/remote/env_registry.py",
+            ],
+        )
         self.assertEqual(recorded_command[0:2], ["python3", "-c"])
         self.assertIn("main_fn(operator_api)", recorded_command[2])
         self.assertNotIn(test_file.name, recorded_command[2].split())

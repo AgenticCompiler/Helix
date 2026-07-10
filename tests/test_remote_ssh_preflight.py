@@ -31,6 +31,27 @@ class RemoteSshPreflightTests(unittest.TestCase):
             ],
         )
 
+    def test_build_remote_ssh_preflight_command_accepts_ssh_alias(self) -> None:
+        with patch.object(module, "_parse_remote_spec", return_value={"user_host": "R154_cdj", "port": None}):
+            command = module.build_remote_ssh_preflight_command("R154_cdj")
+
+        self.assertEqual(
+            command,
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "PreferredAuthentications=publickey",
+                "-o",
+                "NumberOfPasswordPrompts=0",
+                "-o",
+                "ConnectTimeout=5",
+                "R154_cdj",
+                "true",
+            ],
+        )
+
     def test_build_remote_ssh_preflight_command_with_port(self) -> None:
         with patch.object(
             module,
