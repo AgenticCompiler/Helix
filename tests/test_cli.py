@@ -1989,6 +1989,15 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Focus on memory access.")
 
+    def test_optimize_command_accepts_system_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize", "-i", "kernel.py", "--system-prompt", "Always keep edits minimal."]
+        )
+        self.assertEqual(args.system_prompt, "Always keep edits minimal.")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.system_prompt, "Always keep edits minimal.")
+
     def test_optimize_command_defaults_round_mode_checked(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
@@ -2055,6 +2064,15 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.prompt, "Avoid numerics changes.")
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
+
+    def test_optimize_batch_accepts_system_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--system-prompt", "Do not rewrite user APIs."]
+        )
+        self.assertEqual(args.system_prompt, "Do not rewrite user APIs.")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.system_prompt, "Do not rewrite user APIs.")
 
     def test_optimize_batch_accepts_post_optimize_command(self) -> None:
         parser = build_parser()
@@ -5747,6 +5765,42 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[2]
             self.assertEqual(request.prompt, "")
             self.assertEqual(request.user_prompt, "Focus on memory coalescing.")
+
+    def test_main_optimize_resolves_system_prompt_file_into_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            system_prompt = root / "system-prompt.txt"
+            system_prompt.write_text("Prefer evidence-backed changes.\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
+                        with patch(
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            return_value=[],
+                        ):
+                            exit_code = main(
+                                [
+                                    "optimize",
+                                    "-i",
+                                    str(operator),
+                                    "--system-prompt",
+                                    f"@{system_prompt}",
+                                ]
+                            )
+
+            self.assertEqual(exit_code, 0)
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.system_prompt, "Prefer evidence-backed changes.")
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

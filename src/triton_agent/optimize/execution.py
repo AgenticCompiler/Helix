@@ -170,6 +170,7 @@ def execute_multi_invocation_optimize(
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
             enable_subagent=request.enable_subagent,
             optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
+            system_prompt_appendix=request.system_prompt,
         )
         describe_prepare = artifacts_manager.describe_prepare_supervised_session
         describe_cleanup = artifacts_manager.describe_cleanup_supervised_session
@@ -188,6 +189,7 @@ def execute_multi_invocation_optimize(
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
             enable_subagent=request.enable_subagent,
             optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
+            system_prompt_appendix=request.system_prompt,
         )
         describe_prepare = artifacts_manager.describe_prepare_checked_session
         describe_cleanup = artifacts_manager.describe_cleanup_checked_session

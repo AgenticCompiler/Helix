@@ -842,6 +842,48 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])
 
+    def test_prepare_checked_appends_user_system_prompt_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                system_prompt_appendix="Use only evidence already present in the workspace.",
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("## Additional System Prompt", guidance_content)
+            self.assertIn(
+                "Use only evidence already present in the workspace.",
+                guidance_content,
+            )
+
+            warnings = manager.cleanup_checked_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_supervised_appends_user_system_prompt_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                system_prompt_appendix="Keep final decisions grounded in canonical compare-perf output.",
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("## Additional System Prompt", guidance_content)
+            self.assertIn(
+                "Keep final decisions grounded in canonical compare-perf output.",
+                guidance_content,
+            )
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
     def test_prepare_rejects_preexisting_nonempty_runtime_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

@@ -124,6 +124,7 @@ def build_optimize_request(
         current_round=current_round,
         final_round=final_round,
         user_prompt=options.prompt,
+        system_prompt=options.system_prompt,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
         target_chip=options.target_chip,
