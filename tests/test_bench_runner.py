@@ -183,13 +183,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertEqual(len(results), 8)
         self.assertTrue(all(result is results[0] for result in results))
 
-    def test_bench_runtime_support_paths_include_profile_csv_parser(self) -> None:
+    def test_bench_runtime_support_paths_include_profile_csv_parser_and_env_registry(self) -> None:
         module = load_bench_runner_module()
 
         support_names = {path.name for path in module._bench_runtime_support_paths()}
 
         self.assertIn("bench_runtime.py", support_names)
         self.assertIn("profile_csv_parser.py", support_names)
+        self.assertIn("env_registry.py", support_names)
 
     def test_bench_runner_source_no_longer_uses_dependency_adapter_or_mode_forwarders(self) -> None:
         module = load_bench_runner_module()
@@ -842,6 +843,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
         self.assertIn("bench_contract.py", copy_targets)
         self.assertIn("perf_artifacts.py", copy_targets)
         self.assertIn("profile_csv_parser.py", copy_targets)
+        self.assertIn("env_registry.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
         self.assertIn("profile_all_bench_cases", remote_command[2])

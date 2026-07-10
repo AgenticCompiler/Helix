@@ -33,8 +33,17 @@ def main() -> int:
 
 @lru_cache(maxsize=1)
 def _load_npu_compare_module() -> ModuleType:
-    module_path = Path(__file__).resolve().with_name("npu_compare.py")
-    spec = importlib.util.spec_from_file_location("compare_result_npu_compare", module_path)
+    return _load_sibling_module("npu_compare.py", "compare_result_npu_compare")
+
+
+@lru_cache(maxsize=1)
+def _load_run_runtime_module() -> ModuleType:
+    return _load_sibling_module("run_runtime.py", "compare_result_run_runtime")
+
+
+def _load_sibling_module(filename: str, module_name: str) -> ModuleType:
+    module_path = Path(__file__).resolve().with_name(filename)
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load module from {module_path}")
     module = importlib.util.module_from_spec(spec)
@@ -98,25 +107,30 @@ def compare_remote_result_files(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> int:
-    from run_runtime import (
-        cleanup_remote_workspace,
-        copy_file_to_remote,
-        create_remote_workspace,
-        run_remote_command_streaming,
-    )
+    run_runtime = _load_run_runtime_module()
+    cleanup_remote_workspace = getattr(run_runtime, "cleanup_remote_workspace")
+    copy_file_to_remote = getattr(run_runtime, "copy_file_to_remote")
+    copy_npu_compare_runtime_to_remote = getattr(run_runtime, "copy_npu_compare_runtime_to_remote")
+    create_remote_workspace = getattr(run_runtime, "create_remote_workspace")
+    run_remote_command_streaming = getattr(run_runtime, "run_remote_command_streaming")
 
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
     compare_script = Path(__file__).resolve()
-    compare_helper = compare_script.with_name("npu_compare.py")
     remote_script = f"{remote_workspace}/{compare_script.name}"
-    remote_helper = f"{remote_workspace}/{compare_helper.name}"
     remote_ref = f"{remote_workspace}/{ref_result.name}"
     remote_new = f"{remote_workspace}/{new_result.name}"
     try:
         copy_file_to_remote(spec, compare_script, remote_script, verbose=verbose, stderr=stderr)
-        copy_file_to_remote(spec, compare_helper, remote_helper, verbose=verbose, stderr=stderr)
+        copy_npu_compare_runtime_to_remote(
+            spec,
+            compare_script.parent,
+            remote_workspace,
+            verbose=verbose,
+            stderr=stderr,
+            copy_file_fn=copy_file_to_remote,
+        )
         copy_file_to_remote(spec, ref_result, remote_ref, verbose=verbose, stderr=stderr)
         copy_file_to_remote(spec, new_result, remote_new, verbose=verbose, stderr=stderr)
         command = [
