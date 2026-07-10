@@ -10,6 +10,14 @@ from triton_agent.skills.loader import load_operator_eval_script_module
 
 
 class CompareResultModule(Protocol):
+    def compare_result_payload_objects(
+        self,
+        ref_payload: object,
+        new_payload: object,
+        *,
+        accuracy_mode: str | None = None,
+    ) -> int: ...
+
     def compare_result_files(
         self,
         ref_result: Path,
@@ -17,6 +25,18 @@ class CompareResultModule(Protocol):
         *,
         accuracy_mode: str | None = None,
     ) -> int: ...
+
+    def load_case_result_payload(
+        self,
+        ref_result: Path,
+        case_id: str,
+    ) -> object: ...
+
+    def find_case_result_payload(
+        self,
+        ref_result: Path,
+        case_id: str,
+    ) -> object | None: ...
 
     def compare_remote_result_files(
         self,
@@ -61,6 +81,33 @@ def compare_result_files(
         new_result,
         accuracy_mode=accuracy_mode,
     )
+
+
+def compare_result_payload_objects(
+    ref_payload: object,
+    new_payload: object,
+    *,
+    accuracy_mode: str | None = None,
+) -> int:
+    return _load_compare_result().compare_result_payload_objects(
+        ref_payload,
+        new_payload,
+        accuracy_mode=accuracy_mode,
+    )
+
+
+def load_case_result_payload(
+    ref_result: Path,
+    case_id: str,
+) -> object:
+    return _load_compare_result().load_case_result_payload(ref_result, case_id)
+
+
+def find_case_result_payload(
+    ref_result: Path,
+    case_id: str,
+) -> object | None:
+    return _load_compare_result().find_case_result_payload(ref_result, case_id)
 
 
 def compare_remote_result_files(

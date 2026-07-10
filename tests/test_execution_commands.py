@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -116,6 +117,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 verbose=False,
             )
@@ -162,6 +164,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                case_id=None,
                 accuracy_mode="dtype-close",
                 verbose=False,
             )
@@ -264,6 +267,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "differential",
                 "alice@example.com",
                 "/tmp/triton-agent",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
@@ -315,9 +319,184 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 verbose=True,
             )
+
+    def test_handle_run_test_rejects_case_id_in_standalone_mode(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--case-id",
+                    "case-a",
+                ]
+            )
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    handle_run_test(parser, args)
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("run-test standalone mode does not accept --case-id", stderr.getvalue())
+
+    def test_handle_run_test_case_id_reuses_explicit_ref_result_without_archiving(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            ref_result = root / "baseline_result.pt"
+            operator.write_text("print('candidate')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            ref_result.write_text("baseline", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--ref-result",
+                    str(ref_result),
+                    "--case-id",
+                    "case-b",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            ref_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "BASE"}],
+            }
+            candidate_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "OPT"}],
+            }
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_local_test_case_payload",
+                return_value=(fake_result, candidate_payload),
+            ) as run_case_mock, patch(
+                "triton_agent.commands.execution.load_case_result_payload",
+                return_value=ref_payload,
+            ) as load_case_mock, patch(
+                "triton_agent.commands.execution.compare_result_payload_objects",
+                return_value=0,
+            ) as compare_mock:
+                with redirect_stdout(stdout):
+                    exit_code = handle_run_test(parser, args)
+
+        self.assertEqual(exit_code, 0)
+        run_case_mock.assert_called_once_with(
+            test_file.resolve(),
+            operator.resolve(),
+            case_id="case-b",
+            accuracy_mode="npu-contract",
+            verbose=False,
+        )
+        load_case_mock.assert_called_once_with(ref_result.resolve(), "case-b")
+        compare_mock.assert_called_once_with(
+            ref_payload,
+            candidate_payload,
+            accuracy_mode="npu-contract",
+        )
+        self.assertEqual(stdout.getvalue(), "Return code: 0\n")
+
+    def test_handle_run_test_reuses_case_id_for_reference_operator_auto_run(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "baseline.py"
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            baseline_archive = root / "baseline_result.pt"
+            baseline_operator.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('candidate')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_archive.write_text("stale-baseline", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--ref-operator-file",
+                    str(baseline_operator),
+                    "--case-id",
+                    "case-b",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            observed_calls: list[tuple[Path, Path, str, Optional[str]]] = []
+            ref_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "BASE"}],
+            }
+            candidate_payload = {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "OPT"}],
+            }
+            stdout = StringIO()
+
+            def fake_run_local_test_case_payload(
+                test_path: Path,
+                operator_path: Path,
+                *,
+                accuracy_mode: Optional[str] = None,
+                verbose: bool = False,
+                case_id: Optional[str] = None,
+            ) -> tuple[AgentResult, object]:
+                del accuracy_mode, verbose
+                observed_calls.append((test_path, operator_path, "differential", case_id))
+                if operator_path == baseline_operator.resolve():
+                    return fake_result, ref_payload
+                return fake_result, candidate_payload
+
+            with patch(
+                "triton_agent.commands.execution.find_case_result_payload",
+                return_value=None,
+            ) as find_case_mock, patch(
+                "triton_agent.commands.execution.run_local_test_case_payload",
+                side_effect=fake_run_local_test_case_payload,
+            ), patch(
+                "triton_agent.commands.execution.compare_result_payload_objects",
+                return_value=0,
+            ) as compare_mock:
+                with redirect_stdout(stdout):
+                    exit_code = handle_run_test(parser, args)
+
+        self.assertEqual(exit_code, 0)
+        find_case_mock.assert_called_once_with(baseline_archive.resolve(), "case-b")
+        self.assertEqual(
+            observed_calls,
+            [
+                (test_file.resolve(), baseline_operator.resolve(), "differential", "case-b"),
+                (test_file.resolve(), operator.resolve(), "differential", "case-b"),
+            ],
+        )
+        compare_mock.assert_called_once_with(
+            ref_payload,
+            candidate_payload,
+            accuracy_mode="npu-contract",
+        )
+        self.assertEqual(stdout.getvalue(), "Return code: 0\nReturn code: 0\n")
 
     def test_handle_run_test_uses_remote_env_when_flag_missing(self) -> None:
         parser = build_parser()
@@ -360,6 +539,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com",
                 "/tmp/triton-agent",
+                case_id=None,
                 accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
                 verbose=False,
