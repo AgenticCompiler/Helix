@@ -2,7 +2,7 @@
 
 ## Summary
 
-Continue shrinking `src/triton_agent/` after the first package-layout cleanup so
+Continue shrinking `src/helix/` after the first package-layout cleanup so
 the remaining root-level modules reflect real cross-cutting ownership instead
 of acting as a mixed landing zone for terminal helpers, batch helpers, trace
 helpers, report-only helpers, and packaging glue.
@@ -25,7 +25,7 @@ This is a structural refactor only.
 ## Goals
 
 - Further reduce the number of unrelated modules living directly under
-  `src/triton_agent/`.
+  `src/helix/`.
 - Group terminal-related helpers, batch-related helpers, and trace-related
   helpers under small subsystem packages.
 - Move obviously feature-local helpers into their owning feature packages.
@@ -181,7 +181,7 @@ patch targets.
 ## Target Layout
 
 ```text
-src/triton_agent/
+src/helix/
   cli.py
   models.py
   paths.py

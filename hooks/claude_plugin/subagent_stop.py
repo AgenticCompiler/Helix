@@ -11,19 +11,19 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
     workspace = resolve_workspace(payload)
     if workspace is None:
         return 0
-    runtime_dir = workspace / ".triton-agent"
+    runtime_dir = workspace / ".helix"
     try:
         if should_cleanup_for_subagent(payload, runtime_dir):
             cleanup_runtime_tree(runtime_dir)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
     return 0
 
 

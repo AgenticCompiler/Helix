@@ -12,9 +12,9 @@ from types import ModuleType
 from typing import Any, TextIO, cast
 
 from env_registry import (
-    TRITON_AGENT_ACCURACY_MODE,
-    TRITON_AGENT_DTYPE_CLOSE_ATOL,
-    TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    HELIX_ACCURACY_MODE,
+    HELIX_DTYPE_CLOSE_ATOL,
+    HELIX_DTYPE_CLOSE_RTOL,
 )
 
 
@@ -159,11 +159,11 @@ def compare_remote_result_files(
 def _comparison_extra_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:
-        extra_env[TRITON_AGENT_ACCURACY_MODE] = accuracy_mode
+        extra_env[HELIX_ACCURACY_MODE] = accuracy_mode
     for name in (
-        TRITON_AGENT_ACCURACY_MODE,
-        TRITON_AGENT_DTYPE_CLOSE_ATOL,
-        TRITON_AGENT_DTYPE_CLOSE_RTOL,
+        HELIX_ACCURACY_MODE,
+        HELIX_DTYPE_CLOSE_ATOL,
+        HELIX_DTYPE_CLOSE_RTOL,
     ):
         if name in extra_env:
             continue

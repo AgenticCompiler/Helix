@@ -1,13 +1,13 @@
 ## Summary
 
-When `fastmcp` is not installed, non-MCP entrypoints such as `triton-agent --help`
+When `fastmcp` is not installed, non-MCP entrypoints such as `helix --help`
 should still import and run. The CLI should only require `fastmcp` when the user
 explicitly enables managed MCP support or starts the standalone MCP server.
 
 ## Root Cause
 
-`src/triton_agent/run_eval_mcp_server.py` imports `fastmcp` at module import time.
-That module is imported transitively by `triton_agent.mcp`, which is imported by
+`src/helix/run_eval_mcp_server.py` imports `fastmcp` at module import time.
+That module is imported transitively by `helix.mcp`, which is imported by
 backend modules during normal CLI startup. As a result, even read-only commands and
 help rendering fail before argument handling can decide whether MCP is needed.
 
@@ -21,4 +21,4 @@ optional dependency.
 ## Validation
 
 Add a regression test that blocks `fastmcp` imports in a subprocess and verifies
-`triton_agent.cli.main(["--help"])` exits successfully.
+`helix.cli.main(["--help"])` exits successfully.

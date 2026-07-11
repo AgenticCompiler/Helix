@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Complete the thin-CLI refactor by moving the remaining generation command flow out of `src/triton_agent/cli.py`.
+- Complete the thin-CLI refactor by moving the remaining generation command flow out of `src/helix/cli.py`.
 - This phase covers:
   - `gen-test`
   - `gen-bench`
@@ -31,7 +31,7 @@
 Recommended additions for this phase:
 
 ```text
-src/triton_agent/
+src/helix/
   commands/
     generation.py
   generation.py

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `--view best|trend` and `--format json` to `triton-agent status`.
+**Goal:** Add `--view best|trend` and `--format json` to `helix status`.
 
-**Architecture:** Keep status artifact parsing in `src/triton_agent/status/core.py`, expose all comparable round speedups on `OptimizeStatusWorkspace`, and keep output-specific logic in `src/triton_agent/status/render.py`. The command handler stays thin: resolve input, inspect workspaces, then pass `view` and `format` to the renderer.
+**Architecture:** Keep status artifact parsing in `src/helix/status/core.py`, expose all comparable round speedups on `OptimizeStatusWorkspace`, and keep output-specific logic in `src/helix/status/render.py`. The command handler stays thin: resolve input, inspect workspaces, then pass `view` and `format` to the renderer.
 
 **Tech Stack:** Python 3.12, `argparse`, dataclasses, `json`, existing `unittest` tests.
 
@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Later modify: `src/triton_agent/cli.py`
+- Later modify: `src/helix/cli.py`
 
 - [ ] **Step 1: Write failing parser tests**
 
@@ -56,7 +56,7 @@ Expected: FAIL because `--view` is unknown and `json` is not an accepted format.
 
 - [ ] **Step 3: Implement parser support**
 
-In `src/triton_agent/cli.py`:
+In `src/helix/cli.py`:
 
 ```python
 _FORMAT_CHOICES = ("text", "markdown", "json")
@@ -83,8 +83,8 @@ Expected: PASS.
 ### Task 2: Preserve Per-Round Speedups In Status Core
 
 **Files:**
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/status/core.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/status/core.py`
 - Modify: `tests/test_status.py`
 
 - [ ] **Step 1: Write failing core test**
@@ -132,7 +132,7 @@ Expected: FAIL because `OptimizeStatusWorkspace` has no `rounds` field.
 
 - [ ] **Step 3: Add the model field**
 
-In `src/triton_agent/optimize/models.py`:
+In `src/helix/optimize/models.py`:
 
 ```python
 rounds: tuple[OptimizeStatusRound, ...] = ()
@@ -142,7 +142,7 @@ Place it at the end of `OptimizeStatusWorkspace` so existing test constructors k
 
 - [ ] **Step 4: Populate rounds in core**
 
-In `src/triton_agent/status/core.py`, return:
+In `src/helix/status/core.py`, return:
 
 ```python
 rounds=tuple(comparable_rounds),
@@ -164,8 +164,8 @@ Expected: PASS.
 
 **Files:**
 - Modify: `tests/test_status_render.py`
-- Modify: `src/triton_agent/status/render.py`
-- Modify: `src/triton_agent/commands/status.py`
+- Modify: `src/helix/status/render.py`
+- Modify: `src/helix/commands/status.py`
 
 - [ ] **Step 1: Write failing renderer tests**
 
@@ -260,7 +260,7 @@ Expected: FAIL because `view` and JSON/trend rendering do not exist.
 
 - [ ] **Step 3: Implement rendering**
 
-In `src/triton_agent/status/render.py`:
+In `src/helix/status/render.py`:
 
 - add `import json`
 - update `render_optimize_status_results(..., view: str = "best")`
@@ -277,7 +277,7 @@ round_names = sorted(
 
 - [ ] **Step 4: Pass view from the command handler**
 
-In `src/triton_agent/commands/status.py`, pass:
+In `src/helix/commands/status.py`, pass:
 
 ```python
 view=str(getattr(args, "view", "best")),
@@ -300,11 +300,11 @@ Expected: PASS.
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `README.md`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/status.py`
-- Modify: `src/triton_agent/status/core.py`
-- Modify: `src/triton_agent/status/render.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/status.py`
+- Modify: `src/helix/status/core.py`
+- Modify: `src/helix/status/render.py`
+- Modify: `src/helix/optimize/models.py`
 
 - [ ] **Step 1: Add CLI integration tests**
 
@@ -331,9 +331,9 @@ Expected: PASS after Tasks 1-3 are complete.
 In the status section, document:
 
 ```bash
-uv run triton-agent status --input operators_root --view trend
-uv run triton-agent status --input operators_root --view trend --format json
-uv run triton-agent status --input operators_root --format json
+uv run helix status --input operators_root --view trend
+uv run helix status --input operators_root --view trend --format json
+uv run helix status --input operators_root --format json
 ```
 
 Explain that `--view best` is default, `--view trend` emits per-round geomean

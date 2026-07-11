@@ -1,6 +1,6 @@
-# triton-agent
+# helix
 
-`triton-agent` is a CLI for generating, running, and optimizing Triton Ascend NPU operator workflows with code agents and local skills.
+`helix` is a CLI for generating, running, and optimizing Triton Ascend NPU operator workflows with code agents and local skills.
 
 This README is organized by task so you can quickly find the right command for the job.
 
@@ -33,76 +33,76 @@ This README is organized by task so you can quickly find the right command for t
 Most workflows start from a single operator file:
 
 ```bash
-uv run triton-agent gen-test --input a.py
-uv run triton-agent run-test --test-file test_a.py --operator-file a.py
+uv run helix gen-test --input a.py
+uv run helix run-test --test-file test_a.py --operator-file a.py
 
-uv run triton-agent convert --input a.py
-uv run triton-agent convert-batch --input operators_root
+uv run helix convert --input a.py
+uv run helix convert-batch --input operators_root
 
-uv run triton-agent gen-bench --input a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
+uv run helix gen-bench --input a.py
+uv run helix run-bench --bench-file bench_a.py --operator-file a.py
+uv run helix run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
 
-uv run triton-agent optimize --input a.py
-uv run triton-agent run-eval-mcp-server
+uv run helix optimize --input a.py
+uv run helix run-eval-mcp-server
 ```
 
 For batch workflows, point `--input` at either a directory whose immediate child directories are operator workspaces, or a single operator workspace directory:
 
 ```bash
-uv run triton-agent gen-eval-batch --input operators_root
-uv run triton-agent gen-eval --input operators_root --concurrency 4
-uv run triton-agent gen-eval-batch --input .
-uv run triton-agent status --input operators_root
-uv run triton-agent status --input operators_root --format markdown
-uv run triton-agent status --input operators_root --view trend --format json
-uv run triton-agent verify --input .
-uv run triton-agent verify-batch --input operators_root
-uv run triton-agent verify --input operators_root --concurrency 1
-uv run triton-agent optimize-batch --input operators_root
-uv run triton-agent optimize --input operators_root --concurrency 4
-uv run triton-agent log-check --input .
-uv run triton-agent log-check-batch --input operators_root
-uv run triton-agent log-check --input operators_root --concurrency 4
-uv run triton-agent clean --input .
-uv run triton-agent clean --input operators_root
+uv run helix gen-eval-batch --input operators_root
+uv run helix gen-eval --input operators_root --concurrency 4
+uv run helix gen-eval-batch --input .
+uv run helix status --input operators_root
+uv run helix status --input operators_root --format markdown
+uv run helix status --input operators_root --view trend --format json
+uv run helix verify --input .
+uv run helix verify-batch --input operators_root
+uv run helix verify --input operators_root --concurrency 1
+uv run helix optimize-batch --input operators_root
+uv run helix optimize --input operators_root --concurrency 4
+uv run helix log-check --input .
+uv run helix log-check-batch --input operators_root
+uv run helix log-check --input operators_root --concurrency 4
+uv run helix clean --input .
+uv run helix clean --input operators_root
 ```
 
 ### Upload Server
 
-An optional standalone HTTP server for receiving optimize workspace archives lives under the repository at `services/triton-agent-upload-server/`. The server runs separately from the main CLI:
+An optional standalone HTTP server for receiving optimize workspace archives lives under the repository at `services/helix-upload-server/`. The server runs separately from the main CLI:
 
 ```bash
-cd services/triton-agent-upload-server
+cd services/helix-upload-server
 uv sync
-uv run triton-agent-upload-server \
-  --storage-root /data/triton-agent/uploads \
-  --temp-root /data/triton-agent/uploads/.tmp
+uv run helix-upload-server \
+  --storage-root /data/helix/uploads \
+  --temp-root /data/helix/uploads/.tmp
 ```
 
-Uploads are stored as `<timestamp>-<workspace_slug>-<uid>.tar.gz` with a matching `<...>.receipt.json` sidecar. See `services/triton-agent-upload-server/README.md` for details.
+Uploads are stored as `<timestamp>-<workspace_slug>-<uid>.tar.gz` with a matching `<...>.receipt.json` sidecar. See `services/helix-upload-server/README.md` for details.
 
 ## Runtime Environment Variables
 
-These are the environment variables that `triton-agent` reads directly at runtime.
+These are the environment variables that `helix` reads directly at runtime.
 
-For batch NPU affinity, prefer the CLI options `--npu-devices` and `--workers-per-npu`. The legacy `TRITON_AGENT_BATCH_*` variables remain supported as compatibility fallback when those options are omitted.
+For batch NPU affinity, prefer the CLI options `--npu-devices` and `--workers-per-npu`. The legacy `HELIX_BATCH_*` variables remain supported as compatibility fallback when those options are omitted.
 
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
-| `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--npu-devices`. Accepts a comma-separated Ascend device list and inclusive numeric ranges such as `0,3-5,8-9`. When resolved, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
-| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--workers-per-npu`. Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when batch NPU devices are configured; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. Managed `run-eval-mcp-server` accepts this setting for compatibility but ignores it for runtime device leasing. |
-| `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
-| `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
-| `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
-| `TRITON_AGENT_RUN_TEST_ACCURACY_MODE` | No | staged run-eval CLI, run-eval MCP `run-test-*`, `compare-result` helpers | Accuracy mode for agent-run correctness validation. Supported values are `npu-contract` and `dtype-close`; default is `npu-contract`. The top-level `triton-agent run-test` and `compare-result` commands also expose `--accuracy-mode`. |
-| `TRITON_AGENT_RUN_TEST_ATOL` | No | `dtype-close` correctness comparison | Absolute tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
-| `TRITON_AGENT_RUN_TEST_RTOL` | No | `dtype-close` correctness comparison | Relative tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
-| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-state` `submit-baseline` flow, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum absolute adjacent baseline-relative geomean speedup change that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
-| `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
+| `HELIX_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.helix`). The checkout is stored under `<HELIX_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
+| `HELIX_BATCH_NPU_DEVICES` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--npu-devices`. Accepts a comma-separated Ascend device list and inclusive numeric ranges such as `0,3-5,8-9`. When resolved, concurrent batch workspaces are pinned to these devices. See also `HELIX_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `HELIX_BATCH_WORKERS_PER_NPU` | No | `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, `optimize-batch` in batch mode, plus standalone `run-eval-mcp-server` | Legacy compatibility fallback for `--workers-per-npu`. Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when batch NPU devices are configured; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. Managed `run-eval-mcp-server` accepts this setting for compatibility but ignores it for runtime device leasing. |
+| `HELIX_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
+| `HELIX_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `HELIX_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default is `300`. Set `0` to disable stall termination. |
+| `HELIX_RUN_TEST_ACCURACY_MODE` | No | staged run-eval CLI, run-eval MCP `run-test-*`, `compare-result` helpers | Accuracy mode for agent-run correctness validation. Supported values are `npu-contract` and `dtype-close`; default is `npu-contract`. The top-level `helix run-test` and `compare-result` commands also expose `--accuracy-mode`. |
+| `HELIX_RUN_TEST_ATOL` | No | `dtype-close` correctness comparison | Absolute tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
+| `HELIX_RUN_TEST_RTOL` | No | `dtype-close` correctness comparison | Relative tolerance override for `dtype-close` floating-point and complex comparisons. Ignored by `npu-contract`. |
+| `HELIX_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `ascend-npu-optimize-state` `submit-baseline` flow, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
+| `HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
+| `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `ascend-npu-optimize-state` `submit-round`, optimize continuation guidance | Maximum absolute adjacent baseline-relative geomean speedup change that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
+| `HELIX_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
 | `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
@@ -110,12 +110,12 @@ For batch NPU affinity, prefer the CLI options `--npu-devices` and `--workers-pe
 Examples:
 
 ```bash
-export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
-export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
-export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4
-export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01
-export TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR=$HOME/.triton-agent
-uv run triton-agent optimize-batch \
+export HELIX_CODE_AGENT_MAX_RETRIES=4
+export HELIX_OPTIMIZE_DELETE_PT_FILES=1
+export HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4
+export HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01
+export HELIX_COMPILER_SOURCE_CACHE_DIR=$HOME/.helix
+uv run helix optimize-batch \
   --input operators_root \
   --concurrency max \
   --npu-devices 0,3-5,8-9 \
@@ -125,30 +125,30 @@ uv run triton-agent optimize-batch \
 Legacy compatibility form:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch --input operators_root --concurrency max
+export HELIX_BATCH_NPU_DEVICES=0,3-5,8-9
+export HELIX_BATCH_WORKERS_PER_NPU=2
+uv run helix optimize-batch --input operators_root --concurrency max
 ```
 
 ```bash
 export LLM_API_KEY=...
 export LLM_MODEL=openai/gpt-4.1
 export LLM_BASE_URL=https://api.example.com/v1
-uv run triton-agent gen-test --input a.py --agent openhands
+uv run helix gen-test --input a.py --agent openhands
 ```
 
-### Environment Variables Exported By `triton-agent`
+### Environment Variables Exported By `helix`
 
-These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
+These variables are normally set by `helix` for child processes. You usually do not need to export them yourself:
 
-- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when batch NPU affinity is configured through `--npu-devices` / `--workers-per-npu` or their legacy `TRITON_AGENT_BATCH_*` fallback variables. Multiple concurrent workspaces may receive the same device when per-device sharing is greater than `1`.
+- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when batch NPU affinity is configured through `--npu-devices` / `--workers-per-npu` or their legacy `HELIX_BATCH_*` fallback variables. Multiple concurrent workspaces may receive the same device when per-device sharing is greater than `1`.
 
 ## Debug The Run-Eval MCP Server
 
 Use `run-eval-mcp-server` when you want to start the managed HTTP MCP runtime without launching an agent workflow.
 
 ```bash
-uv run triton-agent run-eval-mcp-server
+uv run helix run-eval-mcp-server
 ```
 
 What it does:
@@ -157,20 +157,20 @@ What it does:
 - prints the base endpoint, for example `http://127.0.0.1:38745/mcp`
 - prints a workspace URL template of the form `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
 - keeps running until you stop it with `Ctrl-C`
-- defaults to NPU device `0` when neither `--npu-devices` nor `TRITON_AGENT_BATCH_NPU_DEVICES` is set
+- defaults to NPU device `0` when neither `--npu-devices` nor `HELIX_BATCH_NPU_DEVICES` is set
 
 Common options:
 
 - `--port <int>`: bind a fixed local port instead of using an ephemeral one
 - `--npu-devices <list>`: set the managed NPU device pool explicitly
 - `--workers-per-npu <int>`: accepted for compatibility, but ignored by the managed MCP runtime
-- `TRITON_AGENT_BATCH_NPU_DEVICES`: legacy compatibility fallback when `--npu-devices` is omitted
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: legacy compatibility fallback when `--workers-per-npu` is omitted; still ignored by the managed MCP runtime
+- `HELIX_BATCH_NPU_DEVICES`: legacy compatibility fallback when `--npu-devices` is omitted
+- `HELIX_BATCH_WORKERS_PER_NPU`: legacy compatibility fallback when `--workers-per-npu` is omitted; still ignored by the managed MCP runtime
 
 Example:
 
 ```bash
-uv run triton-agent run-eval-mcp-server --port 8765 --npu-devices 0,1
+uv run helix run-eval-mcp-server --port 8765 --npu-devices 0,1
 ```
 
 ## Generate Tests
@@ -178,10 +178,10 @@ uv run triton-agent run-eval-mcp-server --port 8765 --npu-devices 0,1
 Use `gen-test` when you need a correctness harness for one operator.
 
 ```bash
-uv run triton-agent gen-test --input a.py
+uv run helix gen-test --input a.py
 ```
 
-You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-test --input .`.
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run helix gen-test --input .`.
 
 Common options:
 
@@ -197,7 +197,7 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent gen-test --input a.py --test-mode differential --agent codex
+uv run helix gen-test --input a.py --test-mode differential --agent codex
 ```
 
 ## Run Tests
@@ -205,7 +205,7 @@ uv run triton-agent gen-test --input a.py --test-mode differential --agent codex
 Use `run-test` when you already have a generated test file and want to execute it.
 
 ```bash
-uv run triton-agent run-test --test-file test_a.py --operator-file a.py
+uv run helix run-test --test-file test_a.py --operator-file a.py
 ```
 
 Common options:
@@ -225,14 +225,14 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
-uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py --case-id case-0 --verbose
+uv run helix run-test --test-file differential_test_a.py --operator-file opt_a.py
+uv run helix run-test --test-file differential_test_a.py --operator-file opt_a.py --case-id case-0 --verbose
 ```
 
 If you already have a baseline payload from a baseline or source run, you can finish the differential check in one command:
 
 ```bash
-uv run triton-agent run-test \
+uv run helix run-test \
   --test-file differential_test_a.py \
   --operator-file opt_a.py \
   --test-mode differential \
@@ -242,7 +242,7 @@ uv run triton-agent run-test \
 If you prefer, you can point at the baseline operator instead and let `run-test` derive or auto-produce the baseline payload:
 
 ```bash
-uv run triton-agent run-test \
+uv run helix run-test \
   --test-file differential_test_a.py \
   --operator-file opt_a.py \
   --test-mode differential \
@@ -254,10 +254,10 @@ uv run triton-agent run-test \
 Use `gen-eval` when you want both correctness and benchmark assets in one step.
 
 ```bash
-uv run triton-agent gen-eval --input a.py
+uv run helix gen-eval --input a.py
 ```
 
-You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-eval --input .`.
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run helix gen-eval --input .`.
 
 What it is for:
 
@@ -278,7 +278,7 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+uv run helix gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/helix
 ```
 
 ## Convert PyTorch Operators
@@ -286,10 +286,10 @@ uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workd
 Use `convert` when you want a new Triton NPU-backed PyTorch operator file instead of an in-place optimize round.
 
 ```bash
-uv run triton-agent convert --input a.py
+uv run helix convert --input a.py
 ```
 
-You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent convert --input .`.
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run helix convert --input .`.
 
 What it is for:
 
@@ -319,7 +319,7 @@ Behavior:
 Example:
 
 ```bash
-uv run triton-agent convert --input a.py --output triton_a.py
+uv run helix convert --input a.py --output triton_a.py
 ```
 
 ## Generate Benchmarks
@@ -327,10 +327,10 @@ uv run triton-agent convert --input a.py --output triton_a.py
 Use `gen-bench` when you only need a benchmark harness.
 
 ```bash
-uv run triton-agent gen-bench --input a.py
+uv run helix gen-bench --input a.py
 ```
 
-You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-bench --input .`.
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run helix gen-bench --input .`.
 
 Common options:
 
@@ -346,7 +346,7 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent gen-bench --input a.py --bench-mode torch-npu-profiler
+uv run helix gen-bench --input a.py --bench-mode torch-npu-profiler
 ```
 
 ## Run Benchmarks
@@ -354,7 +354,7 @@ uv run triton-agent gen-bench --input a.py --bench-mode torch-npu-profiler
 Use `run-bench` when you already have a generated benchmark file and want to execute it.
 
 ```bash
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
+uv run helix run-bench --bench-file bench_a.py --operator-file a.py
 ```
 
 Common options:
@@ -373,11 +373,11 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py --metric-source all --skip-latency-errors
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
+uv run helix run-bench --bench-file bench_a.py --operator-file opt_a.py
+uv run helix run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
+uv run helix run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
+uv run helix run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py --metric-source all --skip-latency-errors
+uv run helix run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
 
 Automatic baseline compare:
@@ -410,10 +410,10 @@ Remote note:
 Use `optimize` when you want the agent to iterate on one operator and produce optimization rounds.
 
 ```bash
-uv run triton-agent optimize --input a.py
+uv run helix optimize --input a.py
 ```
 
-You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent optimize --input .`.
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run helix optimize --input .`.
 
 Common options:
 
@@ -444,20 +444,20 @@ Common options:
 Examples:
 
 ```bash
-uv run triton-agent optimize --input a.py --min-rounds 3
-uv run triton-agent optimize --input a.py --resume continue
-uv run triton-agent optimize --input a.py --optimize-knowledge v2
-uv run triton-agent optimize --input a.py --optimize-knowledge v3
-uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
-uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
-uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
-uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
-uv run triton-agent optimize --input a.py --optimize-target operator
+uv run helix optimize --input a.py --min-rounds 3
+uv run helix optimize --input a.py --resume continue
+uv run helix optimize --input a.py --optimize-knowledge v2
+uv run helix optimize --input a.py --optimize-knowledge v3
+uv run helix optimize --input a.py --enable-compiler-source-analysis
+uv run helix optimize --input a.py --enable-cann-ext-api --target-chip A5
+uv run helix optimize --input a.py --enable-agent-hooks --agent codex
+uv run helix optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
+uv run helix optimize --input a.py --optimize-target operator
 ```
 
 Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
 
-Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` (or `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/` if `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` is set) before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
+Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.helix/compiler-sources/AscendNPU-IR/` (or `<HELIX_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/` if `HELIX_COMPILER_SOURCE_CACHE_DIR` is set) before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
 
@@ -483,7 +483,7 @@ Optimize behavior:
 - Each round records exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `ascend-npu-prepare-optimize-baseline` before round work begins.
 - The `ascend-npu-optimize-state` `submit-baseline` flow never deletes archived PT result files.
-- Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
+- Ordinary optimize cleanup preserves archived PT result files by default. Set `HELIX_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
 - `--reset-optimize` still deletes known optimize PT artifacts, including workspace-root `*_result.pt` files.
 - Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
@@ -496,9 +496,9 @@ Optimize behavior:
 - Generate missing harnesses only when the required validation artifact is absent.
 - Allow the agent to do minimal repair work during baseline preparation when that is required to reach a correct, benchmarkable starting point.
 - Keep canonical optimize-session performance comparisons anchored to `baseline/perf.txt`, even when a round also compares locally against its chosen parent.
-- Record each optimize code agent launch under `triton-agent-logs/<run-id>/agent-session-<label>.json`, where `<label>` matches the launch such as `baseline`, `batch-1-5`, or `supervisor`. Each file stores timestamp, session id, and agent backend. Missing session ids are recorded as `unknown`.
+- Record each optimize code agent launch under `helix-logs/<run-id>/agent-session-<label>.json`, where `<label>` matches the launch such as `baseline`, `batch-1-5`, or `supervisor`. Each file stores timestamp, session id, and agent backend. Missing session ids are recorded as `unknown`.
 - Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
-- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt plus the live `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` handoff files.
+- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt plus the live `.helix/round-brief.md` and `.helix/supervisor-report.md` handoff files.
 - Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.
 - Treat each round as a hypothesis-driven experiment: explain why the change may help and what evidence supports it.
 - Require each completed round to leave auditable artifacts such as `attempts.md`, `summary.md`, comparable perf data, and structured round state.
@@ -516,11 +516,11 @@ The switch is based on whether `--concurrency` is present. `--concurrency 1` sti
 Prefer `--npu-devices` when you want concurrent batch workspaces to be pinned to specific Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
 
 ```bash
-uv run triton-agent optimize-batch --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
-uv run triton-agent optimize --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
+uv run helix optimize-batch --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
+uv run helix optimize --input operators_root --concurrency 4 --npu-devices 0,3-5,8-9
 ```
 
-If `--npu-devices` is omitted, the CLI falls back to `TRITON_AGENT_BATCH_NPU_DEVICES` for compatibility.
+If `--npu-devices` is omitted, the CLI falls back to `HELIX_BATCH_NPU_DEVICES` for compatibility.
 
 When batch NPU affinity is configured:
 
@@ -533,10 +533,10 @@ When batch NPU affinity is configured:
 By default each device hosts at most one concurrent workspace. Prefer `--workers-per-npu` to allow multiple workers to share the same device:
 
 ```bash
-uv run triton-agent optimize-batch --input operators_root --concurrency max --npu-devices 0,1 --workers-per-npu 2
+uv run helix optimize-batch --input operators_root --concurrency max --npu-devices 0,1 --workers-per-npu 2
 ```
 
-If `--workers-per-npu` is omitted, the CLI falls back to `TRITON_AGENT_BATCH_WORKERS_PER_NPU` for compatibility.
+If `--workers-per-npu` is omitted, the CLI falls back to `HELIX_BATCH_WORKERS_PER_NPU` for compatibility.
 
 When per-device sharing is configured:
 
@@ -544,13 +544,13 @@ When per-device sharing is configured:
 - numeric `-c` / `--concurrency` values must not exceed the effective capacity.
 - `-c max` / `--concurrency max` resolves to that effective capacity.
 - Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
-- `--workers-per-npu` / `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is ignored when batch NPU devices are unset.
+- `--workers-per-npu` / `HELIX_BATCH_WORKERS_PER_NPU` is ignored when batch NPU devices are unset.
 
 ### Generate Evaluation Assets In Batch
 
 ```bash
-uv run triton-agent gen-eval-batch --input operators_root
-uv run triton-agent gen-eval --input operators_root --concurrency 4
+uv run helix gen-eval-batch --input operators_root
+uv run helix gen-eval --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -566,8 +566,8 @@ Common options:
 ### Convert Operators In Batch
 
 ```bash
-uv run triton-agent convert-batch --input operators_root
-uv run triton-agent convert --input operators_root --concurrency 4
+uv run helix convert-batch --input operators_root
+uv run helix convert --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -582,13 +582,13 @@ Common options:
 ### Check Optimization Status
 
 ```bash
-uv run triton-agent status --input operators_root
-uv run triton-agent status --input .
-uv run triton-agent status --input operators_root --format markdown
-uv run triton-agent status --input operators_root --format json
-uv run triton-agent status --input operators_root --view trend
-uv run triton-agent status --input operators_root --view trend --format json
-uv run triton-agent status --input operators_root --metric-source total-op
+uv run helix status --input operators_root
+uv run helix status --input .
+uv run helix status --input operators_root --format markdown
+uv run helix status --input operators_root --format json
+uv run helix status --input operators_root --view trend
+uv run helix status --input operators_root --view trend --format json
+uv run helix status --input operators_root --metric-source total-op
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
@@ -637,9 +637,9 @@ to stdout, so redirect it to a file when needed.
 ### Verify The Best Round
 
 ```bash
-uv run triton-agent verify --input .
-uv run triton-agent verify --input . --phase test
-uv run triton-agent verify --input . --phase bench
+uv run helix verify --input .
+uv run helix verify --input . --phase test
+uv run helix verify --input . --phase bench
 ```
 
 Use this command after an optimize session when you want to rerun validation for the numeric best round.
@@ -669,9 +669,9 @@ perf files, `compare-perf.txt` when a benchmark comparison runs, and `verify-sta
 ### Verify Many Workspaces
 
 ```bash
-uv run triton-agent verify-batch --input operators_root
-uv run triton-agent verify-batch --input operators_root --force-verify
-uv run triton-agent verify --input operators_root --concurrency 1
+uv run helix verify-batch --input operators_root
+uv run helix verify-batch --input operators_root --force-verify
+uv run helix verify --input operators_root --concurrency 1
 ```
 
 Use this command when you want to validate every verifiable optimize workspace under one root.
@@ -694,9 +694,9 @@ Common options:
 ### Optimize In Batch
 
 ```bash
-uv run triton-agent optimize-batch --input operators_root
-uv run triton-agent optimize-batch --input .
-uv run triton-agent optimize --input operators_root --concurrency 4
+uv run helix optimize-batch --input operators_root
+uv run helix optimize-batch --input .
+uv run helix optimize --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -722,11 +722,11 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
-uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v2
-uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v3
-uv run triton-agent optimize-batch --input operators_root --enable-agent-hooks --agent codex
-uv run triton-agent optimize-batch --input operators_root --post-optimize-command "python summarize.py"
+uv run helix optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
+uv run helix optimize-batch --input operators_root --optimize-knowledge v2
+uv run helix optimize-batch --input operators_root --optimize-knowledge v3
+uv run helix optimize-batch --input operators_root --enable-agent-hooks --agent codex
+uv run helix optimize-batch --input operators_root --post-optimize-command "python summarize.py"
 ```
 
 Batch rerun behavior:
@@ -744,7 +744,7 @@ Use these commands after you already have archived result or performance files, 
 ### Compare Correctness Results
 
 ```bash
-uv run triton-agent compare-result \
+uv run helix compare-result \
   --oracle-result abs_result.pt \
   --new-result opt_abs_result.pt
 ```
@@ -761,7 +761,7 @@ Correctness result comparison defaults to the shared NPU accuracy comparison con
 ### Compare Performance Results
 
 ```bash
-uv run triton-agent compare-perf \
+uv run helix compare-perf \
   --baseline abs_perf.txt \
   --compare opt_abs_perf.txt
 ```
@@ -788,14 +788,14 @@ The command prints:
 Use `log-check` when you need to validate Codex agent log strategy for one operator workspace.
 
 ```bash
-uv run triton-agent log-check --input .
+uv run helix log-check --input .
 ```
 
 For batch validation across many workspaces:
 
 ```bash
-uv run triton-agent log-check-batch --input operators_root
-uv run triton-agent log-check --input operators_root --concurrency 4
+uv run helix log-check-batch --input operators_root
+uv run helix log-check --input operators_root --concurrency 4
 ```
 
 Common options:
@@ -813,7 +813,7 @@ These options appear on multiple commands:
 
 - `--agent`: choose the agent backend for agent-backed generation and optimization commands.
 - `--interact`: attach to a live agent session instead of a non-interactive run.
-- Non-interactive agent-backed commands stream readable output by default and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging. Pass `--no-stream-output` to disable the live terminal stream.
+- Non-interactive agent-backed commands stream readable output by default and append the same output to `helix-logs/<command>.show-output.log` under the workspace workdir for later debugging. Pass `--no-stream-output` to disable the live terminal stream.
 - `--verbose`: print additional diagnostics.
 - `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows. When passed explicitly, the CLI first checks non-interactive key-based SSH access and suggests `ssh-copy-id` if the target still needs password-based setup.
 - `--remote-workdir`: choose the remote working root.
@@ -823,20 +823,20 @@ These options appear on multiple commands:
 ## Optional Agent Hook Guard
 
 When `optimize` or `optimize-batch` launches with `--enable-agent-hooks` and a
-supported backend, `triton-agent` stages temporary workspace-local agent hooks
+supported backend, `helix` stages temporary workspace-local agent hooks
 before the agent starts. Agent hooks are disabled by default.
 
 For `--agent codex`, the staged files are:
 
 - `.codex/hooks.json`
-- `.codex/triton-agent-hooks/pretooluse_guard.py`
-- `.codex/triton-agent-hooks/tool_trace_hook.py`
-- `.codex/triton-agent-hooks/policy.json`
+- `.codex/helix-hooks/pretooluse_guard.py`
+- `.codex/helix-hooks/tool_trace_hook.py`
+- `.codex/helix-hooks/policy.json`
 
 For `--agent opencode`, the staged files are:
 
-- `.opencode/plugins/triton-agent-hook-guard.js`
-- `.opencode/triton-agent-hooks/policy.json`
+- `.opencode/plugins/helix-hook-guard.js`
+- `.opencode/helix-hooks/policy.json`
 
 The policy is rendered for the current workspace with separate `trace` and
 `guard` sections. `--log-tools` enables only `trace.enabled`; `--enable-agent-hooks`
@@ -868,9 +868,9 @@ Use `clean` when you want to remove known generated artifacts while keeping the
 original operator source file.
 
 ```bash
-uv run triton-agent clean --input .
-uv run triton-agent clean --input operators_root
-uv run triton-agent clean --input . --deep
+uv run helix clean --input .
+uv run helix clean --input operators_root
+uv run helix clean --input . --deep
 ```
 
 Behavior:
@@ -878,7 +878,7 @@ Behavior:
 - `--input` accepts one operator workspace directory or a batch root like `status`.
 - default cleanup removes known generated artifacts such as `triton_<op>.py`,
   `opt_<op>.py`, `*_result.pt`, `*_perf.txt`, `baseline/`, `opt-round-*`,
-  `opt-verify/`, `triton-agent-logs/`, `PROF_*`, and `extra-info.json`.
+  `opt-verify/`, `helix-logs/`, `PROF_*`, and `extra-info.json`.
 - default cleanup keeps the original operator source file plus reusable generated
   test and benchmark harnesses.
 - `--deep` also removes generated test and benchmark harnesses such as

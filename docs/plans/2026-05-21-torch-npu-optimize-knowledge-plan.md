@@ -24,8 +24,8 @@
 ## Task 2: Implement Target-Aware Skill Staging
 
 **Files:**
-- Modify: `src/triton_agent/skill_staging.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/skill_staging.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - Extend `resolve_staged_skills()` to accept `optimize_target`.
 - Keep the existing optimize-knowledge source remapping behavior for `triton-npu-optimize-knowledge`.
@@ -47,7 +47,7 @@
 ## Task 4: Update Optimize Guidance To Reference The New Skill Correctly
 
 **Files:**
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
 - Modify: `tests/test_generation_contracts.py`

@@ -4,7 +4,7 @@
 
 **Goal:** Replace `python_support` and hook-local shared Python copies with a standalone `hook_runtime` package that powers staged hooks, built plugins, and CLI reuse.
 
-**Architecture:** Create `src/hook_runtime/` as the source-of-truth runtime package, stage or build it as `hooks/hook_runtime/`, keep wrappers thin, and move hook-executed optimize bootstrap plus guard-policy logic behind that package. `hook_runtime` stays independent from `triton_agent`, while `triton_agent` delegates inward where needed.
+**Architecture:** Create `src/hook_runtime/` as the source-of-truth runtime package, stage or build it as `hooks/hook_runtime/`, keep wrappers thin, and move hook-executed optimize bootstrap plus guard-policy logic behind that package. `hook_runtime` stays independent from `helix`, while `helix` delegates inward where needed.
 
 **Tech Stack:** Python, pytest/unittest, existing hook wrappers, Claude plugin builder, optimize skill-script bridge.
 
@@ -51,7 +51,7 @@
 
 - [ ] Move shared PreToolUse support into `hook_runtime.pretooluse_adapter`.
 - [ ] Move Python tool-use decision logic into `hook_runtime.tool_use_decision`.
-- [ ] Add a self-contained skill loader that resolves skills from the runtime package root without importing `triton_agent`.
+- [ ] Add a self-contained skill loader that resolves skills from the runtime package root without importing `helix`.
 - [ ] Move optimize bootstrap and durable resume helpers into `hook_runtime.optimize.*`.
 - [ ] Keep runtime behavior identical to the current semantics around baseline relaxation and resume rebuild.
 - [ ] Re-run the direct runtime tests until they pass.
@@ -63,9 +63,9 @@
 - Modify: `hooks/codex/pretooluse_guard.py`
 - Modify: `hooks/claude_plugin/pretooluse_guard.py`
 - Modify: `hooks/claude_plugin/state_bootstrap.py`
-- Modify: `src/triton_agent/optimize/workflow_state.py`
-- Modify: `src/triton_agent/optimize/resume.py` only if delegation cleanup is needed
-- Modify: `src/triton_agent/skill_loader.py` only if shared helpers can now delegate safely
+- Modify: `src/helix/optimize/workflow_state.py`
+- Modify: `src/helix/optimize/resume.py` only if delegation cleanup is needed
+- Modify: `src/helix/skill_loader.py` only if shared helpers can now delegate safely
 
 - [ ] Simplify wrappers so they only bootstrap imports and delegate to `hook_runtime`.
 - [ ] Remove flat sibling helper loading from wrappers.
@@ -76,8 +76,8 @@
 ### Task 5: Update Staging And Plugin Build
 
 **Files:**
-- Modify: `src/triton_agent/backends/claude_hooks.py`
-- Modify: `src/triton_agent/backends/codex_hooks.py`
+- Modify: `src/helix/backends/claude_hooks.py`
+- Modify: `src/helix/backends/codex_hooks.py`
 - Modify: `scripts/build-claude-optimize-plugin.py`
 - Modify: `tests/test_claude_optimize_plugin.py`
 - Modify: `tests/test_agent_hooks.py`
@@ -90,8 +90,8 @@
 ### Task 6: Remove Old Fallbacks And Dead Runtime Paths
 
 **Files:**
-- Modify: `src/triton_agent/resources.py`
-- Modify: `src/triton_agent/skill_catalog.py`
+- Modify: `src/helix/resources.py`
+- Modify: `src/helix/skill_catalog.py`
 - Delete: `python_support/` contents if present in the repo
 - Modify: any tests that still mention `python_support` or flat shared helper copies
 

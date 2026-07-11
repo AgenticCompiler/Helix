@@ -25,9 +25,9 @@ The old `--max-concurrency` flag is removed rather than kept as an alias.
 For the affinity-aware batch commands:
 
 - `--concurrency 4` keeps the current numeric behavior.
-- `--concurrency max` resolves to `len(TRITON_AGENT_BATCH_NPU_DEVICES) * TRITON_AGENT_BATCH_WORKERS_PER_NPU`.
+- `--concurrency max` resolves to `len(HELIX_BATCH_NPU_DEVICES) * HELIX_BATCH_WORKERS_PER_NPU`.
 - when omitted, `--concurrency` defaults to `1`
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is unset, `--concurrency max` fails with a short actionable error because there is no defined device pool to expand.
+- If `HELIX_BATCH_NPU_DEVICES` is unset, `--concurrency max` fails with a short actionable error because there is no defined device pool to expand.
 - Numeric values must still be at least `1`.
 - Numeric values must still not exceed the effective batch affinity capacity when affinity is enabled.
 
@@ -41,7 +41,7 @@ For `log-check-batch`:
 
 ### CLI parsing
 
-Add two parser helpers in `src/triton_agent/cli.py`:
+Add two parser helpers in `src/helix/cli.py`:
 
 - one for numeric-or-`max` concurrency values
 - one for numeric-only concurrency values
@@ -55,13 +55,13 @@ This keeps downstream command handlers simple and avoids hand-parsing raw string
 
 ### Affinity-aware concurrency resolution
 
-Add a shared helper in `src/triton_agent/npu_affinity.py` that resolves the requested batch concurrency into a concrete integer for the three affinity-aware batch commands.
+Add a shared helper in `src/helix/npu_affinity.py` that resolves the requested batch concurrency into a concrete integer for the three affinity-aware batch commands.
 
 Resolution rules:
 
 1. integer input returns unchanged after the existing lower-bound and capacity checks
 2. `max` computes the effective capacity from the configured devices and workers-per-device
-3. `max` without `TRITON_AGENT_BATCH_NPU_DEVICES` raises a clear `ValueError`
+3. `max` without `HELIX_BATCH_NPU_DEVICES` raises a clear `ValueError`
 
 The existing capacity check remains the source of truth for numeric oversubscription.
 
@@ -85,8 +85,8 @@ This keeps the implementation small and avoids unnecessary churn in the executor
 ## Error Handling
 
 - `--concurrency 0` keeps failing with a short lower-bound error.
-- `--concurrency max` without `TRITON_AGENT_BATCH_NPU_DEVICES` fails before any workspace launch.
-- malformed `TRITON_AGENT_BATCH_WORKERS_PER_NPU` continues to fail through the existing parser.
+- `--concurrency max` without `HELIX_BATCH_NPU_DEVICES` fails before any workspace launch.
+- malformed `HELIX_BATCH_WORKERS_PER_NPU` continues to fail through the existing parser.
 - oversubscription errors should now reference `--concurrency` instead of `--max-concurrency`.
 
 ## Tests
@@ -97,5 +97,5 @@ Add or update focused coverage for:
 - parser acceptance of `--concurrency max` on affinity-aware batch commands
 - parser rejection of `--concurrency max` for `log-check-batch`
 - command-level resolution of `max` into effective capacity
-- failure when `max` is requested without `TRITON_AGENT_BATCH_NPU_DEVICES`
+- failure when `max` is requested without `HELIX_BATCH_NPU_DEVICES`
 - existing batch affinity capacity errors with the renamed flag text

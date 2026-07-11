@@ -15,8 +15,8 @@
   - `learned_lessons.md`
   - `baseline/`
   - `opt-round-*`
-  - `.triton-agent/`
-  - `triton-agent-logs/triton-agent/`
+  - `.helix/`
+  - `helix-logs/helix/`
   - default `opt_<operator>.py`
 - `--reset-optimize` does not delete reusable validation harnesses:
   - `test_<operator>.py`

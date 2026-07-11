@@ -4,9 +4,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Optional
 from unittest.mock import patch
 
@@ -14,6 +15,37 @@ from tests.run_skill_test_utils import load_compare_result_module, load_test_run
 
 _WARNING_LINE = "[WARNING] Please DO NOT tune args ['num_warps']!\n"
 _ANOTHER_WARNING_LINE = "[WARNING] autotune fallback was used\n"
+
+
+class _FakeTensor:
+    def __init__(self, value: str, device: str) -> None:
+        self.value = value
+        self.device = device
+
+    def detach(self) -> "_FakeTensor":
+        return self
+
+    def cpu(self) -> "_FakeTensor":
+        return _FakeTensor(self.value, "cpu")
+
+
+@contextmanager
+def _without_preloaded_modules(*names: str):
+    saved: dict[str, ModuleType] = {}
+    missing: set[str] = set()
+    for name in names:
+        module = sys.modules.pop(name, None)
+        if module is None:
+            missing.add(name)
+        else:
+            saved[name] = module
+    try:
+        yield
+    finally:
+        for name in missing:
+            sys.modules.pop(name, None)
+        for name, module in saved.items():
+            sys.modules[name] = module
 
 
 class LocalTestRunnerTests(unittest.TestCase):
@@ -66,8 +98,9 @@ class LocalTestRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             original_import = module.importlib.import_module
-            with patch.object(module.importlib, "import_module", side_effect=fake_import):
-                cases = module.load_differential_test_cases(test_file, operator)
+            with _without_preloaded_modules("torch", "torch_npu"):
+                with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                    cases = module.load_differential_test_cases(test_file, operator)
 
         self.assertEqual([case.case_id for case in cases], ["case-a"])
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
@@ -160,8 +193,9 @@ def main(operator_api):
                 encoding="utf-8",
             )
             original_import = module.importlib.import_module
-            with patch.object(module.importlib, "import_module", side_effect=fake_import):
-                result = module._run_import_only_standalone_test(test_file, operator, verbose=False)
+            with _without_preloaded_modules("torch", "torch_npu"):
+                with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                    result = module._run_import_only_standalone_test(test_file, operator, verbose=False)
 
         self.assertEqual(result["return_code"], 0)
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
@@ -243,7 +277,7 @@ def main(operator_api):
             with patch.dict(
                 module.os.environ,
                 {
-                    "TRITON_AGENT_DEBUG": "1",
+                    "HELIX_DEBUG": "1",
                     "ASCEND_RT_VISIBLE_DEVICES": "3",
                 },
                 clear=False,
@@ -257,7 +291,7 @@ def main(operator_api):
 
         self.assertEqual(result["return_code"], 0)
         self.assertIsNone(archived)
-        self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=3", stdout.getvalue())
+        self.assertIn("[HELIX_DEBUG] ASCEND_RT_VISIBLE_DEVICES=3", stdout.getvalue())
 
     def test_run_local_test_launches_worker_subprocess_and_reads_result_file(self) -> None:
         module = load_test_runner_module()
@@ -459,6 +493,31 @@ def build_differential_test_cases(operator_api):
         )
         self.assertFalse((root / "abs_result.pt").exists())
 
+    def test_serialize_payload_object_normalizes_tensor_payloads_to_cpu(self) -> None:
+        module = load_test_runner_module()
+        tensor = _FakeTensor("B", "npu:0")
+
+        def fake_import(name: str, package: Optional[str] = None):
+            del package
+            if name == "torch":
+                return SimpleNamespace(Tensor=_FakeTensor)
+            raise AssertionError(f"unexpected import: {name}")
+
+        with patch.object(module.importlib, "import_module", side_effect=fake_import):
+            serialized_payload = module._serialize_payload_object(
+                {
+                    "compute": True,
+                    "cases": [{"id": "case-b", "inputs": ("b",), "result": tensor}],
+                }
+            )
+
+        payload = module._deserialize_payload_object(serialized_payload)
+        result_tensor = payload["cases"][0]["result"]
+        self.assertIsInstance(result_tensor, _FakeTensor)
+        self.assertEqual(result_tensor.value, "B")
+        self.assertEqual(result_tensor.device, "cpu")
+        self.assertEqual(tensor.device, "npu:0")
+
     def test_run_local_test_imports_standalone_module_and_calls_main_with_operator_api(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -543,7 +602,7 @@ def main(operator_api):
         self.assertIsNone(archived)
         self.assertEqual(
             observed_env,
-            {"TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close"},
+            {"HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close"},
         )
 
     def test_run_local_test_reports_missing_differential_hooks_without_legacy_fallback(self) -> None:
@@ -798,6 +857,68 @@ def build_differential_test_cases(operator_api):
         )
         self.assertEqual(remote_workspace, "/tmp/remote")
 
+    def test_run_remote_test_case_payload_ignores_warning_lines_inside_payload_markers(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            serialized_payload = module._serialize_payload_object(
+                {
+                    "compute": True,
+                    "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
+                }
+            )
+            fake_result = {
+                "return_code": 0,
+                "stdout": (
+                    f"{module._SERIALIZED_PAYLOAD_BEGIN}\n"
+                    "Warning: torch.save with legacy tensor serialization emitted a notice\n"
+                    f"{serialized_payload}\n"
+                    f"{module._SERIALIZED_PAYLOAD_END}\n"
+                ),
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "copy_npu_compare_runtime_to_remote",
+            ), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=fake_result,
+            ), patch.object(
+                module,
+                "_copy_remote_differential_archive",
+                side_effect=AssertionError("remote archive copy should not run in case payload mode"),
+            ), patch.object(module, "cleanup_remote_workspace"):
+                result, payload, remote_workspace = module.run_remote_test_case_payload(
+                    test_file,
+                    operator,
+                    "user@host",
+                    None,
+                    case_id="case-b",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(result["stdout"], "")
+        self.assertEqual(
+            payload,
+            {
+                "compute": True,
+                "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
+            },
+        )
+        self.assertEqual(remote_workspace, "/tmp/remote")
+
     def test_run_remote_test_uses_shared_eval_timeout(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -828,8 +949,8 @@ def main(operator_api):
             with patch.dict(
                 module.os.environ,
                 {
-                    "TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "300",
-                    "TRITON_AGENT_TEST_TIMEOUT_SECONDS": "900",
+                    "HELIX_EVAL_TIMEOUT_SECONDS": "300",
+                    "HELIX_TEST_TIMEOUT_SECONDS": "900",
                 },
                 clear=False,
             ):
@@ -874,9 +995,9 @@ def main(operator_api):
             with patch.dict(
                 module.os.environ,
                 {
-                    "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
-                    "TRITON_AGENT_RUN_TEST_ATOL": "0",
-                    "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+                    "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                    "HELIX_RUN_TEST_ATOL": "0",
+                    "HELIX_RUN_TEST_RTOL": "0.01",
                 },
                 clear=False,
             ), patch.object(
@@ -903,9 +1024,9 @@ def main(operator_api):
             remote_run.call_args.kwargs["extra_env"],
             {
                 "TRITON_ALWAYS_COMPILE": "1",
-                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
-                "TRITON_AGENT_RUN_TEST_ATOL": "0",
-                "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+                "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                "HELIX_RUN_TEST_ATOL": "0",
+                "HELIX_RUN_TEST_RTOL": "0.01",
             },
         )
 

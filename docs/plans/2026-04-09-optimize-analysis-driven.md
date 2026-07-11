@@ -16,11 +16,11 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/prompts.py`
 
 - [ ] **Step 1: Write failing parser tests for `--require-analysis`**
 
@@ -63,12 +63,12 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/opencode.py`
-- Modify: `src/triton_agent/backends/claude.py`
-- Modify: `src/triton_agent/backends/pi.py`
+- Modify: `src/helix/optimize/guidance.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/opencode.py`
+- Modify: `src/helix/backends/claude.py`
+- Modify: `src/helix/backends/pi.py`
 
 - [ ] **Step 1: Write failing guidance tests**
 

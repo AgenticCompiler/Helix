@@ -30,7 +30,7 @@
   Repoint generic pattern reading to the sibling knowledge skill.
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
   Repoint symptom routing to the sibling knowledge skill.
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
   Mention the staged knowledge skill in optimize prompt and guidance text.
 - Modify: `tests/test_optimize_pattern_tools.py`
   Cover the new generator paths plus the symptom-index generator.
@@ -494,7 +494,7 @@ git commit -m "feat: add optimize knowledge symptom generator"
 **Files:**
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_generation_contracts.py`
@@ -556,9 +556,9 @@ uv run python -m unittest \
 
 Expected: FAIL because the prompt text and skill docs still point at the old owners.
 
-- [ ] **Step 3: Update `src/triton_agent/optimize/prompts.py` and both skill docs**
+- [ ] **Step 3: Update `src/helix/optimize/prompts.py` and both skill docs**
 
-Replace the relevant lines in `src/triton_agent/optimize/prompts.py`:
+Replace the relevant lines in `src/helix/optimize/prompts.py`:
 
 ```python
 def layered_analysis_lines(*, round_scope: str) -> list[str]:
@@ -619,7 +619,7 @@ Expected: PASS
 git add \
   skills/triton/triton-npu-optimize/SKILL.md \
   skills/triton-npu-analyze-round-performance/SKILL.md \
-  src/triton_agent/optimize/prompts.py \
+  src/helix/optimize/prompts.py \
   tests/test_cli.py \
   tests/test_optimize_guidance.py \
   tests/test_generation_contracts.py

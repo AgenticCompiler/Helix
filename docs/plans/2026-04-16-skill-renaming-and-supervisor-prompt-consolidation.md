@@ -27,8 +27,8 @@
 
 **Files:**
 - Delete: `skills/optimize-supervisor/SKILL.md`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] Expand `build_optimize_supervisor_prompt()` so it carries the audit-only rules still needed after skill deletion.
 - [ ] Remove the dedicated supervisor skill reference from optimize execution.
@@ -46,10 +46,10 @@
 - Move: `skills/common/ascend-npu-operator-profiler/` -> `skills/triton-npu-profile-operator/`
 - Move: `skills/ascend-operator-ir-analyzer/` -> `skills/triton-npu-analyze-ir/`
 - Move: `skills/triton-repair-experience/` -> `skills/triton/triton-npu-repair-guide/`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/skill_loader.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/skill_loader.py`
 
 - [ ] Rename the repository skill directories.
 - [ ] Update command-to-skill mappings and staged skill names.

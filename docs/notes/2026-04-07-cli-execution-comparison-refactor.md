@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Continue the thin-CLI refactor after the optimize extraction by moving the remaining execution and comparison command branches out of `src/triton_agent/cli.py`.
+- Continue the thin-CLI refactor after the optimize extraction by moving the remaining execution and comparison command branches out of `src/helix/cli.py`.
 - This phase covers:
   - `run-test`
   - `run-bench`
@@ -32,7 +32,7 @@
 Recommended additions for this phase:
 
 ```text
-src/triton_agent/
+src/helix/
   commands/
     optimize.py
     execution.py

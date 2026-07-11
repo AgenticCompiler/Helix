@@ -133,7 +133,7 @@ This is a purely internal helper change — callers that don't pass `summary` ge
 
 ### 5. Update the CLI check wrapper
 
-In `src/triton_agent/optimize/checks.py`:
+In `src/helix/optimize/checks.py`:
 
 ```python
 def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCheckResult:
@@ -234,7 +234,7 @@ Agent runs: check-round --round-dir opt-round-N --min-rounds M
 1. Add `summary` parameter to `_build_result()` (internal, no breaking change).
 2. Add `_count_round_directories()` helper and update `check_round()` in `optimize_check_contract.py`.
 3. Add `--min-rounds` argument to `check-round` subparser in `optimize_check.py`.
-4. Update `src/triton_agent/optimize/checks.py` to plumb `min_rounds` through.
+4. Update `src/helix/optimize/checks.py` to plumb `min_rounds` through.
 5. Update `build_optimize_unsupervised_prompt()` to include `--min-rounds` in check-round instruction.
 6. Update `skills/triton/triton-npu-optimize/SKILL.md` Stage 3 to document the `--min-rounds` flag.
 7. Run existing tests (`test_optimize_checks.py`) to verify no regression.

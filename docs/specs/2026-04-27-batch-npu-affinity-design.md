@@ -42,13 +42,13 @@ As a result, raising `--max-concurrency` on a multi-NPU machine can cause multip
 
 Introduce one opt-in environment variable:
 
-- `TRITON_AGENT_BATCH_NPU_DEVICES`
+- `HELIX_BATCH_NPU_DEVICES`
 
 Example:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1,2,3,4,5,6,7
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 8
+export HELIX_BATCH_NPU_DEVICES=0,1,2,3,4,5,6,7
+uv run helix optimize-batch --input operators_root --max-concurrency 8
 ```
 
 Semantics:
@@ -75,7 +75,7 @@ The design should also prepare the same mechanism for later reuse by any future 
 
 Add a shared batch-affinity layer that:
 
-1. Parses `TRITON_AGENT_BATCH_NPU_DEVICES`.
+1. Parses `HELIX_BATCH_NPU_DEVICES`.
 2. Creates a bounded device lease pool.
 3. Assigns one leased device to each runnable workspace when that workspace actually begins execution.
 4. Injects device-specific environment overrides into every local and remote process launched on behalf of that workspace.
@@ -154,7 +154,7 @@ This is required because local process environment does not automatically propag
 
 ### Shared affinity module
 
-Add a focused module such as `src/triton_agent/npu_affinity.py` that owns:
+Add a focused module such as `src/helix/npu_affinity.py` that owns:
 
 - env-var parsing
 - validation
@@ -200,7 +200,7 @@ Current verify-batch execution is serial. This design should not change that beh
 ## Failure Semantics
 
 - If affinity is disabled, commands behave exactly as they do today.
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is malformed, fail explicitly before launching any workspace tasks.
+- If `HELIX_BATCH_NPU_DEVICES` is malformed, fail explicitly before launching any workspace tasks.
 - If `--max-concurrency` exceeds configured device count while affinity is enabled, fail explicitly before launching any workspace tasks.
 - If one workspace run raises or returns failure, release its device lease and continue processing other workspaces using existing batch semantics.
 - Device release must happen even when request construction or execution throws unexpectedly after the lease is acquired.
@@ -217,19 +217,19 @@ This should be additive diagnostic output only. The standard non-verbose user-fa
 
 ## Files Expected To Change
 
-- `src/triton_agent/models.py`
+- `src/helix/models.py`
   - add per-request environment overrides
-- `src/triton_agent/npu_affinity.py`
+- `src/helix/npu_affinity.py`
   - new shared affinity parsing and lease logic
-- `src/triton_agent/process_runner.py`
+- `src/helix/process_runner.py`
   - accept explicit env overrides for subprocess launches
-- `src/triton_agent/backends/base.py`
+- `src/helix/backends/base.py`
   - pass request env overrides into process execution
-- `src/triton_agent/optimize/batch.py`
+- `src/helix/optimize/batch.py`
   - acquire and release device leases per workspace
-- `src/triton_agent/generation/batch.py`
+- `src/helix/generation/batch.py`
   - acquire and release device leases per workspace
-- `src/triton_agent/convert/batch.py`
+- `src/helix/convert/batch.py`
   - acquire and release device leases per workspace
 - `skills/triton-npu-run-eval/scripts/run_runtime.py`
   - add shared env override support for local and remote command execution
@@ -241,7 +241,7 @@ This should be additive diagnostic output only. The standard non-verbose user-fa
 
 Add or update tests for:
 
-1. Parsing a valid `TRITON_AGENT_BATCH_NPU_DEVICES` list.
+1. Parsing a valid `HELIX_BATCH_NPU_DEVICES` list.
 2. Rejecting empty, duplicate, or malformed device entries.
 3. Rejecting affinity-enabled runs where `--max-concurrency` exceeds device count.
 4. Assigning distinct devices to concurrently running batch workspaces.

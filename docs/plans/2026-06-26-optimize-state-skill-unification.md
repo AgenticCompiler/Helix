@@ -32,22 +32,22 @@
 - Create: `skills/common/ascend-npu-optimize-state/scripts/shared/results.py`
 - Create: `skills/common/ascend-npu-optimize-state/scripts/shared/round_naming.py`
 - Create: `skills/common/ascend-npu-optimize-state/scripts/shared/cli.py`
-- Modify: `src/triton_agent/skill_loader.py`
-- Modify: `src/triton_agent/skill_catalog.py`
-- Modify: `src/triton_agent/skill_staging.py`
-- Modify: `src/triton_agent/optimize/checks.py`
-- Modify: `src/triton_agent/optimize/contract.py`
-- Modify: `src/triton_agent/optimize/skill_contract.py`
-- Modify: `src/triton_agent/optimize/workflow_state.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/log_check/log_check_launcher.py`
-- Modify: `src/triton_agent/backends/claude_trace.py`
-- Modify: `src/triton_agent/backends/codex_trace.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/skill_loader.py`
+- Modify: `src/helix/skill_catalog.py`
+- Modify: `src/helix/skill_staging.py`
+- Modify: `src/helix/optimize/checks.py`
+- Modify: `src/helix/optimize/contract.py`
+- Modify: `src/helix/optimize/skill_contract.py`
+- Modify: `src/helix/optimize/workflow_state.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/log_check/log_check_launcher.py`
+- Modify: `src/helix/backends/claude_trace.py`
+- Modify: `src/helix/backends/codex_trace.py`
+- Modify: `src/helix/cli.py`
 - Modify: `hooks/codex/tool_trace_hook.py`
-- Modify: `hooks/opencode/triton-agent-hook-guard.js`
+- Modify: `hooks/opencode/helix-hook-guard.js`
 - Modify: `hooks/shared/tool_use_guard_policy.py`
 - Modify: `skills/common/ascend-npu-prepare-optimize-baseline/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
@@ -78,7 +78,7 @@
 
 **Files:**
 - Modify: `tests/test_run_skill_loader.py`
-- Modify: `src/triton_agent/skill_loader.py`
+- Modify: `src/helix/skill_loader.py`
 
 - [ ] **Step 1: Add a failing loader-path test for nested scripts**
 
@@ -231,10 +231,10 @@ Expected: PASS
 ### Task 3: Migrate runtime bridges and contract readers to the new skill
 
 **Files:**
-- Modify: `src/triton_agent/optimize/checks.py`
-- Modify: `src/triton_agent/optimize/contract.py`
-- Modify: `src/triton_agent/optimize/skill_contract.py`
-- Modify: `src/triton_agent/optimize/workflow_state.py`
+- Modify: `src/helix/optimize/checks.py`
+- Modify: `src/helix/optimize/contract.py`
+- Modify: `src/helix/optimize/skill_contract.py`
+- Modify: `src/helix/optimize/workflow_state.py`
 - Modify: `tests/test_optimize_baseline.py`
 - Modify: `tests/test_optimize_round_contract.py`
 - Modify: `tests/test_optimize_contract.py`
@@ -290,13 +290,13 @@ Expected: PASS
 ### Task 4: Migrate staging, prompt surfaces, and command-script coverage
 
 **Files:**
-- Modify: `src/triton_agent/skill_catalog.py`
-- Modify: `src/triton_agent/skill_staging.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/log_check/log_check_launcher.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/skill_catalog.py`
+- Modify: `src/helix/skill_staging.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/log_check/log_check_launcher.py`
+- Modify: `src/helix/cli.py`
 - Modify: `skills/common/ascend-npu-prepare-optimize-baseline/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/tilelang/tilelang-npu-optimize/SKILL.md`

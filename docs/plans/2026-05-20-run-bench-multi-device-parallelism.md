@@ -2,7 +2,7 @@
 
 **Goal:** Add an opt-in `run-bench --npu-devices ...` mode that executes benchmark cases concurrently across multiple Ascend NPU devices for both local and remote execution, while preserving current serial behavior when the option is omitted.
 
-**Architecture:** Keep the feature inside the run-eval skill runtime. Add a skill-local affinity helper instead of importing `src/triton_agent`, use process-isolated case workers so device assignment remains real and enforceable, isolate each parallel case in its own local or remote case workspace, and aggregate all per-case results back into the existing ordered perf artifact format. Reuse the same single-case execution logic in both serial and parallel paths, especially for standalone benchmarks.
+**Architecture:** Keep the feature inside the run-eval skill runtime. Add a skill-local affinity helper instead of importing `src/helix`, use process-isolated case workers so device assignment remains real and enforceable, isolate each parallel case in its own local or remote case workspace, and aggregate all per-case results back into the existing ordered perf artifact format. Reuse the same single-case execution logic in both serial and parallel paths, especially for standalone benchmarks.
 
 **Tech Stack:** Python 3, `argparse`, `unittest`, `concurrent.futures`, existing run-eval helper scripts, SSH-based remote execution helpers
 
@@ -15,7 +15,7 @@
 - Modify: `tests/test_bench_runner.py`
 
 - [ ] Add focused tests for parsing `--npu-devices` values, including whitespace trimming, numeric range expansion, empty-entry rejection, duplicate rejection, descending-range rejection, and malformed-range rejection.
-- [ ] Implement a skill-local parser and lease pool that mirrors the existing batch-affinity semantics without importing `triton_agent`.
+- [ ] Implement a skill-local parser and lease pool that mirrors the existing batch-affinity semantics without importing `helix`.
 - [ ] Keep the environment builder minimal and return only `{"ASCEND_RT_VISIBLE_DEVICES": device}`.
 - [ ] Run the focused affinity-related bench tests until they pass.
 

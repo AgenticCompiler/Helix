@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.optimize import handle_optimize, optimize_run_options_from_args
-from triton_agent.models import AgentResult
+from helix.cli import build_parser
+from helix.commands.optimize import handle_optimize, optimize_run_options_from_args
+from helix.models import AgentResult
 
 
 class OptimizeCommandHandlerTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result) as run_mock:
+            with patch("helix.commands.optimize.run_optimize_request", return_value=fake_result) as run_mock:
                 exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -192,7 +192,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
                 captured["workdir"] = request.workdir
                 return fake_result
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.commands.optimize.run_optimize_request", side_effect=_fake_run):
                 exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -208,9 +208,9 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
-                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
-                    with patch("triton_agent.commands.optimize.generate_workspace_report") as mock_report:
+            with patch("helix.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("helix.commands.optimize.upload_optimize_workspace") as mock_upload:
+                    with patch("helix.commands.optimize.generate_workspace_report") as mock_report:
                         exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -226,10 +226,10 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--enable-report"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
-                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+            with patch("helix.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("helix.commands.optimize.upload_optimize_workspace") as mock_upload:
                     with patch(
-                        "triton_agent.commands.optimize.generate_workspace_report",
+                        "helix.commands.optimize.generate_workspace_report",
                         return_value=(True, "report.md"),
                     ) as mock_report:
                         exit_code = handle_optimize(parser, args)
@@ -251,8 +251,8 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
             fake_result = AgentResult(return_code=1, stdout="", stderr="error")
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
-                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+            with patch("helix.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("helix.commands.optimize.upload_optimize_workspace") as mock_upload:
                     exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 1)
@@ -270,15 +270,15 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
-                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+            with patch("helix.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("helix.commands.optimize.upload_optimize_workspace") as mock_upload:
                     exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 0)
             mock_upload.assert_not_called()
 
     def test_upload_optimize_rejects_missing_input(self) -> None:
-        from triton_agent.commands.upload_optimize import handle_upload_optimize
+        from helix.commands.upload_optimize import handle_upload_optimize
         parser = build_parser()
         args = parser.parse_args(["upload-optimize", "-i", "/nonexistent/path"])
         with self.assertRaises(SystemExit) as exc:
@@ -288,8 +288,8 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
 class OptimizeUploadCommandHandlerTests(unittest.TestCase):
     def test_upload_optimize_success_calls_workflow(self) -> None:
-        from triton_agent.commands.upload_optimize import handle_upload_optimize
-        from triton_agent.optimize_upload.models import UploadResponse
+        from helix.commands.upload_optimize import handle_upload_optimize
+        from helix.optimize_upload.models import UploadResponse
 
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
@@ -307,7 +307,7 @@ class OptimizeUploadCommandHandlerTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.upload_optimize.upload_optimize_workspace",
+                "helix.commands.upload_optimize.upload_optimize_workspace",
                 return_value=expected_response,
             ) as mock_upload:
                 parser = build_parser()
@@ -317,7 +317,7 @@ class OptimizeUploadCommandHandlerTests(unittest.TestCase):
                 mock_upload.assert_called_once()
 
     def test_upload_optimize_failure_returns_nonzero(self) -> None:
-        from triton_agent.commands.upload_optimize import handle_upload_optimize
+        from helix.commands.upload_optimize import handle_upload_optimize
 
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp)
@@ -326,7 +326,7 @@ class OptimizeUploadCommandHandlerTests(unittest.TestCase):
             (ws / "baseline" / "state.json").write_text("{}", encoding="utf-8")
 
             with patch(
-                "triton_agent.commands.upload_optimize.upload_optimize_workspace",
+                "helix.commands.upload_optimize.upload_optimize_workspace",
                 side_effect=ValueError("upload failed"),
             ) as mock_upload:
                 parser = build_parser()
@@ -336,7 +336,7 @@ class OptimizeUploadCommandHandlerTests(unittest.TestCase):
                 mock_upload.assert_called_once()
 
     def test_upload_optimize_rejects_missing_input(self) -> None:
-        from triton_agent.commands.upload_optimize import handle_upload_optimize
+        from helix.commands.upload_optimize import handle_upload_optimize
 
         parser = build_parser()
         args = parser.parse_args(["upload-optimize", "-i", "/nonexistent/path"])

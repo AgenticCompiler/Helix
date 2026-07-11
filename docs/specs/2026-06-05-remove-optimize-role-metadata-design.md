@@ -38,7 +38,7 @@ The optimize runtime will continue to launch distinct baseline, round-batch, and
 
 ### Trace And Hooks
 
-- Remove `TRITON_AGENT_OTEL_ROLE`.
+- Remove `HELIX_OTEL_ROLE`.
 - Stop adding `role` to tool-trace env builders.
 - Stop writing `role` into runner trace events, backend JSON trace adapters, and hook-emitted trace records.
 - Remove `role` from backend hook policy structures.

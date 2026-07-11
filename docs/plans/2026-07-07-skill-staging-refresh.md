@@ -64,7 +64,7 @@ Expected: FAIL because the second `prepare_skills()` call leaves the staged `SKI
 ### Task 2: Implement Leaf-Directory Refresh In Staging
 
 **Files:**
-- Modify: `src/triton_agent/skills/staging.py`
+- Modify: `src/helix/skills/staging.py`
 - Test: `tests/test_skills.py`
 
 - [ ] **Step 1: Replace the skip-on-existing branch with leaf-directory refresh**
@@ -107,6 +107,6 @@ Expected: PASS
 
 - [ ] **Step 5: Run repository verification for the touched area**
 
-Run: `uv run --group dev ruff check src/triton_agent/skills/staging.py tests/test_skills.py`
+Run: `uv run --group dev ruff check src/helix/skills/staging.py tests/test_skills.py`
 
 Expected: PASS

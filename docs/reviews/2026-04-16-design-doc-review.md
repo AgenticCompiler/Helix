@@ -4,7 +4,7 @@
 > 审查范围: docs/ 目录下所有设计文档、计划文档、规格文档、bug 报告
 > 文档总数: ~110 份
 
-> **2026-04-17 复核说明:** 这份报告记录的是 2026-04-16 的一次性快照，不再代表当前完整状态。2026-04-17 已再次对照代码复核，并已批量修正文档中的 skill 名称、backend/runner 路径、`orchestration`/`run_loop` 命名漂移，以及若干硬编码本机路径。下面保留原始审查内容作为历史记录；凡仍保留旧名称、`--continue`、`.triton-agent/roles/*` 或 `skills/optimize-supervisor/` 的文档，优先把它们理解为历史设计/计划快照，而不是当前实现契约。
+> **2026-04-17 复核说明:** 这份报告记录的是 2026-04-16 的一次性快照，不再代表当前完整状态。2026-04-17 已再次对照代码复核，并已批量修正文档中的 skill 名称、backend/runner 路径、`orchestration`/`run_loop` 命名漂移，以及若干硬编码本机路径。下面保留原始审查内容作为历史记录；凡仍保留旧名称、`--continue`、`.helix/roles/*` 或 `skills/optimize-supervisor/` 的文档，优先把它们理解为历史设计/计划快照，而不是当前实现契约。
 
 ## 一、总体评估
 
@@ -43,16 +43,16 @@
 
 ### 2. 后端 Runner 模块已迁移到 `backends/` 包
 
-早期文档引用的顶层 runner 模块已全部移入 `src/triton_agent/backends/` 包：
+早期文档引用的顶层 runner 模块已全部移入 `src/helix/backends/` 包：
 
 | 旧路径 | 新路径 | 涉及文档数 |
 |---|---|---|
-| `src/triton_agent/agent.py` | (已删除) | ~5 |
-| `src/triton_agent/runner_factory.py` | `backends/factory.py` | ~3 |
-| `src/triton_agent/codex_runner.py` | `backends/codex.py` | ~8 |
-| `src/triton_agent/opencode_runner.py` | `backends/opencode.py` | ~5 |
-| `src/triton_agent/pi_runner.py` | `backends/pi.py` | ~5 |
-| `src/triton_agent/claude_runner.py` | `backends/claude.py` | ~4 |
+| `src/helix/agent.py` | (已删除) | ~5 |
+| `src/helix/runner_factory.py` | `backends/factory.py` | ~3 |
+| `src/helix/codex_runner.py` | `backends/codex.py` | ~8 |
+| `src/helix/opencode_runner.py` | `backends/opencode.py` | ~5 |
+| `src/helix/pi_runner.py` | `backends/pi.py` | ~5 |
+| `src/helix/claude_runner.py` | `backends/claude.py` | ~4 |
 
 ### 3. Optimize 模块重命名
 
@@ -71,9 +71,9 @@
 
 早期文档（2026-04-02 ~ 2026-04-07）引用 `--continue` 标志，已被 `--resume {auto,continue,fresh}` 取代。涉及约 5 份文档。
 
-### 5. `.triton-agent/roles/` 角色文件已不再使用
+### 5. `.helix/roles/` 角色文件已不再使用
 
-supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md` 和 `.triton-agent/roles/optimize-supervisor.md`，这些文件已不再创建，supervisor 行为已整合到 prompts 中。涉及约 5 份文档。
+supervisor round-gate 相关文档引用 `.helix/roles/optimize-worker.md` 和 `.helix/roles/optimize-supervisor.md`，这些文件已不再创建，supervisor 行为已整合到 prompts 中。涉及约 5 份文档。
 
 ### 6. `optimize-supervisor` skill 已删除
 
@@ -87,7 +87,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 
 | 文档 | 主题 | 状态 | 主要问题 |
 |---|---|---|---|
-| `2026-03-31-triton-agent-cli.md` | 原始 CLI 综合设计 | **过时** | 仅列出 5 个子命令（当前 11 个）；仅提及 codex 后端（当前 5 个）；描述 symlink 模式（已改为 copy）；引用旧 skill 名称 |
+| `2026-03-31-helix-cli.md` | 原始 CLI 综合设计 | **过时** | 仅列出 5 个子命令（当前 11 个）；仅提及 codex 后端（当前 5 个）；描述 symlink 模式（已改为 copy）；引用旧 skill 名称 |
 | `2026-03-31-opencode-backend.md` | 添加 opencode 后端 | **部分过时** | 称为"第二个后端"（当前 5 个）；核心实现描述仍准确 |
 | `2026-03-31-skill-command-script.md` | 添加 run-command.py 辅助脚本 | **路径过时** | 引用 `skills/run-validation/`（已改名为 `skills/triton-npu-run-eval/`） |
 | `2026-03-31-skill-link-idempotent-symlinks.md` | Skill symlink 幂等性 | **已取代** | 被 `skill-copy-staging.md` 取代，symlink 方案已废弃 |
@@ -104,7 +104,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-03-claude-backend.md` | Claude 后端 | **部分过时** | 称为"第四个后端"（当前 5 个）；未提及 openhands |
 | `2026-04-03-pi-backend.md` | Pi 后端 | **部分过时** | 称为"第三个后端"（当前 5 个） |
 | `2026-04-03-optimize-no-agent-session.md` | --no-agent-session | **不完整** | 未提及 Claude 的 `--no-session-persistence` |
-| `2026-04-07-cli-execution-comparison-refactor.md` | 执行/比较命令重构 | **部分过时** | 提议创建 `src/triton_agent/comparison.py`（从未创建）；比较逻辑后来被扁平化到 `commands/comparison.py` |
+| `2026-04-07-cli-execution-comparison-refactor.md` | 执行/比较命令重构 | **部分过时** | 提议创建 `src/helix/comparison.py`（从未创建）；比较逻辑后来被扁平化到 `commands/comparison.py` |
 | `2026-04-07-cli-optimize-refactor-layering.md` | Optimize 分层重构 | **多处过时** | 提议 `optimize/runtime.py`（已改名为 `orchestration.py`）；提议 `cli_parser.py`/`cli_dispatch.py`（未创建）；引用 `OptimizeSupervisor`（已改名） |
 | `2026-04-07-optimize-graceful-interrupt.md` | 优雅中断处理 | **类名/路径过时** | 引用 `OptimizeSupervisor`；引用顶层 runner 模块（已迁移到 `backends/`） |
 | `2026-04-07-optimize-status-subcommand.md` | optimize-status 子命令 | **部分过时** | Markdown 表格示例使用中文表头"名称"，与英文优先约定不一致 |
@@ -152,7 +152,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | 文档 | 主题 | 状态 | 主要问题 |
 |---|---|---|---|
 | `2026-04-02-optimize-continue-mode.md` | --continue 模式 | **已取代** | `--continue` 已被 `--resume` 取代 |
-| `2026-04-03-pi-backend.md` | Pi 后端 | **路径过时** | 引用 `src/triton_agent/pi_runner.py`（已迁移到 `backends/pi.py`） |
+| `2026-04-03-pi-backend.md` | Pi 后端 | **路径过时** | 引用 `src/helix/pi_runner.py`（已迁移到 `backends/pi.py`） |
 | `2026-04-03-remote-profiler-support.md` | 远程 profiler | **路径过时** | 引用 `skills/run-validation/`、`skills/common/ascend-npu-operator-profiler/`、`skills/optimize/`（均已改名） |
 | `2026-04-07-ascend-operator-ir-analyzer-skill.md` | IR 分析 skill | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名）；引用 `quick_validate.py` 硬编码路径 |
 | `2026-04-07-cli-optimize-refactor-layering.md` | Optimize 分层 | **多处过时** | 引用 `optimize/runtime.py`（已改名 `orchestration.py`）；引用 `OptimizeSupervisor`（已改名）；引用 `--continue`（已取代）；提议 `gate.py`（未创建） |
@@ -161,7 +161,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-08-ir-dir-flag-alignment.md` | --ir-dir 对齐 | **路径过时** | 同上 |
 | `2026-04-08-inspect-ir-ranking-and-change-scan.md` | IR 排名扫描 | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名） |
 | `2026-04-08-opt-note-overall-summary.md` | opt-note 摘要 | **路径过时** | 引用 `skills/optimize/references/`（已改名） |
-| `2026-04-09-gen-eval.md` | gen-eval 子命令 | **多处过时** | 引用 `src/triton_agent/agent.py`（已删除）；引用旧 skill 名称；引用扁平 runner 模块 |
+| `2026-04-09-gen-eval.md` | gen-eval 子命令 | **多处过时** | 引用 `src/helix/agent.py`（已删除）；引用旧 skill 名称；引用扁平 runner 模块 |
 | `2026-04-09-gen-eval-batch.md` | gen-eval-batch | **路径过时** | 引用 `generation_batch.py` 扁平模块（已重构为 `generation/batch.py`） |
 | `2026-04-09-generation-package-refactor.md` | Generation 包重构 | **部分过时** | 引用 `generation/runtime.py`（已改名为 `orchestration.py`） |
 | `2026-04-09-optimize-analysis-driven.md` | 分析驱动优化 | **路径过时** | 引用 `optimize/supervisor.py`（已改名）；引用旧 skill 名称；引用扁平 runner 模块 |
@@ -170,10 +170,10 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-09-optimize-status-perf-compat.md` | 状态 perf 兼容 | **路径过时** | 引用 `skills/operator-eval/`（已改名） |
 | `2026-04-09-compare-perf-speedup.md` | compare-perf 加速 | **路径过时** | 引用 `skills/operator-eval/`（已改名） |
 | `2026-04-09-backends-package-refactor.md` | 后端包重构 | **已实现** | 引用 `generation/runtime.py` 和 `optimize/runtime.py`（均已改名为 `orchestration.py`）；未提及 openhands |
-| `2026-04-10-optimize-supervisor-round-gate.md` | Supervisor round gate | **多处过时** | 引用 `optimize/gate.py`（未创建）；引用 `optimize/supervisor.py`（已改名）；引用 `skills/optimize-supervisor/`（已删除）；引用 `.triton-agent/roles/`（已废弃）；引用 `tests/test_optimize/guidance.py`（实际为 `tests/test_optimize_guidance.py`） |
+| `2026-04-10-optimize-supervisor-round-gate.md` | Supervisor round gate | **多处过时** | 引用 `optimize/gate.py`（未创建）；引用 `optimize/supervisor.py`（已改名）；引用 `skills/optimize-supervisor/`（已删除）；引用 `.helix/roles/`（已废弃）；引用 `tests/test_optimize/guidance.py`（实际为 `tests/test_optimize_guidance.py`） |
 | `2026-04-13-optimize-baseline-prep.md` | Baseline 准备 | **路径过时** | 引用 `optimize/gate.py`（未创建）；引用 `skills/optimize/`（已改名）；引用 `tests/test_optimize_gate.py`（不存在） |
 | `2026-04-13-optimize-compare-perf-authority.md` | compare-perf 权威性 | **路径过时** | 引用 `optimize/gate.py`（未创建）；引用 `tests/test_optimize/guidance.py`（路径错误）；引用 `tests/test_optimize_gate.py`（不存在） |
-| `2026-04-13-optimize-supervise-mode.md` | --supervise 模式 | **多处过时** | 引用 `optimize/runtime.py`（已改名）；引用 `optimize/supervisor.py`（已改名）；引用 `OptimizeSupervisor`（已改名）；引用 `.triton-agent/roles/`（已废弃） |
+| `2026-04-13-optimize-supervise-mode.md` | --supervise 模式 | **多处过时** | 引用 `optimize/runtime.py`（已改名）；引用 `optimize/supervisor.py`（已改名）；引用 `OptimizeSupervisor`（已改名）；引用 `.helix/roles/`（已废弃） |
 | `2026-04-13-optimize-supervised-log-archive.md` | 监督日志归档 | **路径过时** | 引用 `optimize/runtime.py`（已改名）；引用 `tests/test_optimize/guidance.py`（路径错误） |
 | `2026-04-14-optimize-check-loop.md` | optimize-check 循环 | **路径过时** | 引用 `optimize/runtime.py`（已改名）；引用 `optimize/supervisor.py`（已改名）；引用旧 skill 名称；引用 `skills/optimize-supervisor/`（已删除） |
 | `2026-04-14-optimize-user-prompt-plan.md` | --prompt 标志 | **路径过时** | 引用 `optimize/runtime.py`（已改名） |
@@ -212,17 +212,17 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-09-compare-perf-speedup-design.md` | compare-perf 加速 | **路径过时** | 引用 `operator-eval` skill（已改名） |
 | `2026-04-09-optimize-status-perf-compat-design.md` | Perf 兼容设计 | **路径过时** | 引用 `skills/operator-eval/`（已改名） |
 | `2026-04-09-optimize-analysis-driven-design.md` | 分析驱动设计 | **需验证** | `--require-analysis` 是否已实现需确认 |
-| `2026-04-10-optimize-supervisor-round-gate-design.md` | Supervisor round gate | **多处过时** | 有"Superseded"标注；引用 `.triton-agent/roles/*`（已废弃）；引用 `optimize-supervisor` skill（已删除）；引用 `optimize/supervisor.py`（已改名） |
-| `2026-04-13-optimize-supervise-mode-design.md` | --supervise 设计 | **部分过时** | 有"Superseded"标注；引用 `.triton-agent/roles/*`（已废弃）；函数名与实际实现不同 |
-| `2026-04-13-optimize-supervised-log-archive-design.md` | 日志归档设计 | **部分过时** | 有"Superseded"标注；引用 `.triton-agent/roles/*`（已废弃） |
+| `2026-04-10-optimize-supervisor-round-gate-design.md` | Supervisor round gate | **多处过时** | 有"Superseded"标注；引用 `.helix/roles/*`（已废弃）；引用 `optimize-supervisor` skill（已删除）；引用 `optimize/supervisor.py`（已改名） |
+| `2026-04-13-optimize-supervise-mode-design.md` | --supervise 设计 | **部分过时** | 有"Superseded"标注；引用 `.helix/roles/*`（已废弃）；函数名与实际实现不同 |
+| `2026-04-13-optimize-supervised-log-archive-design.md` | 日志归档设计 | **部分过时** | 有"Superseded"标注；引用 `.helix/roles/*`（已废弃） |
 | `2026-04-13-optimize-compare-perf-authority-design.md` | compare-perf 权威设计 | **未实现** | `perf_summary_source` 字段在当前代码中不存在 |
 | `2026-04-13-capture-ir-local-python-design.md` | IR 捕获本地 Python | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名） |
 | `2026-04-13-profile-bench-local-python-design.md` | Profile bench 本地 Python | **路径过时** | 引用 `skills/operator-eval/`（已改名） |
-| `2026-04-13-cli-backend-dedup-refactor-design.md` | 后端去重设计 | **部分过时** | 引用 `triton_agent.comparison`（已删除）；引用 `triton_agent.test_runner`/`bench_runner`（已删除） |
+| `2026-04-13-cli-backend-dedup-refactor-design.md` | 后端去重设计 | **部分过时** | 引用 `helix.comparison`（已删除）；引用 `helix.test_runner`/`bench_runner`（已删除） |
 | `2026-04-14-optimize-check-loop-design.md` | optimize-check 设计 | **路径过时** | 引用旧 skill 名称 `optimize-check`（已改名 `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`） |
 | `2026-04-14-optimize-reset-design.md` | --reset-optimize 设计 | **需验证** | `--reset-optimize` 是否已实现需确认 |
 | `2026-04-14-optimize-user-prompt-design.md` | --prompt 设计 | **需验证** | `--prompt` 是否已实现需确认 |
-| `2026-04-15-comparison-skill-wrapper-flattening-design.md` | 比较 skill 扁平化 | **路径过时** | 引用 `skills/operator-eval/`（已改名）；引用 `src/triton_agent/test_runner.py`/`bench_runner.py` 作为"不重构"目标（已删除） |
+| `2026-04-15-comparison-skill-wrapper-flattening-design.md` | 比较 skill 扁平化 | **路径过时** | 引用 `skills/operator-eval/`（已改名）；引用 `src/helix/test_runner.py`/`bench_runner.py` 作为"不重构"目标（已删除） |
 | `2026-04-15-optimize-runtime-split-design.md` | 运行时拆分设计 | **类名过时** | 引用 `OptimizeController`/`SupervisedRoundRunner`/`RunnerWithStreams`（均已改名） |
 | `2026-04-16-optimize-round-performance-analysis-skill-design.md` | 性能分析 skill | **未实现** | `triton-npu-analyze-round-performance` skill 目录不存在；`perf_analysis_path` 字段不存在 |
 | `2026-04-16-repair-skill-merge-design.md` | Repair skill 合并 | **已实现** | 无明显问题 |

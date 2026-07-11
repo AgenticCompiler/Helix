@@ -40,7 +40,7 @@ explicitly recorded or must be inferred from code changes.
 ### Integration: Prompt-only change
 
 Add check-10 to the `build_log_check_prompt()` function in
-`src/triton_agent/log_check/log_check_launcher.py`. The code agent launched by
+`src/helix/log_check/log_check_launcher.py`. The code agent launched by
 `log-check` already has:
 
 - The operator workspace as its working directory (`opt-round-N/`, `baseline/`).
@@ -88,7 +88,7 @@ Added after check-9 in the prompt string:
 
 One file modified:
 
-### `src/triton_agent/log_check/log_check_launcher.py`
+### `src/helix/log_check/log_check_launcher.py`
 
 - `build_log_check_prompt()`: Insert check-10 section between check-9 and the output format
   requirements block.

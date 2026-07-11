@@ -9,7 +9,7 @@
 
 - Reduce the size and branching complexity of `run_optimize_request()`.
 - Make the supervised and unsupervised optimize lifecycles readable in isolation.
-- Keep the `triton_agent -> skills` dependency direction unchanged.
+- Keep the `helix -> skills` dependency direction unchanged.
 
 ## Non-Goals
 

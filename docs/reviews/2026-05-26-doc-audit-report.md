@@ -42,7 +42,7 @@ Reviewed all documentation against current codebase state. Found and fixed **3 c
 
 These documents already had superseded/historical notices — verified as correct:
 
-- `docs/notes/2026-03-31-triton-agent-cli.md` — superseded notice present
+- `docs/notes/2026-03-31-helix-cli.md` — superseded notice present
 - `docs/notes/2026-04-07-cli-optimize-refactor-layering.md` — "Superseded note" present
 - `docs/specs/2026-04-10-optimize-supervisor-round-gate-design.md` — superseded notice present
 - `docs/specs/2026-04-13-optimize-supervise-mode-design.md` — superseded note present
@@ -70,5 +70,5 @@ The following categories of documents are intentionally kept as historical snaps
 
 ## Remaining Suggestions (not fixed)
 
-1. **Most early specs and plans** reference old module paths (e.g., `src/triton_agent/supervisor.py`, `src/triton_agent/runtime.py`) that no longer exist. The Apr 16 review already identified these. These docs are intentionally preserved as historical design records; updating every path reference would lose the historical context.
+1. **Most early specs and plans** reference old module paths (e.g., `src/helix/supervisor.py`, `src/helix/runtime.py`) that no longer exist. The Apr 16 review already identified these. These docs are intentionally preserved as historical design records; updating every path reference would lose the historical context.
 2. **Some very old plans** (Mar 31 – Apr 3) reference `superpowers:subagent-driven-development` (now `subagent-driven-development` without the `superpowers:` prefix). These are execution instructions for agentic workers; updating them is unnecessary since the plans are completed.

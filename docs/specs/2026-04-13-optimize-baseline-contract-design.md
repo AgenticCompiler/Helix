@@ -12,12 +12,12 @@ Capture the canonical baseline artifact semantics described in `docs/specs/2026-
 
 ## Data Modeling
 
-- **`BaselineState` dataclass**: mirrors the required `state.json` keys (`baseline_kind`, `source_operator`, `baseline_operator`, `test_file`, `test_mode`, `bench_file`, `bench_mode`, `perf_artifact`, `correctness_status`, `benchmark_status`, `baseline_established`) plus optional notes fields. This struct will live in `src/triton_agent/optimize/models.py` so the rest of the optimizer can rehydrate it.
+- **`BaselineState` dataclass**: mirrors the required `state.json` keys (`baseline_kind`, `source_operator`, `baseline_operator`, `test_file`, `test_mode`, `bench_file`, `bench_mode`, `perf_artifact`, `correctness_status`, `benchmark_status`, `baseline_established`) plus optional notes fields. This struct will live in `src/helix/optimize/models.py` so the rest of the optimizer can rehydrate it.
 - **`BaselineArtifactsInspection` dataclass**: holds the resolved paths (workspace baseline dir, `state.json`, canonical perf artifact, operator snapshot) plus the parsed `BaselineState`.
 
 ## Validation Helpers
 
-`src/triton_agent/optimize/baseline.py` will contain helpers such as:
+`src/helix/optimize/baseline.py` will contain helpers such as:
 
 - `baseline_dir(workspace: Path) -> Path`
 - `load_baseline_state(workspace: Path) -> BaselineState`: opens `baseline/state.json`, enforces object schema, required fields, and that `baseline_established` is truthy.

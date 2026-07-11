@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Improve `triton-agent --help` so it reads like a navigation page instead of a flat command dump.
+- Improve `helix --help` so it reads like a navigation page instead of a flat command dump.
 - Keep the implementation in the Python standard library by extending the existing `argparse` setup.
 - Add short help text for every subcommand and append grouped command guidance plus examples to the top-level help output.
 
@@ -20,7 +20,7 @@
 
 ## Proposed Behavior
 
-- Top-level help should use a shorter usage line: `triton-agent [-h] COMMAND ...`.
+- Top-level help should use a shorter usage line: `helix [-h] COMMAND ...`.
 - Top-level help should include:
   - a one-line description of the CLI
   - the existing subcommand list with one-line summaries
@@ -28,7 +28,7 @@
   - a short examples section
 - Subcommand help should include:
   - a one-line summary in the parent command list
-  - a longer description on `triton-agent <command> --help`
+  - a longer description on `helix <command> --help`
 
 ## Implementation Notes
 

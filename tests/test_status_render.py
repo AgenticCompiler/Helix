@@ -7,9 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.status.render as status_render
-from triton_agent.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
-from triton_agent.status.render import render_optimize_status_results
+import helix.status.render as status_render
+from helix.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
+from helix.status.render import render_optimize_status_results
 
 
 class _TTYStringIO(StringIO):

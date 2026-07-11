@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.traecli import TraeCLIRunner
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.prompts import build_prompt
+from helix.backends.traecli import TraeCLIRunner
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.prompts import build_prompt
 
 
 class TraeCLIRunnerTests(unittest.TestCase):
@@ -103,7 +103,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -128,7 +128,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             stderr = StringIO()
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
+            with patch("helix.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
             self.assertIn("[command]", stderr.getvalue())
@@ -167,7 +167,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
                 min_rounds=3,
                 round_mode="checked",
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]

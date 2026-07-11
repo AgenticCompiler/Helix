@@ -30,8 +30,8 @@
 
 - Files:
   - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
-  - Modify: `src/triton_agent/optimize/execution.py`
-  - Modify: `src/triton_agent/optimize/prompts.py`
+  - Modify: `src/helix/optimize/execution.py`
+  - Modify: `src/helix/optimize/prompts.py`
 
 - [ ] Update optimize-check pass summaries for the “must continue” path.
 - [ ] Update CLI follow-up summaries to expose `Next round`.

@@ -16,7 +16,7 @@ Remote examples:
 
 ```bash
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id> --remote user@host:2222
-python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py profile-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --case-id <id> --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py profile-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --case-id <id> --remote user@host:2222 --remote-workdir /tmp/helix --keep-remote-workdir
 ```
 
 Use `profile-report` to re-summarize an existing `PROF_*` directory without re-running the benchmark:

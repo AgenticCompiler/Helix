@@ -8,9 +8,9 @@
 
 ## User-Visible Behavior
 
-- `uv run triton-agent optimize --input <operator.py> --resume auto` is the default entrypoint.
-- `uv run triton-agent optimize --input <operator.py> --resume continue` requires an existing optimize session.
-- `uv run triton-agent optimize --input <operator.py> --resume fresh` requires a clean optimize workspace.
+- `uv run helix optimize --input <operator.py> --resume auto` is the default entrypoint.
+- `uv run helix optimize --input <operator.py> --resume continue` requires an existing optimize session.
+- `uv run helix optimize --input <operator.py> --resume fresh` requires a clean optimize workspace.
 - A resumable optimize session requires:
   - `opt-note.md` in the operator workspace
   - at least one `opt-round-*` directory in the operator workspace

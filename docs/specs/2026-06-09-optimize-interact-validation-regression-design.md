@@ -2,7 +2,7 @@
 
 ## Goal
 
-Restore `triton-agent optimize --interact` for supported backends.
+Restore `helix optimize --interact` for supported backends.
 
 ## Problem
 
@@ -12,8 +12,8 @@ This blocks previously supported interactive optimize usage even for single-work
 
 ## User-Visible Behavior
 
-- `triton-agent optimize --interact ...` should be accepted for supported backends.
-- `triton-agent optimize --agent openhands --interact ...` should remain rejected.
+- `helix optimize --interact ...` should be accepted for supported backends.
+- `helix optimize --agent openhands --interact ...` should remain rejected.
 - `optimize-batch` remains non-interactive.
 
 ## Implementation Notes

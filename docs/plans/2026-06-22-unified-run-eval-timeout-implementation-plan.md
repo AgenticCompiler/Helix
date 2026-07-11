@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Unify `run-test` and `run-bench` on `TRITON_AGENT_EVAL_TIMEOUT_SECONDS`, make the default idle timeout `300` seconds, and add real timeout enforcement for local `run-test`.
+**Goal:** Unify `run-test` and `run-bench` on `HELIX_EVAL_TIMEOUT_SECONDS`, make the default idle timeout `300` seconds, and add real timeout enforcement for local `run-test`.
 
 **Architecture:** Keep the skill-side runtime self-contained. Route local `run-test` through a worker subprocess launched by `test_runner.py` itself, persist the worker result into a result file, and reuse the existing eval subprocess helpers for timeout enforcement. Update the shared eval timeout helper, then remove the duplicate test/bench timeout knobs from runtime code, help text, and docs.
 
@@ -101,7 +101,7 @@ def test_run_local_test_reads_archived_result_path_from_worker_payload(self) -> 
     self.assertEqual(archived, archived_path)
 ```
 
-- [ ] **Step 3: Add a failing runtime-helper test that proves `TRITON_AGENT_EVAL_TIMEOUT_SECONDS=0` disables stall termination**
+- [ ] **Step 3: Add a failing runtime-helper test that proves `HELIX_EVAL_TIMEOUT_SECONDS=0` disables stall termination**
 
 ```python
 def test_run_runtime_buffered_zero_timeout_disables_stall_termination(self) -> None:
@@ -159,7 +159,7 @@ def test_run_runtime_streaming_pty_zero_timeout_disables_stall_termination(self)
 ```python
 def test_eval_timeout_env_rejects_negative_values(self) -> None:
     module = load_operator_eval_script_module("run_runtime")
-    with patch.dict(module.os.environ, {"TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
+    with patch.dict(module.os.environ, {"HELIX_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
         with self.assertRaises(ValueError):
             module.eval_stall_timeout_seconds()
 ```
@@ -168,9 +168,9 @@ def test_eval_timeout_env_rejects_negative_values(self) -> None:
 
 ```python
 self.assertEqual(stall_timeout_seconds, 300)
-self.assertIn("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", help_text)
-self.assertNotIn("TRITON_AGENT_TEST_TIMEOUT_SECONDS", help_text)
-self.assertNotIn("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", help_text)
+self.assertIn("HELIX_EVAL_TIMEOUT_SECONDS", help_text)
+self.assertNotIn("HELIX_TEST_TIMEOUT_SECONDS", help_text)
+self.assertNotIn("HELIX_BENCH_TIMEOUT_SECONDS", help_text)
 ```
 
 - [ ] **Step 7: Run focused tests to confirm the new expectations fail before implementation**
@@ -188,7 +188,7 @@ Expected: FAIL on missing local worker protocol, old `900` assertions, missing s
 
 ```python
 def eval_stall_timeout_seconds() -> int:
-    return env_int("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", 300)
+    return env_int("HELIX_EVAL_TIMEOUT_SECONDS", 300)
 
 elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
     process.terminate()
@@ -329,7 +329,7 @@ Expected: PASS for worker invocation, payload decoding, archived-result propagat
 ### Task 4: Remove old timeout knobs from help and docs
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Modify: `README.md`
 - Modify: `tests/test_cli.py`
 
@@ -337,7 +337,7 @@ Expected: PASS for worker invocation, payload decoding, archived-result propagat
 
 ```python
 (
-    "TRITON_AGENT_EVAL_TIMEOUT_SECONDS",
+    "HELIX_EVAL_TIMEOUT_SECONDS",
     "Stall timeout in seconds for run-test and run-bench execution (default: 300).",
 ),
 ```
@@ -345,7 +345,7 @@ Expected: PASS for worker invocation, payload decoding, archived-result propagat
 - [ ] **Step 2: Add the shared timeout row to the existing README environment-variable table under the runtime variables section**
 
 ```md
-| `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default: `300`. Set `0` to disable stall termination. |
+| `HELIX_EVAL_TIMEOUT_SECONDS` | No | `run-test`, `run-bench` | Idle stall timeout in seconds for local and remote eval subprocess execution. Default: `300`. Set `0` to disable stall termination. |
 ```
 
 - [ ] **Step 3: Run the CLI help and focused regression tests**

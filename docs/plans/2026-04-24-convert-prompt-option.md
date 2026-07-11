@@ -15,10 +15,10 @@
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_convert_commands.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/models.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/models.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/convert/orchestration.py`
 
 - [ ] **Step 1: Write the failing parser and orchestration tests**
 
@@ -127,7 +127,7 @@ Expected: PASS for all three tests.
 
 **Files:**
 - Modify: `tests/test_convert_commands.py`
-- Modify: `src/triton_agent/convert/batch.py` only if batch execution needs prompt-specific handling beyond request construction
+- Modify: `src/helix/convert/batch.py` only if batch execution needs prompt-specific handling beyond request construction
 
 - [ ] **Step 1: Write the failing batch propagation test**
 

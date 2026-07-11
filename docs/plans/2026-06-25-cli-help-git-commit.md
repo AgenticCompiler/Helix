@@ -7,13 +7,13 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `src/triton_agent/build_info.py` | CREATE | Runtime resolver: source checkout detection, embedded metadata loading, display formatting |
-| `src/triton_agent/_setuptools_hooks.py` | CREATE | Setuptools `build_py` + `sdist` overrides that generate `_build_meta.json` |
+| `src/helix/build_info.py` | CREATE | Runtime resolver: source checkout detection, embedded metadata loading, display formatting |
+| `src/helix/_setuptools_hooks.py` | CREATE | Setuptools `build_py` + `sdist` overrides that generate `_build_meta.json` |
 | `pyproject.toml` | MODIFY | Register build command overrides via `[tool.setuptools.cmdclass]` |
-| `packaging/triton-agent.spec` | MODIFY | Include `_build_meta.json` in PyInstaller `a.datas` |
+| `packaging/helix.spec` | MODIFY | Include `_build_meta.json` in PyInstaller `a.datas` |
 | `scripts/build-pyinstaller.py` | MODIFY | Generate `_build_meta.json` into source tree before invoking PyInstaller |
 | `.gitignore` | MODIFY | Ignore generated `_build_meta.json` to prevent accidental commits |
-| `src/triton_agent/cli.py` | MODIFY | Add "Build info:" section to top-level epilog |
+| `src/helix/cli.py` | MODIFY | Add "Build info:" section to top-level epilog |
 | `tests/test_build_info.py` | CREATE | Unit tests for resolver logic |
 | `tests/test_cli.py` | MODIFY | Assert Build info section in help output |
 
@@ -21,7 +21,7 @@
 
 ### T1 — Create `build_info.py` module
 
-File: `src/triton_agent/build_info.py`
+File: `src/helix/build_info.py`
 
 Functions:
 - `_resolve_source_checkout_commit() -> str | None`: walk up from `__file__` looking for `.git` (dir or worktree file), then run `git rev-parse HEAD`. Return `None` on any failure.
@@ -46,14 +46,14 @@ Coverage:
 
 ### T3 — CLI integration
 
-File: `src/triton_agent/cli.py`
+File: `src/helix/cli.py`
 
 - Import `get_build_info_display` from `build_info`
 - In `_build_top_level_epilog()`, prepend a "Build info:" section before "Command groups:":
 
 ```python
 def _build_top_level_epilog() -> str:
-    from triton_agent.build_info import get_build_info_display
+    from helix.build_info import get_build_info_display
     lines = ["Build info:"]
     lines.append(f"  Git commit: {get_build_info_display()}")
     lines.append("")
@@ -71,10 +71,10 @@ File: `tests/test_cli.py`
 
 ### T5 — Setuptools build command override
 
-File: `src/triton_agent/_setuptools_hooks.py`
+File: `src/helix/_setuptools_hooks.py`
 
 - Define `BuildPyWithMeta` that overrides `setuptools.command.build_py.build_py`
-- `run()`: resolve commit (env var → git fallback → "unknown"), write `_build_meta.json` to `build_lib/triton_agent/`, then call `super().run()`
+- `run()`: resolve commit (env var → git fallback → "unknown"), write `_build_meta.json` to `build_lib/helix/`, then call `super().run()`
 - Define `SdistWithMeta` that overrides `setuptools.command.sdist.sdist`
 - `make_distribution()`: generate metadata into source tree before packaging (same resolve logic), call `super().make_distribution()`
 
@@ -82,8 +82,8 @@ File: `pyproject.toml`
 
 ```toml
 [tool.setuptools.cmdclass]
-build_py = "triton_agent._setuptools_hooks:BuildPyWithMeta"
-sdist = "triton_agent._setuptools_hooks:SdistWithMeta"
+build_py = "helix._setuptools_hooks:BuildPyWithMeta"
+sdist = "helix._setuptools_hooks:SdistWithMeta"
 ```
 
 ### T6 — PyInstaller integration
@@ -92,25 +92,25 @@ File: `scripts/build-pyinstaller.py`
 
 - Before calling `run_command(["pyinstaller", ...])`, run metadata generation:
   - Resolve commit (env var → git → "unknown")
-  - Write `src/triton_agent/_build_meta.json`
+  - Write `src/helix/_build_meta.json`
   - Add cleanup (optional, since .gitignored)
 
-File: `packaging/triton-agent.spec`
+File: `packaging/helix.spec`
 
 - After `collect_skills()`, add metadata tuple:
 ```python
-meta_path = ROOT / "src" / "triton_agent" / "_build_meta.json"
+meta_path = ROOT / "src" / "helix" / "_build_meta.json"
 if meta_path.is_file():
-    datas.append((str(meta_path), "triton_agent"))
+    datas.append((str(meta_path), "helix"))
 ```
 
 ### T7 — `.gitignore`
 
-Append `src/triton_agent/_build_meta.json` to `.gitignore`.
+Append `src/helix/_build_meta.json` to `.gitignore`.
 
 ### T8 — Full verification
 
 - `uv run --group dev ruff check`
 - `uv run pyright`
 - `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_build_info.py tests/test_cli.py`
-- Manual: `uv run python -m triton_agent.cli --help` shows Build info section
+- Manual: `uv run python -m helix.cli --help` shows Build info section

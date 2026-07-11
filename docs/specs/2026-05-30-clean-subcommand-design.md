@@ -30,10 +30,10 @@ By default the command preserves the original operator source file plus reusable
 Run:
 
 ```bash
-uv run triton-agent clean --input .
-uv run triton-agent clean --input operators_root
-uv run triton-agent clean --input . --deep
-uv run triton-agent clean --input operators_root --deep
+uv run helix clean --input .
+uv run helix clean --input operators_root
+uv run helix clean --input . --deep
+uv run helix clean --input operators_root --deep
 ```
 
 `--input` accepts:
@@ -84,8 +84,8 @@ For each workspace, default cleanup removes these known generated artifacts when
 - `baseline/`
 - `opt-round-*`
 - `opt-verify/`
-- `.triton-agent/`
-- `triton-agent-logs/`
+- `.helix/`
+- `helix-logs/`
 - `opt-note.md`
 - `learned_lessons.md`
 - `report.md`
@@ -138,7 +138,7 @@ Return codes:
 
 - Add `CommandKind.CLEAN`.
 - Register `clean` in the top-level CLI parser with `--input`, `--verbose`, and `--deep`.
-- Implement the command handler in a new `src/triton_agent/commands/clean.py`.
+- Implement the command handler in a new `src/helix/commands/clean.py`.
 - Add a focused cleanup module to hold artifact discovery and deletion logic so the command handler stays thin.
 - Reuse existing optimize workspace candidate resolution rather than duplicating operator-file rules.
 - Reuse `status`-style workspace-or-batch-root detection semantics, but base single-workspace detection on cleanable workspace signals instead of optimize-only signals so a directory that only contains `triton_<op>.py` or `PROF_*` can still be cleaned directly.

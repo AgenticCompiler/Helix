@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prevent the temporary optimize workflow state file `.triton-agent/state.json` from being exposed to code agents through runtime-owned surfaces.
+Prevent the temporary optimize workflow state file `.helix/state.json` from being exposed to code agents through runtime-owned surfaces.
 
 ## Scope
 
@@ -18,22 +18,22 @@ This change does not rewrite historical human-authored design or plan documents 
 
 ## Design
 
-Treat `.triton-agent/state.json` as runner-private state rather than agent-visible workspace context.
+Treat `.helix/state.json` as runner-private state rather than agent-visible workspace context.
 
 1. Prompt redaction:
    Remove the concrete workflow-state path from the rendered phase summary. The prompt should still describe the current phase, active round, and baseline status because the agent needs that guidance, but it should not learn the backing filename.
 
 2. Tool-result redaction:
-   Replace agent-facing workflow-state recovery text that currently names `.triton-agent/state.json` with generic wording such as "temporary optimize workflow state" or "runner-managed workflow state."
+   Replace agent-facing workflow-state recovery text that currently names `.helix/state.json` with generic wording such as "temporary optimize workflow state" or "runner-managed workflow state."
 
 3. Read protection:
-   Expand the read-deny policy so agents cannot inspect runner-managed hidden runtime files that would reveal the protected state path indirectly. This includes the live `.triton-agent/` runtime tree and staged hook internals in backend-specific hidden directories.
+   Expand the read-deny policy so agents cannot inspect runner-managed hidden runtime files that would reveal the protected state path indirectly. This includes the live `.helix/` runtime tree and staged hook internals in backend-specific hidden directories.
 
 4. Workflow helper sanitization:
    Ensure workflow helper exceptions and optimize submit/start script payloads do not echo the protected path back in their `issues` or `guideline` fields.
 
 5. Visible agent-authored handoff files:
-   Files that the agent is expected to read or write should not live under the hidden runner-managed `.triton-agent/` tree. The supervisor handoff report should therefore use a top-level `supervisor-report.md` path while `.triton-agent/` remains reserved for runner-private state such as workflow tracking and history snapshots.
+   Files that the agent is expected to read or write should not live under the hidden runner-managed `.helix/` tree. The supervisor handoff report should therefore use a top-level `supervisor-report.md` path while `.helix/` remains reserved for runner-private state such as workflow tracking and history snapshots.
 
 ## Non-Goals
 

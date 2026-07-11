@@ -39,8 +39,8 @@ Expected assertions:
 - [ ] **Step 3: Add env-var fallback coverage**
 
 Add one test that sets:
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=abc`
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=-1`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=abc`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=-1`
 
 Expected assertions:
 - `decision == "pass"`
@@ -63,14 +63,14 @@ Expected:
 - Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/local_optimum_check.py`
 - Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 - Reference: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/prompts.py`
 
 - [ ] **Step 1: Add the helper module**
 
 Implement a focused helper that:
 - loads `perf_artifacts.py` from the sibling `triton-npu-run-eval` skill
-- parses `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` and `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`
+- parses `HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` and `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`
 - walks recent `opt-round-*` directories up to the current round
 - computes baseline-relative geomean speedup per round under a normalized metric basis
 - returns advisory warnings only, never gate failures

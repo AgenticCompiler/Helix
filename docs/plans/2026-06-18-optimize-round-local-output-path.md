@@ -13,10 +13,10 @@
 ### Task 1: Lock The Prompt Contract With Failing Tests
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_cli.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_cli.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_cli.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_cli.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Add a failing shared-prompt test for optimize output suppression**
 
@@ -57,14 +57,14 @@ Expected: FAIL because optimize prompts still include a generic requested output
 ### Task 2: Remove Root-Level Output Hints From Optimize Prompts
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/prompts.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/prompts.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_cli.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/prompts.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/prompts.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_cli.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Stop the shared prompt builder from printing requested output for optimize**
 
-Narrow the shared prompt output line in `src/triton_agent/prompts.py` from:
+Narrow the shared prompt output line in `src/helix/prompts.py` from:
 
 ```python
 if output_path is not None and command_kind != CommandKind.GEN_EVAL:
@@ -80,7 +80,7 @@ if output_path is not None and command_kind not in {CommandKind.GEN_EVAL, Comman
 
 - [ ] **Step 2: Stop the optimize baseline prompt from printing requested output**
 
-Remove the baseline-prompt-only line in `src/triton_agent/optimize/prompts.py`:
+Remove the baseline-prompt-only line in `src/helix/optimize/prompts.py`:
 
 ```python
 if output_path is not None:

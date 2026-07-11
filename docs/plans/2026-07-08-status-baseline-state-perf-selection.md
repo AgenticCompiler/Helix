@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `triton-agent status` trust `baseline/state.json` `perf_artifact`
+**Goal:** Make `helix status` trust `baseline/state.json` `perf_artifact`
 before any legacy baseline perf scanning so canonical baseline state wins over
 directory ambiguity.
 
-**Architecture:** Keep the change local to `src/triton_agent/status/core.py`.
+**Architecture:** Keep the change local to `src/helix/status/core.py`.
 Write the regression tests first in `tests/test_status.py`, then add a small
 baseline-state resolution helper that uses the shared baseline loader and
 preserves the existing legacy fallback path only when state is missing or
@@ -20,7 +20,7 @@ unusable.
 
 - Modify: `tests/test_status.py`
   Add regression coverage for state-declared baseline perf selection.
-- Modify: `src/triton_agent/status/core.py`
+- Modify: `src/helix/status/core.py`
   Add the minimal baseline-state-first selection logic.
 - Verify: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_status.py -k baseline`
   Prove the red-green cycle on the touched behavior.
@@ -92,7 +92,7 @@ state-declared `perf_artifact`.
 ### Task 2: Implement the minimal baseline-state-first selector
 
 **Files:**
-- Modify: `src/triton_agent/status/core.py`
+- Modify: `src/helix/status/core.py`
 - Test: `tests/test_status.py`
 
 - [ ] **Step 1: Add a small helper that resolves `baseline/state.json` `perf_artifact`**
@@ -165,8 +165,8 @@ Expected: PASS
 Run:
 
 ```bash
-uv run --group dev ruff check src/triton_agent/status/core.py tests/test_status.py
-uv run pyright src/triton_agent/status/core.py tests/test_status.py
+uv run --group dev ruff check src/helix/status/core.py tests/test_status.py
+uv run pyright src/helix/status/core.py tests/test_status.py
 ```
 
 Expected: PASS

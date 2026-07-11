@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `--npu-devices` and `--workers-per-npu` as first-class batch-affinity CLI options, keep the legacy `TRITON_AGENT_BATCH_*` variables as parser-level fallback, and pass normalized values explicitly into managed and standalone run-eval MCP startup.
+**Goal:** Add `--npu-devices` and `--workers-per-npu` as first-class batch-affinity CLI options, keep the legacy `HELIX_BATCH_*` variables as parser-level fallback, and pass normalized values explicitly into managed and standalone run-eval MCP startup.
 
 **Architecture:** Normalize batch-affinity inputs once in the CLI layer with `option > env`, then thread those explicit values through command option models, batch-affinity helpers, and managed MCP startup. Keep standalone `run-eval-mcp-server` executable-style behavior by letting MCP startup helpers accept explicit values but fall back to environment variables when omitted.
 
@@ -13,7 +13,7 @@
 ### Task 1: Add parser coverage for new CLI options and compatibility fallback
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
@@ -64,12 +64,12 @@ def test_main_prefers_explicit_batch_affinity_options_over_legacy_env(self) -> N
         patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+                "HELIX_BATCH_NPU_DEVICES": "4,5",
+                "HELIX_BATCH_WORKERS_PER_NPU": "9",
             },
             clear=False,
         ),
-        patch("triton_agent.cli.handle_optimize_batch", side_effect=_fake_handle_optimize_batch),
+        patch("helix.cli.handle_optimize_batch", side_effect=_fake_handle_optimize_batch),
     ):
         exit_code = main(
             [
@@ -101,12 +101,12 @@ def test_main_uses_legacy_env_when_batch_affinity_options_are_omitted(self) -> N
         patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=False,
         ),
-        patch("triton_agent.cli.handle_optimize_batch", side_effect=_fake_handle_optimize_batch),
+        patch("helix.cli.handle_optimize_batch", side_effect=_fake_handle_optimize_batch),
     ):
         exit_code = main(["optimize-batch", "-i", "kernels"])
 
@@ -132,9 +132,9 @@ def _normalize_batch_affinity_args(args: argparse.Namespace) -> None:
     if not hasattr(args, "npu_devices"):
         return
     if getattr(args, "npu_devices", None) is None:
-        args.npu_devices = os.environ.get("TRITON_AGENT_BATCH_NPU_DEVICES")
+        args.npu_devices = os.environ.get("HELIX_BATCH_NPU_DEVICES")
     if hasattr(args, "workers_per_npu") and getattr(args, "workers_per_npu", None) is None:
-        args.workers_per_npu = os.environ.get("TRITON_AGENT_BATCH_WORKERS_PER_NPU")
+        args.workers_per_npu = os.environ.get("HELIX_BATCH_WORKERS_PER_NPU")
 ```
 
 ```python
@@ -161,20 +161,20 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/cli.py tests/test_cli.py
+git add src/helix/cli.py tests/test_cli.py
 git commit -m "feat: add batch affinity cli option parsing"
 ```
 
 ### Task 2: Refactor batch-affinity helpers to accept explicit values
 
 **Files:**
-- Modify: `src/triton_agent/batch/affinity.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/generation/models.py`
-- Modify: `src/triton_agent/convert/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/batch/affinity.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/generation/models.py`
+- Modify: `src/helix/convert/models.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_npu_affinity.py`
 
 - [ ] **Step 1: Write the failing helper tests for explicit raw inputs**
@@ -200,7 +200,7 @@ def test_resolve_batch_concurrency_expands_max_from_explicit_inputs(self) -> Non
 
 
 def test_validate_capacity_uses_explicit_workers_value(self) -> None:
-    with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+    with self.assertRaisesRegex(ValueError, "HELIX_BATCH_WORKERS_PER_NPU"):
         validate_batch_affinity_capacity(("0", "1"), max_concurrency=5, workers_per_npu_raw="2")
 ```
 
@@ -273,13 +273,13 @@ Expected: PASS.
 
 ```bash
 git add \
-  src/triton_agent/batch/affinity.py \
-  src/triton_agent/commands/generation.py \
-  src/triton_agent/commands/convert.py \
-  src/triton_agent/commands/optimize.py \
-  src/triton_agent/generation/models.py \
-  src/triton_agent/convert/models.py \
-  src/triton_agent/optimize/models.py \
+  src/helix/batch/affinity.py \
+  src/helix/commands/generation.py \
+  src/helix/commands/convert.py \
+  src/helix/commands/optimize.py \
+  src/helix/generation/models.py \
+  src/helix/convert/models.py \
+  src/helix/optimize/models.py \
   tests/test_npu_affinity.py
 git commit -m "feat: thread explicit batch affinity options"
 ```
@@ -287,14 +287,14 @@ git commit -m "feat: thread explicit batch affinity options"
 ### Task 3: Pass normalized batch-affinity values into managed MCP startup
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/eval/mcp.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/claude.py`
-- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/eval/mcp.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/claude.py`
+- Modify: `src/helix/backends/opencode.py`
 - Test: `tests/test_cli.py`
 - Test: backend-managed-MCP tests if present
 
@@ -303,7 +303,7 @@ git commit -m "feat: thread explicit batch affinity options"
 ```python
 def test_handle_run_eval_mcp_server_passes_explicit_batch_affinity_values(self) -> None:
     args = SimpleNamespace(port=1234, npu_devices="0,1", workers_per_npu="2")
-    with patch("triton_agent.commands.mcp_server.serve_http_server_forever", return_value=0) as mocked:
+    with patch("helix.commands.mcp_server.serve_http_server_forever", return_value=0) as mocked:
         exit_code = handle_run_eval_mcp_server(argparse.ArgumentParser(), args)
     self.assertEqual(exit_code, 0)
     mocked.assert_called_once_with(port=1234, npu_devices="0,1", workers_per_npu="2")
@@ -406,15 +406,15 @@ Expected: PASS.
 
 ```bash
 git add \
-  src/triton_agent/models.py \
-  src/triton_agent/generation/orchestration.py \
-  src/triton_agent/convert/orchestration.py \
-  src/triton_agent/optimize/orchestration.py \
-  src/triton_agent/eval/mcp.py \
-  src/triton_agent/backends/codex.py \
-  src/triton_agent/backends/claude.py \
-  src/triton_agent/backends/opencode.py \
-  src/triton_agent/commands/mcp_server.py \
+  src/helix/models.py \
+  src/helix/generation/orchestration.py \
+  src/helix/convert/orchestration.py \
+  src/helix/optimize/orchestration.py \
+  src/helix/eval/mcp.py \
+  src/helix/backends/codex.py \
+  src/helix/backends/claude.py \
+  src/helix/backends/opencode.py \
+  src/helix/commands/mcp_server.py \
   tests/test_cli.py
 git commit -m "feat: pass batch affinity config into managed mcp"
 ```
@@ -422,8 +422,8 @@ git commit -m "feat: pass batch affinity config into managed mcp"
 ### Task 4: Update run-eval MCP server startup to prefer explicit args and fall back to env
 
 **Files:**
-- Modify: `src/triton_agent/eval/mcp_server.py`
-- Modify: `src/triton_agent/commands/mcp_server.py`
+- Modify: `src/helix/eval/mcp_server.py`
+- Modify: `src/helix/commands/mcp_server.py`
 - Test: `tests/test_run_eval_mcp_server.py`
 
 - [ ] **Step 1: Write the failing startup tests**
@@ -433,8 +433,8 @@ def test_configured_slot_pool_uses_explicit_devices_over_env(self) -> None:
     with patch.dict(
         os.environ,
         {
-            "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
-            "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+            "HELIX_BATCH_NPU_DEVICES": "4,5",
+            "HELIX_BATCH_WORKERS_PER_NPU": "9",
         },
         clear=False,
     ):
@@ -453,8 +453,8 @@ def test_configured_slot_pool_falls_back_to_env_when_args_omitted(self) -> None:
     with patch.dict(
         os.environ,
         {
-            "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-            "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+            "HELIX_BATCH_NPU_DEVICES": "0,1",
+            "HELIX_BATCH_WORKERS_PER_NPU": "3",
         },
         clear=False,
     ):
@@ -489,14 +489,14 @@ def configured_slot_pool(
 ) -> NpuDevicePool:
     raw_devices = npu_devices
     if raw_devices is None:
-        raw_devices = os.environ.get("TRITON_AGENT_BATCH_NPU_DEVICES")
+        raw_devices = os.environ.get("HELIX_BATCH_NPU_DEVICES")
     normalized_devices = raw_devices.strip() if raw_devices is not None else ""
     devices = parse_batch_npu_devices(normalized_devices or "0")
     if devices is None:
         raise ValueError("Managed run-eval MCP server resolved no NPU devices.")
     raw_workers = workers_per_npu
     if raw_workers is None:
-        raw_workers = os.environ.get("TRITON_AGENT_BATCH_WORKERS_PER_NPU")
+        raw_workers = os.environ.get("HELIX_BATCH_WORKERS_PER_NPU")
     parsed_workers = parse_batch_workers_per_npu(
         raw_workers if raw_workers and raw_workers.strip() else None
     )
@@ -531,7 +531,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/eval/mcp_server.py src/triton_agent/commands/mcp_server.py tests/test_run_eval_mcp_server.py
+git add src/helix/eval/mcp_server.py src/helix/commands/mcp_server.py tests/test_run_eval_mcp_server.py
 git commit -m "feat: support explicit batch affinity for run-eval mcp startup"
 ```
 
@@ -539,15 +539,15 @@ git commit -m "feat: support explicit batch affinity for run-eval mcp startup"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Test: repository verification commands
 
 - [ ] **Step 1: Update help and README text to make CLI options primary**
 
 ```markdown
 - Prefer `--npu-devices` and `--workers-per-npu` for new invocations.
-- Legacy `TRITON_AGENT_BATCH_NPU_DEVICES` and
-  `TRITON_AGENT_BATCH_WORKERS_PER_NPU` remain supported as compatibility fallback.
+- Legacy `HELIX_BATCH_NPU_DEVICES` and
+  `HELIX_BATCH_WORKERS_PER_NPU` remain supported as compatibility fallback.
 - Explicit CLI options override legacy environment variables.
 - Managed run-eval MCP continues to ignore workers-per-npu for runtime device leasing.
 ```
@@ -591,6 +591,6 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md src/triton_agent/cli.py
+git add README.md src/helix/cli.py
 git commit -m "docs: describe batch affinity cli options"
 ```

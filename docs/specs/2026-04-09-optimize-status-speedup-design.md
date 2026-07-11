@@ -60,11 +60,11 @@
 ## Implementation Shape
 
 - Extend `OptimizeStatusRound` and `OptimizeStatusWorkspace` with speedup fields.
-- Add helpers in `src/triton_agent/optimize/status.py` for:
+- Add helpers in `src/helix/optimize/status.py` for:
   - average improvement
   - geomean speedup
   - total speedup
-- Update `src/triton_agent/optimize/render.py` to print the new metrics.
+- Update `src/helix/optimize/render.py` to print the new metrics.
 - Update optimize guidance and reference docs so `opt-note.md` and round summaries use the same terminology.
 
 ## Testing

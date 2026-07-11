@@ -14,12 +14,12 @@
 
 **Files:**
 - Create: `src/hook_runtime/optimize/compiler_source.py`
-- Modify: `src/triton_agent/optimize/compiler_source.py`
+- Modify: `src/helix/optimize/compiler_source.py`
 - Test: `tests/test_compiler_source.py`
 
 - [ ] Add a failing assertion that the existing CLI import still clones missing checkouts through the shared module.
 - [ ] Implement `hook_runtime.optimize.compiler_source` with the current constants, dataclass, default path resolution, clone, validation, and commit inspection.
-- [ ] Replace `triton_agent.optimize.compiler_source` with a compatibility import facade.
+- [ ] Replace `helix.optimize.compiler_source` with a compatibility import facade.
 - [ ] Run `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_compiler_source.py`.
 
 ### Task 2: Plugin SessionStart Provisioning
@@ -31,7 +31,7 @@
 
 - [ ] Add a failing unit test that `bootstrap_runtime_state(workspace, run_git=fake)` clones the missing default checkout and returns additional compiler-source context.
 - [ ] Add a failing unit test that a provisioning failure returns additional context instead of raising.
-- [ ] Implement compiler-source bootstrap in `state_bootstrap.py`, with an environment override for tests and emergency disable: `TRITON_AGENT_CLAUDE_PLUGIN_COMPILER_SOURCE=off`.
+- [ ] Implement compiler-source bootstrap in `state_bootstrap.py`, with an environment override for tests and emergency disable: `HELIX_CLAUDE_PLUGIN_COMPILER_SOURCE=off`.
 - [ ] Keep workflow-state diagnostics intact when both workflow and compiler-source messages are present.
 - [ ] Run `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_claude_optimize_plugin_hooks.py`.
 

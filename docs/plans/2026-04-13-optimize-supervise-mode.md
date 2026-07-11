@@ -19,17 +19,17 @@
 
 **Existing files to modify**
 
-- `src/triton_agent/cli.py`
+- `src/helix/cli.py`
   Add `--supervise` to `optimize` and `optimize-batch`.
-- `src/triton_agent/commands/optimize.py`
+- `src/helix/commands/optimize.py`
   Parse supervise mode into `OptimizeRunOptions`.
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   Extend `OptimizeRunOptions` with the supervise setting.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/orchestration.py`
   Split optimize execution into unsupervised versus supervised paths while sharing setup and cleanup.
-- `src/triton_agent/optimize/run_loop.py`
+- `src/helix/optimize/run_loop.py`
   Reuse the existing recovery loop for the unsupervised path without changing supervised semantics.
-- `src/triton_agent/optimize/batch.py`
+- `src/helix/optimize/batch.py`
   Keep batch routing unchanged except for passing the selected supervise mode through request construction.
 - `tests/test_cli.py`
   Add parser and command-behavior tests for the new option.
@@ -41,9 +41,9 @@
 ## Task 1: Add The Supervise Option To Optimize Models And CLI
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
@@ -97,14 +97,14 @@ Expected: PASS
 - [ ] **Step 5: Commit the CLI contract change**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py tests/test_cli.py
+git add src/helix/cli.py src/helix/commands/optimize.py src/helix/optimize/models.py tests/test_cli.py
 git commit -m "feat: add optimize supervise mode option"
 ```
 
 ## Task 2: Split Optimize Runtime Into Unsupervised And Supervised Paths
 
 **Files:**
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write the failing runtime-path tests**
@@ -158,15 +158,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the runtime split**
 
 ```bash
-git add src/triton_agent/optimize/orchestration.py tests/test_optimize_runtime.py
+git add src/helix/optimize/orchestration.py tests/test_optimize_runtime.py
 git commit -m "feat: split optimize supervised and unsupervised runtime paths"
 ```
 
 ## Task 3: Keep Guidance Rendering Scoped To Supervised Mode
 
 **Files:**
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 - Test: `tests/test_optimize/guidance.py`
 
@@ -178,7 +178,7 @@ Add tests that lock the filesystem behavior:
 def test_unsupervised_optimize_does_not_prepare_role_briefs(self) -> None:
     request = make_request(supervise="off")
     run_optimize_request(request)
-    self.assertFalse((workdir / ".triton-agent" / "roles").exists())
+    self.assertFalse((workdir / ".helix" / "roles").exists())
 
 def test_supervised_optimize_prepares_role_briefs(self) -> None:
     request = make_request(supervise="on")
@@ -196,7 +196,7 @@ Expected: FAIL because runtime currently always prepares the supervised guidance
 For `supervise="off"`:
 
 - skip `OptimizeGuidanceManager.prepare()`
-- skip `.triton-agent/roles/`
+- skip `.helix/roles/`
 - skip `round-brief.md` and `supervisor-report.md`
 - keep only the preparation required by the original single-agent optimize path
 
@@ -215,15 +215,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance split**
 
 ```bash
-git add src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_optimize/guidance.py
+git add src/helix/optimize/orchestration.py src/helix/optimize/guidance.py tests/test_optimize_runtime.py tests/test_optimize/guidance.py
 git commit -m "feat: scope optimize guidance to supervised mode"
 ```
 
 ## Task 4: Preserve Legacy Recovery Semantics For Unsupervised Optimize
 
 **Files:**
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Test: `tests/test_supervisor.py`
 - Test: `tests/test_optimize_runtime.py`
 
@@ -272,14 +272,14 @@ Expected: PASS
 - [ ] **Step 5: Commit the compatibility restoration**
 
 ```bash
-git add src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_runtime.py
+git add src/helix/optimize/run_loop.py src/helix/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_runtime.py
 git commit -m "feat: restore legacy optimize flow when supervision is off"
 ```
 
 ## Task 5: Pass Supervise Mode Through Batch Optimize
 
 **Files:**
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/optimize/batch.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_runtime.py`
 
@@ -314,7 +314,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the batch propagation**
 
 ```bash
-git add src/triton_agent/optimize/batch.py tests/test_cli.py tests/test_optimize_runtime.py
+git add src/helix/optimize/batch.py tests/test_cli.py tests/test_optimize_runtime.py
 git commit -m "feat: thread supervise mode through batch optimize"
 ```
 
@@ -330,9 +330,9 @@ git commit -m "feat: thread supervise mode through batch optimize"
 Add or update tests where helpful so docs and behavior stay aligned, then update README examples:
 
 ```bash
-uv run triton-agent optimize --input operator.py
-uv run triton-agent optimize --input operator.py --supervise on
-uv run triton-agent optimize-batch --input operators_root --supervise on
+uv run helix optimize --input operator.py
+uv run helix optimize --input operator.py --supervise on
+uv run helix optimize-batch --input operators_root --supervise on
 ```
 
 Make the default explicit in prose: ordinary optimize is unsupervised unless `--supervise on` is passed.

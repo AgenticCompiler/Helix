@@ -12,11 +12,11 @@
 
 ## File Structure
 
-- `src/triton_agent/optimize/prompts.py`
+- `src/helix/optimize/prompts.py`
   Owns the checked/supervised worker prompt contract. This is the primary place to tell the agent that one worker-owned round gets one code-changing optimization attempt.
-- `src/triton_agent/optimize/memory_file.py`
+- `src/helix/optimize/memory_file.py`
   Owns the temporary `AGENTS.md` / `CLAUDE.md` guidance injected into optimize workspaces. This must mirror the worker prompt so backend differences do not reopen same-round iteration.
-- `src/triton_agent/optimize/execution.py`
+- `src/helix/optimize/execution.py`
   Owns the CLI-generated follow-up prompt when a later invocation needs to repair prior batch issues. This wording must forbid reusing an already-benchmarked round for a second optimization attempt.
 - `skills/triton/triton-npu-optimize/SKILL.md`
   Owns the human-readable optimize workflow contract. It must define a round as one attempt plus canonical validation.
@@ -39,7 +39,7 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 
 - [ ] **Step 1: Extend the existing worker prompt test with the one-attempt assertions**
 
@@ -92,7 +92,7 @@ Expected: FAIL because `build_optimize_round_prompt()` does not yet mention the 
 
 - [ ] **Step 3: Add the minimal worker-prompt lines in `build_optimize_round_prompt()`**
 
-Update `src/triton_agent/optimize/prompts.py` so the leading `lines` list in `build_optimize_round_prompt()` becomes:
+Update `src/helix/optimize/prompts.py` so the leading `lines` list in `build_optimize_round_prompt()` becomes:
 
 ```python
 lines = [
@@ -122,7 +122,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the prompt-only change**
 
 ```bash
-git add tests/test_cli.py src/triton_agent/optimize/prompts.py
+git add tests/test_cli.py src/helix/optimize/prompts.py
 git commit -m "fix: constrain optimize worker prompt to one attempt per round"
 ```
 
@@ -131,8 +131,8 @@ git commit -m "fix: constrain optimize worker prompt to one attempt per round"
 **Files:**
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] **Step 1: Extend the checked-session guidance test with the same one-attempt assertions**
 
@@ -187,7 +187,7 @@ Expected: FAIL because neither the temporary guidance file nor the repair follow
 
 - [ ] **Step 4: Add the one-attempt wording to the round-loop guidance template**
 
-Update `_ROUND_GATED_GUIDANCE_TEMPLATE` in `src/triton_agent/optimize/memory_file.py` so the static text block includes:
+Update `_ROUND_GATED_GUIDANCE_TEMPLATE` in `src/helix/optimize/memory_file.py` so the static text block includes:
 
 ```python
 This workspace is under an optimize round loop.
@@ -198,7 +198,7 @@ If the result is slower, inconclusive, or not worth promoting, move the next opt
 
 - [ ] **Step 5: Narrow the CLI repair follow-up wording**
 
-Update `_request_with_fresh_batch_prompt()` in `src/triton_agent/optimize/execution.py` so `repair_lines` becomes:
+Update `_request_with_fresh_batch_prompt()` in `src/helix/optimize/execution.py` so `repair_lines` becomes:
 
 ```python
 repair_lines = [
@@ -228,7 +228,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit the orchestration-guidance change**
 
 ```bash
-git add tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/triton_agent/optimize/memory_file.py src/triton_agent/optimize/execution.py
+git add tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/helix/optimize/memory_file.py src/helix/optimize/execution.py
 git commit -m "fix: keep optimize follow-up prompts round-bounded"
 ```
 
@@ -369,9 +369,9 @@ git commit -m "docs: align optimize round contract with single-attempt rule"
 - Verify: `tests/test_optimize_runtime.py`
 - Verify: `tests/test_generation_contracts.py`
 - Verify: `tests/test_skill_command_script.py`
-- Verify: `src/triton_agent/optimize/prompts.py`
-- Verify: `src/triton_agent/optimize/memory_file.py`
-- Verify: `src/triton_agent/optimize/execution.py`
+- Verify: `src/helix/optimize/prompts.py`
+- Verify: `src/helix/optimize/memory_file.py`
+- Verify: `src/helix/optimize/execution.py`
 - Verify: `skills/common/ascend-npu-optimize-state/scripts/state_manage/start_round.py`
 - Verify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Verify: `skills/triton/triton-npu-optimize/references/round-failure-handling.md`

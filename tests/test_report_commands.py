@@ -7,23 +7,23 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.report import handle_report
-from triton_agent.report.workspace import build_hardware_info_text
-from triton_agent.commands.report_batch import handle_report_batch
-from triton_agent.models import AgentResult
+from helix.cli import build_parser
+from helix.commands.report import handle_report
+from helix.report.workspace import build_hardware_info_text
+from helix.commands.report_batch import handle_report_batch
+from helix.models import AgentResult
 
 
 class ReportCommandHandlerTests(unittest.TestCase):
     def test_build_hardware_info_text_omits_target_chip(self) -> None:
-        with patch("triton_agent.report.hardware.capture_hardware_info", return_value={}):
+        with patch("helix.report.hardware.capture_hardware_info", return_value={}):
             text = build_hardware_info_text()
 
         self.assertEqual(text, "")
 
     def test_build_hardware_info_text_queries_hardware_without_target_chip_argument(self) -> None:
         with patch(
-            "triton_agent.report.hardware.capture_hardware_info",
+            "helix.report.hardware.capture_hardware_info",
             return_value={"chip_name": "Ascend 910B"},
         ) as mocked:
             text = build_hardware_info_text()
@@ -44,26 +44,26 @@ class ReportCommandHandlerTests(unittest.TestCase):
 
             fake_runner = SimpleNamespace(run=_fake_run)
 
-            with patch("triton_agent.commands.report.build_prompt", return_value="Prompt body"):
+            with patch("helix.commands.report.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.report.hardware.capture_hardware_info",
+                    "helix.report.hardware.capture_hardware_info",
                     return_value={
                         "chip_name": "Ascend 910B",
                         "cann_version": "8.1.RC1",
                         "driver_version": "24.1",
                     },
                 ):
-                    with patch("triton_agent.commands.report.create_runner", return_value=fake_runner):
-                        with patch("triton_agent.commands.report.resolve_staged_skills", return_value=((), {})):
+                    with patch("helix.commands.report.create_runner", return_value=fake_runner):
+                        with patch("helix.commands.report.resolve_staged_skills", return_value=((), {})):
                             with patch(
-                                "triton_agent.commands.report.SkillLinkManager.prepare_skills",
+                                "helix.commands.report.SkillLinkManager.prepare_skills",
                                 return_value=(),
                             ):
                                 with patch(
-                                    "triton_agent.commands.report.SkillLinkManager.cleanup",
+                                    "helix.commands.report.SkillLinkManager.cleanup",
                                     return_value=[],
                                 ):
-                                    with patch("triton_agent.commands.report.render_result"):
+                                    with patch("helix.commands.report.render_result"):
                                         exit_code = handle_report(parser, args)
 
         self.assertEqual(exit_code, 0)
@@ -100,19 +100,19 @@ class ReportCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["report-batch", "-i", str(root), "-c", "1"])
 
             with patch(
-                "triton_agent.commands.report_batch.write_report_batch_state",
+                "helix.commands.report_batch.write_report_batch_state",
                 return_value=root / "report-batch-state.json",
             ):
                 with patch(
-                    "triton_agent.commands.report_batch.render_report_batch_file",
+                    "helix.commands.report_batch.render_report_batch_file",
                     return_value=root / "report-batch.md",
                 ):
                     with patch(
-                        "triton_agent.commands.report_batch._discover_workspaces",
+                        "helix.commands.report_batch._discover_workspaces",
                         return_value=[workspace],
                     ):
                         with patch(
-                            "triton_agent.commands.report_batch.generate_workspace_report",
+                            "helix.commands.report_batch.generate_workspace_report",
                             return_value=(True, "ok"),
                         ) as mocked:
                             exit_code = handle_report_batch(parser, args)
@@ -121,7 +121,7 @@ class ReportCommandHandlerTests(unittest.TestCase):
         mocked.assert_called_once_with(workspace, "opencode", True)
 
     def test_report_with_explicit_concurrency_uses_batch_handler(self) -> None:
-        from triton_agent.cli import main
+        from helix.cli import main
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -129,19 +129,19 @@ class ReportCommandHandlerTests(unittest.TestCase):
             workspace.mkdir()
 
             with patch(
-                "triton_agent.commands.report_batch.write_report_batch_state",
+                "helix.commands.report_batch.write_report_batch_state",
                 return_value=root / "report-batch-state.json",
             ):
                 with patch(
-                    "triton_agent.commands.report_batch.render_report_batch_file",
+                    "helix.commands.report_batch.render_report_batch_file",
                     return_value=root / "report-batch.md",
                 ):
                     with patch(
-                        "triton_agent.commands.report_batch._discover_workspaces",
+                        "helix.commands.report_batch._discover_workspaces",
                         return_value=[workspace],
                     ):
                         with patch(
-                            "triton_agent.commands.report_batch.generate_workspace_report",
+                            "helix.commands.report_batch.generate_workspace_report",
                             return_value=(True, "ok"),
                         ) as mocked:
                             exit_code = main(["report", "-i", str(root), "--concurrency", "2"])

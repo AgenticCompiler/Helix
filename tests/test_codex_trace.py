@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from triton_agent.backends.codex_trace import (
+from helix.backends.codex_trace import (
     CodexJsonLineParser,
     CodexJsonOutputFilter,
     _parse_timestamp,
@@ -259,8 +259,8 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
     def test_feed_writes_trace_and_returns_human(self) -> None:
         _, trace_path = self._make_trace_path()
         extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
+            "HELIX_OTEL_RUN_ID": "test-run",
+            "HELIX_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed('{"type":"tool_start","tool":"Read","tool_use_id":"call-1","timestamp":"2026-05-17T10:29:18Z"}\n', flush=True)
@@ -273,8 +273,8 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
         workspace = Path(tempfile.mkdtemp())
         trace_path = workspace / "trace.jsonl"
         extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_WORKSPACE_ROOT": str(workspace),
+            "HELIX_OTEL_RUN_ID": "test-run",
+            "HELIX_WORKSPACE_ROOT": str(workspace),
         }
         filter_obj = CodexJsonOutputFilter(None, extra_env)
 
@@ -319,8 +319,8 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
     def test_non_json_lines_pass_through(self) -> None:
         _, trace_path = self._make_trace_path()
         extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
+            "HELIX_OTEL_RUN_ID": "test-run",
+            "HELIX_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed("Hello world\n", flush=True)
@@ -331,16 +331,16 @@ class TestBuildCodexTraceEnv(unittest.TestCase):
     def test_build_env_sets_trace_vars(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
         env = build_codex_trace_env(None, trace_path=trace_path, run_id="run-123", workspace_root=Path(tempfile.gettempdir()))
-        self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
-        self.assertEqual(env["TRITON_AGENT_OTEL_RUN_ID"], "run-123")
-        self.assertEqual(env["TRITON_AGENT_WORKSPACE_ROOT"], str(Path(tempfile.gettempdir())))
+        self.assertEqual(env["HELIX_OTEL_TRACE_PATH"], str(trace_path))
+        self.assertEqual(env["HELIX_OTEL_RUN_ID"], "run-123")
+        self.assertEqual(env["HELIX_WORKSPACE_ROOT"], str(Path(tempfile.gettempdir())))
 
     def test_existing_env_preserved(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
         existing = {"MY_VAR": "my_value"}
         env = build_codex_trace_env(existing, trace_path=trace_path, run_id="run-123", workspace_root=Path(tempfile.gettempdir()))
         self.assertEqual(env["MY_VAR"], "my_value")
-        self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
+        self.assertEqual(env["HELIX_OTEL_TRACE_PATH"], str(trace_path))
 
 
 if __name__ == "__main__":

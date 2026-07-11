@@ -48,7 +48,7 @@ That gap matters because conversion has different rules from optimize:
 The new command should look like:
 
 ```bash
-uv run triton-agent gen-convert --input a.py
+uv run helix gen-convert --input a.py
 ```
 
 Default behavior:

@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+import logging
+import sys
+from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI
+
+from helix_upload_server.config import parse_args
+from helix_upload_server.dedup import UploadGuard
+from helix_upload_server.routes import create_router
+from helix_upload_server.storage import UploadStorage
+
+
+def create_app(
+    storage_root: Path | None = None,
+    temp_root: Path | None = None,
+    max_upload_bytes: int = 536870912,
+    min_upload_bytes: int = 102400,
+    dedup_window_seconds: int = 900,
+    rate_limit_max_slugs: int = 3,
+    rate_limit_window_seconds: int = 30,
+    rate_limit_cooldown_seconds: int = 600,
+) -> FastAPI:
+    app = FastAPI(title="helix-upload-server")
+
+    _storage_root = storage_root or Path("/data/helix/uploads")
+    _temp_root = temp_root or Path("/data/helix/uploads/.tmp")
+
+    storage = UploadStorage(
+        storage_root=_storage_root,
+        temp_root=_temp_root,
+    )
+    guard = UploadGuard(
+        dedup_window_seconds=dedup_window_seconds,
+        rate_limit_max_slugs=rate_limit_max_slugs,
+        rate_limit_window_seconds=rate_limit_window_seconds,
+        cooldown_seconds=rate_limit_cooldown_seconds,
+    )
+    router = create_router(storage=storage, max_upload_bytes=max_upload_bytes, min_upload_bytes=min_upload_bytes, guard=guard)
+    app.include_router(router)
+
+    return app
+
+
+def main(argv: list[str] | None = None) -> int:
+    config = parse_args(argv)
+
+    logging.basicConfig(
+        level=getattr(logging, config.log_level.upper(), logging.INFO),
+        format="%(levelname)s\t%(name)s\t%(message)s",
+    )
+
+    app = create_app(
+        storage_root=config.storage_root,
+        temp_root=config.temp_root,
+        max_upload_bytes=config.max_upload_bytes,
+        min_upload_bytes=config.min_upload_bytes,
+        dedup_window_seconds=config.dedup_window_seconds,
+        rate_limit_max_slugs=config.rate_limit_max_slugs,
+        rate_limit_window_seconds=config.rate_limit_window_seconds,
+        rate_limit_cooldown_seconds=config.rate_limit_cooldown_seconds,
+    )
+
+    uvicorn.run(
+        app,
+        host=config.host,
+        port=config.port,
+        log_level=config.log_level,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -11,7 +11,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
@@ -19,9 +19,9 @@ def main() -> int:
     if workspace is None:
         return 0
     try:
-        cleanup_runtime_tree(workspace / ".triton-agent")
+        cleanup_runtime_tree(workspace / ".helix")
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
     return 0
 
 

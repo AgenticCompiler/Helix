@@ -36,7 +36,7 @@ Confirm the document does not expand into a general GitCode integration and does
 Run:
 
 ```bash
-python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/init_skill.py managing-gitcode-prs --path /Users/cdj/Projects/triton-agent/.codex/skills --resources references --interface display_name="GitCode PRs" --interface short_description="Create, list, and inspect GitCode PRs" --interface default_prompt="Use $managing-gitcode-prs to create or inspect a GitCode pull request for this repository."
+python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/init_skill.py managing-gitcode-prs --path /Users/cdj/Projects/helix/.codex/skills --resources references --interface display_name="GitCode PRs" --interface short_description="Create, list, and inspect GitCode PRs" --interface default_prompt="Use $managing-gitcode-prs to create or inspect a GitCode pull request for this repository."
 ```
 
 Expected: the new skill directory is created with `SKILL.md`, `agents/openai.yaml`, and `references/`.
@@ -79,7 +79,7 @@ Capture the supported API-script command shapes and endpoint notes in `reference
 Run:
 
 ```bash
-python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/triton-agent/.codex/skills/managing-gitcode-prs
+python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/helix/.codex/skills/managing-gitcode-prs
 ```
 
 Expected: `Skill is valid!`

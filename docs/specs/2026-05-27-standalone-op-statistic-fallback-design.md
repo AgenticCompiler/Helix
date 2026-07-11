@@ -21,7 +21,7 @@ Refactor local profiler CSV parsing into a new shared `run-eval` helper module, 
 - Do not attempt row-by-row name reconciliation between `operator_details.csv` and `op_statistic.csv`.
 - Do not fall back merely because resolved kernel names do not match `operator_details.csv`.
 - Do not change the perf JSONL schema.
-- Do not move parsing into `src/triton_agent`; the helper should stay feature-local to `triton-npu-run-eval`.
+- Do not move parsing into `src/helix`; the helper should stay feature-local to `triton-npu-run-eval`.
 
 ## Decision
 

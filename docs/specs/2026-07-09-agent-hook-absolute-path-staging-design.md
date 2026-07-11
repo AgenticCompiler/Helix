@@ -9,7 +9,7 @@ the agent process working directory.
 ## User-Visible Semantics
 
 - When `--enable-agent-hooks` stages Claude hooks, the generated
-  `.claude/triton-agent-hooks/settings.json` invokes the staged guard script with
+  `.claude/helix-hooks/settings.json` invokes the staged guard script with
   absolute paths.
 - When `--enable-agent-hooks` or tool tracing stages Codex hooks, the generated
   `.codex/hooks.json` invokes the staged trace and guard scripts with absolute
@@ -49,15 +49,15 @@ For Claude:
 
 - keep `hooks/claude/settings.json` as a checked-in structure template
 - express staged hook paths in that template as
-  `${CLAUDE_PROJECT_DIR}/.claude/triton-agent-hooks/...`
+  `${CLAUDE_PROJECT_DIR}/.claude/helix-hooks/...`
 - during staging, replace `${CLAUDE_PROJECT_DIR}` with the resolved workspace
-  path and write the rendered JSON to `.claude/triton-agent-hooks/settings.json`
+  path and write the rendered JSON to `.claude/helix-hooks/settings.json`
 
 For Codex:
 
 - keep `hooks/codex/hooks.json` as a checked-in structure template
 - express staged hook command paths in that template as
-  `"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/..."`
+  `"${CODEX_PROJECT_DIR}/.codex/helix-hooks/..."`
 - during staging, replace `${CODEX_PROJECT_DIR}` with the resolved workspace
   path and write the rendered JSON to `.codex/hooks.json`
 

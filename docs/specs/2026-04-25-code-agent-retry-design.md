@@ -45,7 +45,7 @@ The initial implementation should keep this pattern list aligned with the curren
 
 Add one environment variable:
 
-- `TRITON_AGENT_CODE_AGENT_MAX_RETRIES`
+- `HELIX_CODE_AGENT_MAX_RETRIES`
 
 Semantics:
 
@@ -106,10 +106,10 @@ Supervisor agent launches should use the shared backend retry path automatically
 
 ## Files Expected To Change
 
-- `src/triton_agent/backends/base.py`
+- `src/helix/backends/base.py`
   - add shared retry logic for CLI-backed code agent launches
   - add env-var parsing for retry count or delegate it to a small local helper
-- `src/triton_agent/optimize/run_loop.py`
+- `src/helix/optimize/run_loop.py`
   - remove 429 / rate-limit detection and backoff handling
   - keep stall and orchestration-only continuation logic
 - `tests/test_backends_base.py`
@@ -125,7 +125,7 @@ Add or update tests for these cases:
 2. Retry count `0` disables automatic retry.
 3. Retry delay uses the shared exponential sequence.
 4. Interactive runs do not retry.
-5. Invalid `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` values fail clearly.
+5. Invalid `HELIX_CODE_AGENT_MAX_RETRIES` values fail clearly.
 6. Optimize unsupervised flow still retries stalled runs via resume.
 7. Optimize supervised flow still handles supervisor gate decisions, but no longer owns a second rate-limit retry layer.
 

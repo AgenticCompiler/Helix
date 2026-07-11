@@ -17,12 +17,12 @@ The first policy should prevent Codex from reading files such as staged skill `s
 - The denial reason shown to the agent should be concise:
 
 ```text
-This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead.
+This read is blocked by helix workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead.
 ```
 
 - Non-matching commands should run unchanged.
 - Existing user-owned `.codex` files should not be overwritten or removed.
-- Cleanup should remove only hook files created by the current `triton-agent` run.
+- Cleanup should remove only hook files created by the current `helix` run.
 
 ## Design
 
@@ -48,8 +48,8 @@ The staged workspace should receive copied hook assets under `.codex/`, using pa
 
 ```text
 .codex/hooks.json
-.codex/triton-agent-hooks/pretooluse_guard.py
-.codex/triton-agent-hooks/policy.json
+.codex/helix-hooks/pretooluse_guard.py
+.codex/helix-hooks/policy.json
 ```
 
 The implementation should render `policy.json` during staging because the policy is workspace-specific. Runtime values should include the resolved workspace root and path rules derived from that root. The policy logic should live in the template script; the generated policy should provide data, not Python code. Unlike the plugin side, Codex does not need a template policy file in the repository.
@@ -84,7 +84,7 @@ The hook command should invoke the staged guard script with the staged policy fi
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json"
+            "command": "python3 .codex/helix-hooks/pretooluse_guard.py --policy .codex/helix-hooks/policy.json"
           }
         ]
       }
@@ -108,7 +108,7 @@ The generated policy should be tied to the target workspace. It should include:
   "deny_read_globs": [
     "/absolute/path/to/workspace/.codex/skills/*/scripts/**"
   ],
-  "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
+  "deny_message": "This read is blocked by helix workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
 }
 ```
 
@@ -141,7 +141,7 @@ When the guard blocks a command, it should write structured JSON to stdout:
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
+    "permissionDecisionReason": "This read is blocked by helix workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
   }
 }
 ```

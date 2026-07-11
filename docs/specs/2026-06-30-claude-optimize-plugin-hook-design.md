@@ -2,24 +2,24 @@
 
 ## Goal
 
-Add a repository script that builds a distributable Claude Code plugin directory for the `optimize --enable-agent-hooks` workflow so users can install the plugin separately from the `triton-agent` CLI and still retain optimize-specific hooks, skills, and agent guidance.
+Add a repository script that builds a distributable Claude Code plugin directory for the `optimize --enable-agent-hooks` workflow so users can install the plugin separately from the `helix` CLI and still retain optimize-specific hooks, skills, and agent guidance.
 
 ## User-Visible Semantics
 
 - The repository provides a script at `scripts/build-claude-optimize-plugin.py`.
 - Running that script produces an already-expanded Claude plugin directory that users can install with Claude's normal plugin flow.
-- The generated plugin only supports the Claude optimize workflow that previously depended on `triton-agent optimize --agent claude --enable-agent-hooks`.
+- The generated plugin only supports the Claude optimize workflow that previously depended on `helix optimize --agent claude --enable-agent-hooks`.
 - The generated plugin includes:
   - one optimize-focused Claude agent under `agents/`
   - the minimum optimize skill set under `skills/`
   - plugin-scoped Claude hooks under `hooks/`
 - The generated plugin does not include standalone `CLAUDE.md` or `prompts.md` files. Their durable guidance content is embedded directly into the optimize agent definition.
-- When a Claude session starts with the plugin's optimize agent, the plugin initializes `.triton-agent/` if it is missing.
-- When `.triton-agent/state.json` is missing, the plugin does not infer or recreate workflow state from durable artifacts. It creates `.triton-agent/` only and returns command-based repair guidance so the agent can restore workflow state through the bundled `ascend-npu-optimize-state` commands.
-- When a Claude session ends, the plugin removes the live `.triton-agent/` runtime directory.
-- The plugin never deletes durable optimize artifacts such as `baseline/`, `opt-round-*`, or `triton-agent-logs/`.
+- When a Claude session starts with the plugin's optimize agent, the plugin initializes `.helix/` if it is missing.
+- When `.helix/state.json` is missing, the plugin does not infer or recreate workflow state from durable artifacts. It creates `.helix/` only and returns command-based repair guidance so the agent can restore workflow state through the bundled `ascend-npu-optimize-state` commands.
+- When a Claude session ends, the plugin removes the live `.helix/` runtime directory.
+- The plugin never deletes durable optimize artifacts such as `baseline/`, `opt-round-*`, or `helix-logs/`.
 - The bundled `ascend-npu-optimize-state` command helpers treat missing workflow state differently by subcommand:
-  - `submit-baseline` bootstraps `.triton-agent/state.json` when it is missing, then advances the baseline to accepted state.
+  - `submit-baseline` bootstraps `.helix/state.json` when it is missing, then advances the baseline to accepted state.
   - `start-round` does not bootstrap missing workflow state; it returns a structured error that points the agent at workflow commands such as `submit-baseline`, not at direct edits to internal state files.
   - `set-current-round-state` returns a structured error when workflow state is missing and tells the agent to repair the workflow through state commands before retrying.
   - `submit-round` returns a structured error when workflow state is missing and never silently skips workflow-state completion; the repair guidance stays command-based rather than file-edit based.
@@ -28,17 +28,17 @@ Add a repository script that builds a distributable Claude Code plugin directory
 
 ## Problem
 
-The current Claude optimize integration assumes `triton-agent` owns the entire request lifecycle:
+The current Claude optimize integration assumes `helix` owns the entire request lifecycle:
 
 - it stages `.claude/skills`
 - it stages temporary Claude hook files
 - it writes temporary optimize guidance into `CLAUDE.md`
-- it creates and later removes `.triton-agent/`
-- it bootstraps `.triton-agent/state.json` before hook-guarded optimize work begins
+- it creates and later removes `.helix/`
+- it bootstraps `.helix/state.json` before hook-guarded optimize work begins
 
 That model breaks down when users copy the generated Claude-facing content into another workspace and launch Claude manually. The copied workspace no longer has the CLI-managed lifecycle that used to:
 
-- prepare `.triton-agent/`
+- prepare `.helix/`
 - bootstrap workflow state
 - keep optimize guidance visible to Claude
 - remove temporary runtime files after the session
@@ -55,7 +55,7 @@ In scope:
 - optimize-only Claude plugin layout
 - optimize-only Claude agent packaging
 - optimize-only skill packaging
-- plugin hook bootstrap and cleanup for `.triton-agent/`
+- plugin hook bootstrap and cleanup for `.helix/`
 - command-based repair guidance when workflow state is missing or malformed
 - hook-side diagnostics when workflow state is missing or malformed
 
@@ -93,7 +93,7 @@ The generated directory should look like this:
   .claude-plugin/
     plugin.json
   agents/
-    triton-agent-optimize.md
+    helix-optimize.md
   hooks/
     hooks.json
     pretooluse_guard.py
@@ -110,7 +110,7 @@ The plugin root must not contain standalone `CLAUDE.md` or `prompts.md`.
 
 ### 3. Agent Packaging
 
-The generated plugin exports one optimize-focused Claude agent under `agents/triton-agent-optimize.md`.
+The generated plugin exports one optimize-focused Claude agent under `agents/helix-optimize.md`.
 
 That file is the durable prompt surface for this plugin. It should inline:
 
@@ -140,15 +140,15 @@ The hook config should invoke plugin-local scripts via `${CLAUDE_PLUGIN_ROOT}` s
 Behavior:
 
 - If the current session is not using the plugin's optimize agent, do nothing.
-- Treat Claude's namespaced plugin agent payload (for example `triton-agent-optimize:triton-agent-optimize`) as the optimize agent identity for hook gating.
-- Ensure the workspace-local `.triton-agent/` directory exists.
-- If `.triton-agent/state.json` already exists:
+- Treat Claude's namespaced plugin agent payload (for example `helix-optimize:helix-optimize`) as the optimize agent identity for hook gating.
+- Ensure the workspace-local `.helix/` directory exists.
+- If `.helix/state.json` already exists:
   - validate that it is well-formed enough for optimize-state consumers
   - leave it untouched when valid
   - surface command-based repair guidance when malformed instead of silently replacing it
-- If `.triton-agent/state.json` does not exist:
+- If `.helix/state.json` does not exist:
   - do not infer phase or source operator from durable artifacts
-  - create only `.triton-agent/`
+  - create only `.helix/`
   - emit clear guidance telling the agent to use the bundled optimize-state commands to rebuild workflow state before continuing
 
 The hook may return `hookSpecificOutput.additionalContext` so Claude sees a short status summary when bootstrap work was necessary.
@@ -189,9 +189,9 @@ Rationale:
 
 In addition to current policy checks, the plugin path should distinguish:
 
-- missing `.triton-agent/`
-- missing `.triton-agent/state.json`
-- malformed `.triton-agent/state.json`
+- missing `.helix/`
+- missing `.helix/state.json`
+- malformed `.helix/state.json`
 - baseline not yet established
 - workflow phase that does not allow the requested edit
 
@@ -201,14 +201,14 @@ The shared guard policy logic should remain the base decision engine for path pr
 
 ### 8. SessionEnd Responsibilities
 
-`hooks/session_end.py` should remove the live `.triton-agent/` runtime tree for optimize-agent sessions created by this plugin.
+`hooks/session_end.py` should remove the live `.helix/` runtime tree for optimize-agent sessions created by this plugin.
 
 Cleanup rules:
 
-- remove `.triton-agent/`
+- remove `.helix/`
 - do not remove `baseline/`
 - do not remove `opt-round-*`
-- do not remove `triton-agent-logs/`
+- do not remove `helix-logs/`
 - do not attempt CLI-style workspace resets
 
 Cleanup should be best-effort and fail-open. A cleanup failure should not make Claude treat the session as failed.
@@ -237,11 +237,11 @@ Add focused coverage for:
 - generated plugin manifest validity
 - generated optimize agent content
 - generated optimize skill subset
-- `SessionStart` creating `.triton-agent/`
+- `SessionStart` creating `.helix/`
 - `SessionStart` namespaced plugin-agent payload handling
-- `SessionStart` creating `.triton-agent/` without writing `state.json` when workflow state is missing
+- `SessionStart` creating `.helix/` without writing `state.json` when workflow state is missing
 - malformed `state.json` detection
-- `SessionEnd` removing `.triton-agent/` only
+- `SessionEnd` removing `.helix/` only
 - `PreToolUse` plugin-mode diagnostics for missing or malformed workflow state
 
 Verification should include:
@@ -270,7 +270,7 @@ Mitigation:
 
 ### Over-broad hook activation
 
-If plugin hooks run for all Claude sessions, the plugin will create `.triton-agent/` in unrelated workspaces.
+If plugin hooks run for all Claude sessions, the plugin will create `.helix/` in unrelated workspaces.
 
 Mitigation:
 

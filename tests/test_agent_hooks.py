@@ -6,10 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.claude_hooks import prepare_claude_hooks
-from triton_agent.backends.codex_hooks import prepare_codex_hooks
-from triton_agent.backends.hook_common import cleanup_hook_stage
-from triton_agent.backends.opencode_hooks import prepare_opencode_hooks
+from helix.backends.claude_hooks import prepare_claude_hooks
+from helix.backends.codex_hooks import prepare_codex_hooks
+from helix.backends.hook_common import cleanup_hook_stage
+from helix.backends.opencode_hooks import prepare_opencode_hooks
 
 
 class AgentHookStageTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class AgentHookStageTests(unittest.TestCase):
                 extra_allowed_read_roots=(compiler_source,),
             )
 
-            policy_path = workspace / ".codex" / "triton-agent-hooks" / "policy.json"
+            policy_path = workspace / ".codex" / "helix-hooks" / "policy.json"
             policy = json.loads(policy_path.read_text(encoding="utf-8"))
 
             self.assertEqual(
@@ -54,10 +54,10 @@ class AgentHookStageTests(unittest.TestCase):
             state = prepare_codex_hooks(templates_root, workspace)
 
             hooks_json = workspace / ".codex" / "hooks.json"
-            hook_dir = workspace / ".codex" / "triton-agent-hooks"
+            hook_dir = workspace / ".codex" / "helix-hooks"
             policy_json = hook_dir / "policy.json"
             resolved_workspace = workspace.resolve()
-            resolved_hook_dir = resolved_workspace / ".codex" / "triton-agent-hooks"
+            resolved_hook_dir = resolved_workspace / ".codex" / "helix-hooks"
             resolved_policy_json = resolved_hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
             hook_runtime_dir = hook_dir / "hook_runtime"
@@ -105,17 +105,17 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
-                    str(workspace.resolve() / ".triton-agent"),
-                    str(workspace.resolve() / ".triton-agent" / "**"),
-                    str(workspace.resolve() / "triton-agent-logs" / "**"),
-                    str(workspace.resolve() / ".codex" / "triton-agent-hooks"),
-                    str(workspace.resolve() / ".codex" / "triton-agent-hooks" / "**"),
+                    str(workspace.resolve() / ".helix"),
+                    str(workspace.resolve() / ".helix" / "**"),
+                    str(workspace.resolve() / "helix-logs" / "**"),
+                    str(workspace.resolve() / ".codex" / "helix-hooks"),
+                    str(workspace.resolve() / ".codex" / "helix-hooks" / "**"),
                     str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
             self.assertIn("temporary optimize runtime files", policy["deny_message"])
-            self.assertIn("triton-agent-logs", policy["deny_message"])
-            self.assertIn("triton-agent workspace policy", policy["deny_message"])
+            self.assertIn("helix-logs", policy["deny_message"])
+            self.assertIn("helix workspace policy", policy["deny_message"])
 
             warnings = cleanup_hook_stage(state)
 
@@ -133,7 +133,7 @@ class AgentHookStageTests(unittest.TestCase):
 
             hooks_json = workspace / ".codex" / "hooks.json"
             resolved_workspace = workspace.resolve()
-            resolved_hook_dir = resolved_workspace / ".codex" / "triton-agent-hooks"
+            resolved_hook_dir = resolved_workspace / ".codex" / "helix-hooks"
             resolved_policy_json = resolved_hook_dir / "policy.json"
             hooks_config = json.loads(hooks_json.read_text(encoding="utf-8"))
 
@@ -172,8 +172,8 @@ class AgentHookStageTests(unittest.TestCase):
 
             state = prepare_opencode_hooks(templates_root, workspace)
 
-            plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
-            hook_dir = workspace / ".opencode" / "triton-agent-hooks"
+            plugin_file = workspace / ".opencode" / "plugins" / "helix-hook-guard.js"
+            hook_dir = workspace / ".opencode" / "helix-hooks"
             policy_json = hook_dir / "policy.json"
             self.assertTrue(plugin_file.exists())
             self.assertTrue(policy_json.exists())
@@ -185,18 +185,18 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
-                    str(workspace.resolve() / ".triton-agent"),
-                    str(workspace.resolve() / ".triton-agent" / "**"),
-                    str(workspace.resolve() / "triton-agent-logs" / "**"),
-                    str(workspace.resolve() / ".opencode" / "plugins" / "triton-agent-hook-guard.js"),
-                    str(workspace.resolve() / ".opencode" / "triton-agent-hooks"),
-                    str(workspace.resolve() / ".opencode" / "triton-agent-hooks" / "**"),
+                    str(workspace.resolve() / ".helix"),
+                    str(workspace.resolve() / ".helix" / "**"),
+                    str(workspace.resolve() / "helix-logs" / "**"),
+                    str(workspace.resolve() / ".opencode" / "plugins" / "helix-hook-guard.js"),
+                    str(workspace.resolve() / ".opencode" / "helix-hooks"),
+                    str(workspace.resolve() / ".opencode" / "helix-hooks" / "**"),
                     str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
             self.assertIn("temporary optimize runtime files", policy["deny_message"])
-            self.assertIn("triton-agent-logs", policy["deny_message"])
-            self.assertIn("triton-agent workspace policy", policy["deny_message"])
+            self.assertIn("helix-logs", policy["deny_message"])
+            self.assertIn("helix workspace policy", policy["deny_message"])
             self.assertIn(".opencode/skills/*/scripts/", policy["deny_message"])
 
             warnings = cleanup_hook_stage(state)
@@ -220,7 +220,7 @@ class AgentHookStageTests(unittest.TestCase):
                 extra_allowed_read_roots=(compiler_source,),
             )
 
-            policy_path = workspace / ".opencode" / "triton-agent-hooks" / "policy.json"
+            policy_path = workspace / ".opencode" / "helix-hooks" / "policy.json"
             policy = json.loads(policy_path.read_text(encoding="utf-8"))
 
             self.assertEqual(
@@ -242,11 +242,11 @@ class AgentHookStageTests(unittest.TestCase):
 
             state = prepare_claude_hooks(templates_root, workspace)
 
-            hook_dir = workspace / ".claude" / "triton-agent-hooks"
+            hook_dir = workspace / ".claude" / "helix-hooks"
             settings_json = hook_dir / "settings.json"
             policy_json = hook_dir / "policy.json"
             resolved_workspace = workspace.resolve()
-            resolved_hook_dir = resolved_workspace / ".claude" / "triton-agent-hooks"
+            resolved_hook_dir = resolved_workspace / ".claude" / "helix-hooks"
             resolved_policy_json = resolved_hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
             hook_runtime_dir = hook_dir / "hook_runtime"
@@ -287,11 +287,11 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
-                    str(workspace.resolve() / ".triton-agent"),
-                    str(workspace.resolve() / ".triton-agent" / "**"),
-                    str(workspace.resolve() / "triton-agent-logs" / "**"),
-                    str(workspace.resolve() / ".claude" / "triton-agent-hooks"),
-                    str(workspace.resolve() / ".claude" / "triton-agent-hooks" / "**"),
+                    str(workspace.resolve() / ".helix"),
+                    str(workspace.resolve() / ".helix" / "**"),
+                    str(workspace.resolve() / "helix-logs" / "**"),
+                    str(workspace.resolve() / ".claude" / "helix-hooks"),
+                    str(workspace.resolve() / ".claude" / "helix-hooks" / "**"),
                     str(workspace.resolve() / ".claude" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
@@ -317,7 +317,7 @@ class AgentHookStageTests(unittest.TestCase):
                 extra_allowed_read_roots=(compiler_source,),
             )
 
-            policy_path = workspace / ".claude" / "triton-agent-hooks" / "policy.json"
+            policy_path = workspace / ".claude" / "helix-hooks" / "policy.json"
             policy = json.loads(policy_path.read_text(encoding="utf-8"))
 
             self.assertEqual(
@@ -342,7 +342,7 @@ class AgentHookStageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            hook_dir = workspace / ".codex" / "triton-agent-hooks"
+            hook_dir = workspace / ".codex" / "helix-hooks"
             hook_dir.mkdir(parents=True)
 
             with self.assertRaisesRegex(RuntimeError, "Existing Codex hook directory"):
@@ -352,7 +352,7 @@ class AgentHookStageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
+            plugin_file = workspace / ".opencode" / "plugins" / "helix-hook-guard.js"
             plugin_file.parent.mkdir(parents=True)
             plugin_file.write_text("export default async function Plugin() {}\n", encoding="utf-8")
 
@@ -363,7 +363,7 @@ class AgentHookStageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            hook_dir = workspace / ".opencode" / "triton-agent-hooks"
+            hook_dir = workspace / ".opencode" / "helix-hooks"
             hook_dir.mkdir(parents=True)
 
             with self.assertRaisesRegex(RuntimeError, "Existing OpenCode hook directory"):
@@ -373,7 +373,7 @@ class AgentHookStageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            hook_dir = workspace / ".claude" / "triton-agent-hooks"
+            hook_dir = workspace / ".claude" / "helix-hooks"
             hook_dir.mkdir(parents=True)
 
             with self.assertRaisesRegex(RuntimeError, "Existing Claude hook directory"):

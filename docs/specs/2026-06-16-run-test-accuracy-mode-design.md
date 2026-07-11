@@ -47,20 +47,20 @@ This keeps manual comparison behavior aligned with `run-test`.
 Examples:
 
 ```bash
-uv run triton-agent run-test \
+uv run helix run-test \
   --test-file test_abs.py \
   --operator-file abs.py
 ```
 
 ```bash
-uv run triton-agent run-test \
+uv run helix run-test \
   --test-file test_abs.py \
   --operator-file abs.py \
   --accuracy-mode dtype-close
 ```
 
 ```bash
-uv run triton-agent compare-result \
+uv run helix compare-result \
   --ref-result abs_result.pt \
   --new-result opt_abs_result.pt \
   --accuracy-mode dtype-close
@@ -73,7 +73,7 @@ The managed run-eval MCP server currently exposes:
 - `run-test-baseline`
 - `run-test-optimize`
 
-Do not expose `accuracy_mode`, `atol`, or `rtol` as MCP tool parameters. Agents should not actively choose the precision policy. Instead, configure the managed run-eval MCP server process with `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`, `TRITON_AGENT_RUN_TEST_ATOL`, and `TRITON_AGENT_RUN_TEST_RTOL` before the agent calls `run-test-baseline` or `run-test-optimize`; the spawned staged run-eval CLI inherits those environment variables.
+Do not expose `accuracy_mode`, `atol`, or `rtol` as MCP tool parameters. Agents should not actively choose the precision policy. Instead, configure the managed run-eval MCP server process with `HELIX_RUN_TEST_ACCURACY_MODE`, `HELIX_RUN_TEST_ATOL`, and `HELIX_RUN_TEST_RTOL` before the agent calls `run-test-baseline` or `run-test-optimize`; the spawned staged run-eval CLI inherits those environment variables.
 
 This change does not add a new MCP `compare-result` tool.
 
@@ -102,19 +102,19 @@ Agent-facing run-eval execution uses environment variables as the runner-owned r
 
 The environment variables are:
 
-- `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`: optional `npu-contract` or `dtype-close`; default is `npu-contract`
-- `TRITON_AGENT_RUN_TEST_ATOL`: optional dtype-close absolute tolerance override
-- `TRITON_AGENT_RUN_TEST_RTOL`: optional dtype-close relative tolerance override
+- `HELIX_RUN_TEST_ACCURACY_MODE`: optional `npu-contract` or `dtype-close`; default is `npu-contract`
+- `HELIX_RUN_TEST_ATOL`: optional dtype-close absolute tolerance override
+- `HELIX_RUN_TEST_RTOL`: optional dtype-close relative tolerance override
 
 `npu_compare.py` should resolve accuracy mode in this order:
 
 1. explicit `accuracy_mode` argument
-2. `TRITON_AGENT_RUN_TEST_ACCURACY_MODE`
+2. `HELIX_RUN_TEST_ACCURACY_MODE`
 3. `"npu-contract"`
 
-`TRITON_AGENT_RUN_TEST_ATOL` and `TRITON_AGENT_RUN_TEST_RTOL` should only affect the `dtype-close` floating-point and complex comparison path.
+`HELIX_RUN_TEST_ATOL` and `HELIX_RUN_TEST_RTOL` should only affect the `dtype-close` floating-point and complex comparison path.
 
-The top-level `triton-agent run-test` command still exposes an explicit `--accuracy-mode` option and forwards that value into the skill runner environment. This keeps the top-level CLI deterministic even if the user's shell already has run-eval environment variables set.
+The top-level `helix run-test` command still exposes an explicit `--accuracy-mode` option and forwards that value into the skill runner environment. This keeps the top-level CLI deterministic even if the user's shell already has run-eval environment variables set.
 
 Harnesses may import `npu_compare` before the environment is read. That is acceptable because accuracy mode and tolerance are resolved when `compare_case_result(...)` executes, not at import time.
 
@@ -233,7 +233,7 @@ More precisely:
 
 - import the harness module normally
 - resolve `operator_api`
-- set `TRITON_AGENT_RUN_TEST_ACCURACY_MODE` for the local worker or remote command environment
+- set `HELIX_RUN_TEST_ACCURACY_MODE` for the local worker or remote command environment
 - call `main(operator_api)`
 - avoid adding any generated-harness argument or required metadata field
 
@@ -262,9 +262,9 @@ No extra artifact-level comparison tree should be introduced here. The existing 
 
 Update these entrypoints to accept and forward `accuracy_mode`:
 
-- `src/triton_agent/cli.py`
-- `src/triton_agent/commands/execution.py`
-- `src/triton_agent/commands/comparison.py`
+- `src/helix/cli.py`
+- `src/helix/commands/execution.py`
+- `src/helix/commands/comparison.py`
 - `skills/common/ascend-npu-run-eval/scripts/cli.py`
 
 Rules:
@@ -302,7 +302,7 @@ Implementation notes:
 
 Update:
 
-- `src/triton_agent/eval/mcp_server.py`
+- `src/helix/eval/mcp_server.py`
 
 Requirements:
 

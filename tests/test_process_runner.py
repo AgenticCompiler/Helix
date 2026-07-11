@@ -15,7 +15,7 @@ import signal
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.process_runner import (
+from helix.backends.process_runner import (
     InterruptPolicy,
     run_buffered_process,
     run_interactive_process,
@@ -31,7 +31,7 @@ _SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 class BufferedProcessRunnerTests(unittest.TestCase):
     def test_collects_stdout_and_session_id(self) -> None:
         process = _BufferedFakeProcess(stdout_lines=["hello\n"], stderr_text="", returncode=0)
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
             result = run_buffered_process(
                 ["codex", "exec"],
                 "/tmp",
@@ -45,7 +45,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=0)
         with (
             patch.dict(environ, {"EXISTING_ENV": "base"}, clear=False),
-            patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process) as mocked,
+            patch("helix.backends.process_runner.subprocess.Popen", return_value=process) as mocked,
         ):
             run_buffered_process(
                 ["codex", "exec"],
@@ -58,7 +58,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         self.assertEqual(mocked.call_args.kwargs["env"]["EXISTING_ENV"], "base")
 
     def test_buffered_filter_can_remove_diff_blocks(self) -> None:
-        from triton_agent.backends.codex import _UnifiedDiffFilter
+        from helix.backends.codex import _UnifiedDiffFilter
 
         process = _BufferedFakeProcess(
             stdout_lines=[
@@ -72,7 +72,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             stderr_text="",
             returncode=0,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
             result = run_buffered_process(
                 ["codex", "exec"],
                 "/tmp",
@@ -83,7 +83,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "before\nafter\n")
 
     def test_buffered_filter_can_remove_bare_hunk_fragments(self) -> None:
-        from triton_agent.backends.codex import _UnifiedDiffFilter
+        from helix.backends.codex import _UnifiedDiffFilter
 
         process = _BufferedFakeProcess(
             stdout_lines=[
@@ -107,7 +107,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             stderr_text="",
             returncode=0,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
             result = run_buffered_process(
                 ["codex", "exec"],
                 "/tmp",
@@ -127,7 +127,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
 
     def test_buffered_none_returncode_defaults_to_failure(self) -> None:
         process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=None)
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
             result = run_buffered_process(
                 ["codex", "exec"],
                 "/tmp",
@@ -193,9 +193,9 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             default_poll_return=0,
         )
         probe_values = iter([0.05, 0.12])
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-            with patch("triton_agent.backends.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
-                with patch("triton_agent.backends.process_runner.time.sleep"):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
+                with patch("helix.backends.process_runner.time.sleep"):
                     result = run_buffered_process(
                         ["codex", "exec"],
                         "/tmp",
@@ -214,10 +214,10 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             poll_values=[None, None, None],
             default_poll_return=None,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-            with patch("triton_agent.backends.process_runner._wait_for_process_exit", return_value=True):
-                with patch("triton_agent.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11]):
-                    with patch("triton_agent.backends.process_runner.time.sleep"):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner._wait_for_process_exit", return_value=True):
+                with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11]):
+                    with patch("helix.backends.process_runner.time.sleep"):
                         result = run_buffered_process(
                             ["codex", "exec"],
                             "/tmp",
@@ -238,10 +238,10 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             pid=4321,
             default_poll_return=None,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-            with patch("triton_agent.backends.process_runner.os.killpg") as mocked_killpg:
-                with patch("triton_agent.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11, 0.11, 1.12]):
-                    with patch("triton_agent.backends.process_runner.time.sleep"):
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11, 0.11, 1.12]):
+                    with patch("helix.backends.process_runner.time.sleep"):
                         result = run_buffered_process(
                             ["codex", "exec"],
                             "/tmp",
@@ -260,6 +260,56 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         )
 
     @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_buffered_stall_timeout_without_interrupt_policy_terminates_process_only(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=[],
+            stderr_text="",
+            returncode=None,
+            poll_values=[None, None, None],
+            pid=4321,
+            default_poll_return=None,
+        )
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch.object(process, "terminate") as mocked_terminate:
+                with patch.object(process, "kill") as mocked_kill:
+                    with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                        with patch("helix.backends.process_runner._wait_for_process_exit", return_value=True):
+                            with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11]):
+                                with patch("helix.backends.process_runner.time.sleep"):
+                                    result = run_buffered_process(
+                                        ["codex", "exec"],
+                                        "/tmp",
+                                        stall_timeout_seconds=0.1,
+                                        session_id_extractor=lambda _line: None,
+                                    )
+        self.assertTrue(result.stalled)
+        self.assertEqual(result.return_code, 1)
+        mocked_terminate.assert_called_once_with()
+        mocked_kill.assert_not_called()
+        mocked_killpg.assert_not_called()
+
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_buffered_successful_exit_without_interrupt_policy_does_not_reap_process_group(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=["done\n"],
+            stderr_text="",
+            returncode=0,
+            poll_values=[None, 0],
+            pid=4321,
+        )
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                result = run_buffered_process(
+                    ["codex", "exec"],
+                    "/tmp",
+                    stall_timeout_seconds=10,
+                    session_id_extractor=lambda _line: None,
+                )
+        self.assertFalse(result.stalled)
+        self.assertEqual(result.return_code, 0)
+        mocked_killpg.assert_not_called()
+
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
     def test_buffered_successful_exit_reaps_lingering_process_group(self) -> None:
         process = _BufferedFakeProcess(
             stdout_lines=["done\n"],
@@ -268,8 +318,8 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             poll_values=[None, 0],
             pid=4321,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-            with patch("triton_agent.backends.process_runner.os.killpg") as mocked_killpg:
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
                 result = run_buffered_process(
                     ["codex", "exec"],
                     "/tmp",
@@ -294,8 +344,8 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             pid=4321,
             default_poll_return=None,
         )
-        with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-            with patch("triton_agent.backends.process_runner.os.killpg") as mocked_killpg:
+        with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
                 sleep_calls = {"count": 0}
 
                 def _sleep(_seconds: float) -> None:
@@ -304,7 +354,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
                         raise KeyboardInterrupt
                     sleep_calls["count"] += 1
 
-                with patch("triton_agent.backends.process_runner.time.sleep", side_effect=_sleep):
+                with patch("helix.backends.process_runner.time.sleep", side_effect=_sleep):
                     result = run_buffered_process(
                         ["codex", "exec"],
                         "/tmp",
@@ -333,11 +383,11 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
         chunks = [b"line one\n", b"line two\n", b""]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-                with patch("triton_agent.backends.process_runner.select.select", side_effect=[([11], [], []), ([11], [], []), ([11], [], [])]):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], []), ([11], [], []), ([11], [], [])]):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -356,14 +406,14 @@ class StreamingProcessRunnerTests(unittest.TestCase):
 
         process = _StreamingFakeProcess(wait_code=0)
         chunks = [b"line one\n", b"line two\n", b""]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
                 ):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -379,14 +429,14 @@ class StreamingProcessRunnerTests(unittest.TestCase):
     def test_streaming_marks_retryable_failure_from_raw_chunks(self) -> None:
         process = _StreamingFakeProcess(wait_code=1)
         chunks = [b"ERROR: exceeded retry limit, ", b"last status: 429 Too Many Requests\n", b""]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
                 ):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -399,11 +449,11 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
         chunks = [b"session id: session-1\n", b""]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-                with patch("triton_agent.backends.process_runner.select.select", side_effect=[([11], [], []), ([11], [], [])]):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], []), ([11], [], [])]):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -414,19 +464,19 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.session_id, "session-1")
 
     def test_streaming_filter_can_remove_diff_blocks(self) -> None:
-        from triton_agent.backends.codex import _UnifiedDiffFilter
+        from helix.backends.codex import _UnifiedDiffFilter
 
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
         chunks = [b"before\n", b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+hello\n", b"after\n", b""]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[([11], [], []), ([11], [], []), ([11], [], []), ([11], [], [])],
                 ):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -438,7 +488,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "before\nafter\n")
 
     def test_streaming_filter_preserves_indented_output_after_diff(self) -> None:
-        from triton_agent.backends.codex import _UnifiedDiffFilter
+        from helix.backends.codex import _UnifiedDiffFilter
 
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0])
@@ -447,10 +497,10 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+hello\n",
             b"  indented note\nafter\n",
         ]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[
                         ([11], [], []),
                         ([11], [], []),
@@ -459,8 +509,8 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                         ([], [], []),
                     ],
                 ):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -472,7 +522,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "before\n  indented note\nafter\n")
 
     def test_streaming_filter_can_remove_bare_hunk_fragments(self) -> None:
-        from triton_agent.backends.codex import _UnifiedDiffFilter
+        from helix.backends.codex import _UnifiedDiffFilter
 
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0])
@@ -483,10 +533,10 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             b"+@triton.jit\n+def _round_half_to_even_tl(values):\n+    abs_values = tl.abs(values)\n",
             b"done\n",
         ]
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[
                         ([11], [], []),
                         ([11], [], []),
@@ -497,8 +547,8 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                         ([], [], []),
                     ],
                 ):
-                    with patch("triton_agent.backends.process_runner.os.read", side_effect=chunks):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -518,14 +568,14 @@ class StreamingProcessRunnerTests(unittest.TestCase):
     def test_treats_eio_after_child_exit_as_clean_eof(self) -> None:
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-                with patch("triton_agent.backends.process_runner.select.select", side_effect=[([11], [], [])]):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], [])]):
                     with patch(
-                        "triton_agent.backends.process_runner.os.read",
+                        "helix.backends.process_runner.os.read",
                         side_effect=OSError(EIO, "Input/output error"),
                     ):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -540,14 +590,14 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None])
         process.wait = Mock(side_effect=[0, 0])
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-                with patch("triton_agent.backends.process_runner.select.select", side_effect=[([11], [], [])]):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], [])]):
                     with patch(
-                        "triton_agent.backends.process_runner.os.read",
+                        "helix.backends.process_runner.os.read",
                         side_effect=OSError(EIO, "Input/output error"),
                     ):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -569,16 +619,16 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             default_poll_return=None,
         )
         process.wait = Mock(side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=0.1))
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
-                with patch("triton_agent.backends.process_runner.select.select", side_effect=[([11], [], [])]):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], [])]):
                     with patch(
-                        "triton_agent.backends.process_runner.os.read",
+                        "helix.backends.process_runner.os.read",
                         side_effect=OSError(EIO, "Input/output error"),
                     ):
-                        with patch("triton_agent.backends.process_runner.os.close"):
-                            with patch("triton_agent.backends.process_runner.os.killpg") as mocked_killpg:
-                                with patch("triton_agent.backends.process_runner._wait_for_process_exit", return_value=False):
+                        with patch("helix.backends.process_runner.os.close"):
+                            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                                with patch("helix.backends.process_runner._wait_for_process_exit", return_value=False):
                                     with self.assertRaises(OSError):
                                         run_streaming_process(
                                             ["codex", "exec"],
@@ -595,17 +645,64 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             ],
         )
 
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_streaming_stall_timeout_without_interrupt_policy_terminates_process_only(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None], pid=4321, default_poll_return=None)
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([], [], [])]):
+                    with patch("helix.backends.process_runner.os.close"):
+                        with patch.object(process, "terminate") as mocked_terminate:
+                            with patch.object(process, "kill", create=True) as mocked_kill:
+                                with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                                    with patch("helix.backends.process_runner._wait_for_process_exit", return_value=True):
+                                        with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.11]):
+                                            result = run_streaming_process(
+                                                ["codex", "exec"],
+                                                "/tmp",
+                                                stall_timeout_seconds=0.1,
+                                                stdout=stdout,
+                                            )
+        self.assertTrue(result.stalled)
+        self.assertEqual(result.return_code, 1)
+        mocked_terminate.assert_called_once_with()
+        mocked_kill.assert_not_called()
+        mocked_killpg.assert_not_called()
+
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_streaming_successful_exit_without_interrupt_policy_does_not_reap_process_group(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, pid=4321)
+        chunks = [b"line one\n", b""]
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
+                with patch("helix.backends.process_runner.select.select", side_effect=[([11], [], []), ([11], [], [])]):
+                    with patch("helix.backends.process_runner.os.read", side_effect=chunks):
+                        with patch("helix.backends.process_runner.os.close"):
+                            with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                                result = run_streaming_process(
+                                    ["codex", "exec"],
+                                    "/tmp",
+                                    stall_timeout_seconds=10,
+                                    stdout=stdout,
+                                )
+        self.assertEqual(stdout.getvalue(), "line one\n")
+        self.assertEqual(result.stdout, "line one\n")
+        self.assertEqual(result.return_code, 0)
+        mocked_killpg.assert_not_called()
+
     def test_zero_timeout_disables_streaming_stall_detection(self) -> None:
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0, 0])
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[([], [], []), ([], [], [])],
                 ):
-                    with patch("triton_agent.backends.process_runner.time.monotonic", side_effect=[0.0, 1.0]):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 1.0]):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -619,14 +716,14 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0, 0])
         probe_values = iter([0.05, 0.12])
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=[([], [], []), ([], [], [])],
                 ):
-                    with patch("triton_agent.backends.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
-                        with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.time.monotonic", side_effect=[0.0, 0.05, 0.1, 0.12]):
+                        with patch("helix.backends.process_runner.os.close"):
                             result = run_streaming_process(
                                 ["codex", "exec"],
                                 "/tmp",
@@ -645,15 +742,15 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             pid=1234,
             default_poll_return=None,
         )
-        with patch("triton_agent.backends.process_runner.pty.openpty", return_value=(11, 12)):
-            with patch("triton_agent.backends.process_runner.subprocess.Popen", return_value=process):
+        with patch("helix.backends.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("helix.backends.process_runner.subprocess.Popen", return_value=process):
                 with patch(
-                    "triton_agent.backends.process_runner.select.select",
+                    "helix.backends.process_runner.select.select",
                     side_effect=KeyboardInterrupt,
                 ):
-                    with patch("triton_agent.backends.process_runner.os.killpg") as mocked_killpg:
-                        with patch("triton_agent.backends.process_runner.time.sleep"):
-                            with patch("triton_agent.backends.process_runner.os.close"):
+                    with patch("helix.backends.process_runner.os.killpg") as mocked_killpg:
+                        with patch("helix.backends.process_runner.time.sleep"):
+                            with patch("helix.backends.process_runner.os.close"):
                                 result = run_streaming_process(
                                     ["codex", "exec"],
                                     "/tmp",
@@ -679,7 +776,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
 class InteractiveProcessRunnerTests(unittest.TestCase):
     def test_returns_interactive_result(self) -> None:
         completed = _CompletedProcess(returncode=0)
-        with patch("triton_agent.backends.process_runner.subprocess.run", return_value=completed):
+        with patch("helix.backends.process_runner.subprocess.run", return_value=completed):
             result = run_interactive_process(["codex"], "/tmp")
         self.assertEqual(result.return_code, 0)
         self.assertEqual(result.stdout, "")
@@ -688,17 +785,17 @@ class InteractiveProcessRunnerTests(unittest.TestCase):
 
 class UnifiedProcessRunnerTests(unittest.TestCase):
     def test_dispatches_interactive_mode(self) -> None:
-        with patch("triton_agent.backends.process_runner.run_interactive_process", return_value=_result()) as mocked:
+        with patch("helix.backends.process_runner.run_interactive_process", return_value=_result()) as mocked:
             run_process(["codex"], "/tmp", mode="interactive")
         mocked.assert_called_once()
 
     def test_dispatches_streaming_mode(self) -> None:
-        with patch("triton_agent.backends.process_runner.run_streaming_process", return_value=_result()) as mocked:
+        with patch("helix.backends.process_runner.run_streaming_process", return_value=_result()) as mocked:
             run_process(["codex"], "/tmp", mode="streaming")
         mocked.assert_called_once()
 
     def test_dispatches_buffered_mode(self) -> None:
-        with patch("triton_agent.backends.process_runner.run_buffered_process", return_value=_result()) as mocked:
+        with patch("helix.backends.process_runner.run_buffered_process", return_value=_result()) as mocked:
             run_process(
                 ["codex"],
                 "/tmp",
@@ -712,7 +809,7 @@ class UnifiedProcessRunnerTests(unittest.TestCase):
         def probe() -> None:
             return None
 
-        with patch("triton_agent.backends.process_runner.run_buffered_process", return_value=_result()) as mocked:
+        with patch("helix.backends.process_runner.run_buffered_process", return_value=_result()) as mocked:
             run_process(
                 ["codex"],
                 "/tmp",
@@ -811,7 +908,7 @@ class _CompletedProcess:
 
 
 def _result():
-    from triton_agent.models import AgentResult
+    from helix.models import AgentResult
 
     return AgentResult(return_code=0, stdout="", stderr="")
 

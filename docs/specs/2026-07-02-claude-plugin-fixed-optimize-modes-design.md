@@ -22,7 +22,7 @@ contract that CLI-launched optimize sessions provide in their agent prompt.
 
 Keep the fixed plugin modes in `scripts/build-claude-optimize-plugin.py`, next
 to the generated agent contract. The builder should render a short "Fixed
-Optimize Modes" section into `agents/triton-agent-optimize.md` before the
+Optimize Modes" section into `agents/helix-optimize.md` before the
 critical workflow rules.
 
 This keeps the mode contract in the user-facing agent instructions, matching

@@ -22,9 +22,9 @@ The current batch command implementations already share the same execution shape
 
 That shape currently lives in three separate modules:
 
-- `src/triton_agent/generation/batch.py`
-- `src/triton_agent/convert/batch.py`
-- `src/triton_agent/optimize/batch.py`
+- `src/helix/generation/batch.py`
+- `src/helix/convert/batch.py`
+- `src/helix/optimize/batch.py`
 
 This duplication has already created drift:
 
@@ -61,7 +61,7 @@ The three batch commands share the following orchestration behavior today:
 - thread-pool based workspace execution
 - `PrefixedTextStream` for `--show-output`
 - `managed_mcp_scope()` wrapping when the staged skill set requires MCP servers
-- `TRITON_AGENT_BATCH_NPU_DEVICES` and `TRITON_AGENT_BATCH_WORKERS_PER_NPU` handling
+- `HELIX_BATCH_NPU_DEVICES` and `HELIX_BATCH_WORKERS_PER_NPU` handling
 - defensive conversion of unexpected worker exceptions into per-workspace failures
 
 The real command-specific differences are narrower:
@@ -292,7 +292,7 @@ The excluded optimize fields change how the command is executed or observed, but
 
 Add a shared batch runtime module, for example:
 
-- `src/triton_agent/batch_runtime.py`
+- `src/helix/batch_runtime.py`
 
 Its job is to own the repeated orchestration mechanics only:
 
@@ -357,7 +357,7 @@ Create shared dataclasses:
 
 Add one shared renderer, for example:
 
-- `src/triton_agent/batch_results.py`
+- `src/helix/batch_results.py`
 
 Responsibilities:
 
@@ -366,7 +366,7 @@ Responsibilities:
 - print `Summary: X succeeded, Y failed, Z skipped`
 - return exit code `0` only when there are results and none failed
 
-`src/triton_agent/optimize/render.py` can remain as a thin compatibility wrapper if that keeps import churn small.
+`src/helix/optimize/render.py` can remain as a thin compatibility wrapper if that keeps import churn small.
 
 ## Command-Local Responsibilities After Refactor
 

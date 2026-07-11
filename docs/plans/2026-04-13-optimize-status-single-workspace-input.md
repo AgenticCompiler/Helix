@@ -2,7 +2,7 @@
 
 **Goal:** Make `optimize-status` inspect the input directory itself when it is already an optimize workspace, while preserving batch-root scans for parent directories.
 
-**Architecture:** Keep the change small by adding a reusable optimize-artifact detection helper in `src/triton_agent/optimize/status.py` and branching in the command handler based on that helper.
+**Architecture:** Keep the change small by adding a reusable optimize-artifact detection helper in `src/helix/optimize/status.py` and branching in the command handler based on that helper.
 
 **Tech Stack:** Python, unittest
 

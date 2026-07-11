@@ -4,7 +4,7 @@
 
 **Goal:** Add an opt-in batch-only NPU affinity feature that assigns one Ascend device per concurrent workspace and propagates that assignment through agent launches, local run-eval subprocesses, and remote SSH-launched runtime commands.
 
-**Architecture:** Keep device selection in one shared CLI/runtime module instead of pushing it into prompts or individual skills. Batch commands acquire per-workspace device leases, attach `extra_env` to the request, and rely on shared subprocess helpers to merge those env overrides into local and remote execution paths. The feature remains completely dormant unless `TRITON_AGENT_BATCH_NPU_DEVICES` is set.
+**Architecture:** Keep device selection in one shared CLI/runtime module instead of pushing it into prompts or individual skills. Batch commands acquire per-workspace device leases, attach `extra_env` to the request, and rely on shared subprocess helpers to merge those env overrides into local and remote execution paths. The feature remains completely dormant unless `HELIX_BATCH_NPU_DEVICES` is set.
 
 **Tech Stack:** Python 3.11, `argparse`, `unittest`, `concurrent.futures`, repository batch helpers, skill runtime helper scripts, Markdown docs
 
@@ -12,14 +12,14 @@
 
 ## File Map
 
-- Create: `src/triton_agent/npu_affinity.py`
+- Create: `src/helix/npu_affinity.py`
 - Create: `tests/test_npu_affinity.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/process_runner.py`
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/process_runner.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run_runtime.py`
 - Modify: `tests/test_backends_base.py`
 - Modify: `tests/test_process_runner.py`
@@ -44,7 +44,7 @@
 ```python
 import unittest
 
-from triton_agent.npu_affinity import (
+from helix.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     parse_batch_npu_devices,
@@ -59,7 +59,7 @@ class BatchNpuAffinityTests(unittest.TestCase):
         self.assertEqual(parse_batch_npu_devices(" 0, 1 ,2 "), ("0", "1", "2"))
 
     def test_parse_batch_npu_devices_rejects_empty_entries(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+        with self.assertRaisesRegex(ValueError, "HELIX_BATCH_NPU_DEVICES"):
             parse_batch_npu_devices("0,,1")
 
     def test_parse_batch_npu_devices_rejects_duplicates(self) -> None:
@@ -119,8 +119,8 @@ def test_run_optimize_batch_assigns_distinct_affinity_env_per_workspace(self) ->
             seen_envs.append(request.extra_env or {})
             return AgentResult(return_code=0, stdout="ok", stderr="")
 
-        with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
-            with patch("triton_agent.optimize.batch.render_batch_optimize_results", return_value=0):
+        with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch("helix.optimize.batch.render_batch_optimize_results", return_value=0):
                 exit_code = run_optimize_batch(root, options, max_concurrency=2, stdout=StringIO(), run_request=fake_run_request)
 
         self.assertEqual(exit_code, 0)
@@ -163,7 +163,7 @@ def test_run_gen_eval_batch_assigns_affinity_env_per_workspace(self) -> None:
             seen_envs.append(request.extra_env or {})
             return AgentResult(return_code=0, stdout="ok", stderr="")
 
-        with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+        with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
             exit_code = run_gen_eval_batch(root, options, max_concurrency=2, run_request=fake_run)
     self.assertEqual({env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs}, {"0", "1"})
 
@@ -198,7 +198,7 @@ def test_run_convert_batch_assigns_affinity_env_per_workspace(self) -> None:
             seen_envs.append(request.extra_env or {})
             return AgentResult(return_code=0, stdout="ok", stderr="")
 
-        with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+        with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
             exit_code = run_convert_batch(root, options, max_concurrency=2, run_request=fake_run)
     self.assertEqual({env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs}, {"0", "1"})
 ```
@@ -230,7 +230,7 @@ def test_run_optimize_batch_rejects_concurrency_larger_than_affinity_pool(self) 
             prompt=None,
         )
 
-        with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+        with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0"}, clear=False):
             with self.assertRaisesRegex(ValueError, "--max-concurrency"):
                 run_optimize_batch(root, options, max_concurrency=2, stdout=StringIO())
 ```
@@ -240,15 +240,15 @@ def test_run_optimize_batch_rejects_concurrency_larger_than_affinity_pool(self) 
 Run: `uv run python -m unittest tests.test_npu_affinity tests.test_generation_batch tests.test_convert_commands tests.test_optimize_runtime`
 
 Expected:
-- `ModuleNotFoundError` or import failure for `triton_agent.npu_affinity`
+- `ModuleNotFoundError` or import failure for `helix.npu_affinity`
 - batch tests fail because `AgentRequest` has no `extra_env`
 - concurrency validation test fails because affinity-aware validation does not exist yet
 
 ### Task 2: Add The Shared Affinity Module And Request Contract
 
 **Files:**
-- Create: `src/triton_agent/npu_affinity.py`
-- Modify: `src/triton_agent/models.py`
+- Create: `src/helix/npu_affinity.py`
+- Modify: `src/helix/models.py`
 - Test: `tests/test_npu_affinity.py`
 
 - [ ] **Step 1: Extend `AgentRequest` with a per-request env override field**
@@ -274,7 +274,7 @@ class AgentRequest:
     min_rounds: Optional[int] = None
 ```
 
-- [ ] **Step 2: Create `src/triton_agent/npu_affinity.py` with parsing and lease helpers**
+- [ ] **Step 2: Create `src/helix/npu_affinity.py` with parsing and lease helpers**
 
 ```python
 from __future__ import annotations
@@ -285,7 +285,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 
-_BATCH_NPU_DEVICES_ENV = "TRITON_AGENT_BATCH_NPU_DEVICES"
+_BATCH_NPU_DEVICES_ENV = "HELIX_BATCH_NPU_DEVICES"
 
 
 def parse_batch_npu_devices(raw: str | None) -> tuple[str, ...] | None:
@@ -335,7 +335,7 @@ def validate_batch_affinity_capacity(
     if max_concurrency > len(devices):
         raise ValueError(
             "--max-concurrency must not exceed the number of devices configured by "
-            "TRITON_AGENT_BATCH_NPU_DEVICES."
+            "HELIX_BATCH_NPU_DEVICES."
         )
 ```
 
@@ -348,15 +348,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the affinity scaffolding**
 
 ```bash
-git add src/triton_agent/models.py src/triton_agent/npu_affinity.py tests/test_npu_affinity.py
+git add src/helix/models.py src/helix/npu_affinity.py tests/test_npu_affinity.py
 git commit -m "feat: add batch npu affinity primitives"
 ```
 
 ### Task 3: Teach Backend Launches And Generic Process Runners To Accept Env Overrides
 
 **Files:**
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/process_runner.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/process_runner.py`
 - Modify: `tests/test_backends_base.py`
 - Modify: `tests/test_process_runner.py`
 
@@ -385,7 +385,7 @@ def test_base_runner_passes_request_extra_env_to_process_runner(self) -> None:
             extra_env={"ASCEND_RT_VISIBLE_DEVICES": "2"},
         )
 
-        with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+        with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
             runner.run(request)
 
     self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
@@ -396,7 +396,7 @@ def test_base_runner_passes_request_extra_env_to_process_runner(self) -> None:
 ```python
 def test_buffered_process_runner_merges_extra_env(self) -> None:
     process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=0)
-    with patch("triton_agent.process_runner.subprocess.Popen", return_value=process) as mocked:
+    with patch("helix.process_runner.subprocess.Popen", return_value=process) as mocked:
         run_buffered_process(
             ["codex", "exec"],
             "/tmp",
@@ -407,7 +407,7 @@ def test_buffered_process_runner_merges_extra_env(self) -> None:
     self.assertEqual(mocked.call_args.kwargs["env"]["ASCEND_RT_VISIBLE_DEVICES"], "7")
 ```
 
-- [ ] **Step 3: Implement env merging in `src/triton_agent/process_runner.py`**
+- [ ] **Step 3: Implement env merging in `src/helix/process_runner.py`**
 
 ```python
 import os
@@ -496,24 +496,24 @@ Expected: PASS
 - [ ] **Step 6: Commit the subprocess env propagation layer**
 
 ```bash
-git add src/triton_agent/backends/base.py src/triton_agent/process_runner.py tests/test_backends_base.py tests/test_process_runner.py
+git add src/helix/backends/base.py src/helix/process_runner.py tests/test_backends_base.py tests/test_process_runner.py
 git commit -m "feat: propagate per-request env overrides"
 ```
 
 ### Task 4: Integrate Device Leases Into Batch Commands
 
 **Files:**
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_generation_batch.py`
 - Modify: `tests/test_convert_commands.py`
 
-- [ ] **Step 1: Add a small batch-local helper pattern in `src/triton_agent/optimize/batch.py`**
+- [ ] **Step 1: Add a small batch-local helper pattern in `src/helix/optimize/batch.py`**
 
 ```python
-from triton_agent.npu_affinity import (
+from helix.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
@@ -541,7 +541,7 @@ def _run_workspace(item: BatchOptimizeWorkspace) -> AgentResult:
 
 Use the same pattern for the `show_output` branch, passing `stdout` and `stderr` through to the runner inside the lease scope instead of submitting the original runner directly.
 
-- [ ] **Step 3: Mirror the same lease attachment in `src/triton_agent/generation/batch.py` and `src/triton_agent/convert/batch.py`**
+- [ ] **Step 3: Mirror the same lease attachment in `src/helix/generation/batch.py` and `src/helix/convert/batch.py`**
 
 ```python
 with pool.acquire() as device:
@@ -564,7 +564,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the batch integration**
 
 ```bash
-git add src/triton_agent/optimize/batch.py src/triton_agent/generation/batch.py src/triton_agent/convert/batch.py tests/test_optimize_runtime.py tests/test_generation_batch.py tests/test_convert_commands.py
+git add src/helix/optimize/batch.py src/helix/generation/batch.py src/helix/convert/batch.py tests/test_optimize_runtime.py tests/test_generation_batch.py tests/test_convert_commands.py
 git commit -m "feat: assign npu affinity to batch workspaces"
 ```
 
@@ -719,11 +719,11 @@ git commit -m "feat: propagate affinity env through runtime helpers"
 ```md
 ### Batch NPU Affinity
 
-Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list to pin concurrent batch workspaces to distinct Ascend NPUs:
+Set `HELIX_BATCH_NPU_DEVICES` to a comma-separated device list to pin concurrent batch workspaces to distinct Ascend NPUs:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1,2,3
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+export HELIX_BATCH_NPU_DEVICES=0,1,2,3
+uv run helix optimize-batch --input operators_root --max-concurrency 4
 ```
 
 When this variable is set, `--max-concurrency` must not exceed the number of configured devices.

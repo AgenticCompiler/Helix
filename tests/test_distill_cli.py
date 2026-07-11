@@ -6,10 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.distill import _config_from_args
-from triton_agent.distill.models import OperatorDistillResult
-from triton_agent.models import CommandKind
+from helix.cli import build_parser
+from helix.commands.distill import _config_from_args
+from helix.distill.models import OperatorDistillResult
+from helix.models import CommandKind
 
 
 class DistillCliTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class DistillCliTests(unittest.TestCase):
 
         self.assertEqual(
             config.skills_dir,
-            (Path("operators").resolve() / ".triton-agent" / "distill-skills"),
+            (Path("operators").resolve() / ".helix" / "distill-skills"),
         )
         self.assertEqual(config.output_dir, (Path("operators").resolve() / "distill-output"))
         self.assertTrue(config.cleanup_skills_dir)

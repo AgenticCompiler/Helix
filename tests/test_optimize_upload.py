@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize_upload.models import UploadIdentity
-from triton_agent.optimize_upload.naming import slugify_workspace_name, build_upload_identity
-from triton_agent.optimize_upload.collector import collect_workspace_upload_files
-from triton_agent.optimize_upload.manifest import build_manifest
+from helix.optimize_upload.models import UploadIdentity
+from helix.optimize_upload.naming import slugify_workspace_name, build_upload_identity
+from helix.optimize_upload.collector import collect_workspace_upload_files
+from helix.optimize_upload.manifest import build_manifest
 
 
 class OptimizeUploadNamingTests(unittest.TestCase):
@@ -64,11 +64,11 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         (tmp / "opt-round-1" / "opt_kernel_perf.txt").write_text("", encoding="utf-8")
         (tmp / "opt-round-1" / "perf-analysis.md").write_text("", encoding="utf-8")
         (tmp / "opt-round-1" / "compiler-analysis.md").write_text("", encoding="utf-8")
-        # triton-agent-logs
-        (tmp / "triton-agent-logs").mkdir()
-        (tmp / "triton-agent-logs" / "run-001").mkdir()
-        (tmp / "triton-agent-logs" / "run-001" / "show-output.log").write_text("", encoding="utf-8")
-        (tmp / "triton-agent-logs" / "run-001" / "agent-session-batch-1-5.json").write_text(
+        # helix-logs
+        (tmp / "helix-logs").mkdir()
+        (tmp / "helix-logs" / "run-001").mkdir()
+        (tmp / "helix-logs" / "run-001" / "show-output.log").write_text("", encoding="utf-8")
+        (tmp / "helix-logs" / "run-001" / "agent-session-batch-1-5.json").write_text(
             '{"session_id":"abc"}\n',
             encoding="utf-8",
         )
@@ -140,13 +140,13 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
         (workspace / "opt-round-1").mkdir()
         (workspace / "opt-round-1" / "summary.md").write_text("summary", encoding="utf-8")
         # Build identity and collect
-        from triton_agent.optimize_upload.naming import build_upload_identity
-        from triton_agent.optimize_upload.collector import collect_workspace_upload_files
+        from helix.optimize_upload.naming import build_upload_identity
+        from helix.optimize_upload.collector import collect_workspace_upload_files
         identity = build_upload_identity(workspace)
         collected = collect_workspace_upload_files(workspace)
         manifest = build_manifest(identity, collected)
 
-        from triton_agent.optimize_upload.packager import build_upload_tarball
+        from helix.optimize_upload.packager import build_upload_tarball
         with build_upload_tarball(collected, manifest) as tarball_path:
             self.assertTrue(tarball_path.exists())
             self.assertTrue(str(tarball_path).endswith(".tar.gz"))
@@ -167,13 +167,13 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
         (workspace / "opt-round-1").mkdir()
-        from triton_agent.optimize_upload.naming import build_upload_identity
-        from triton_agent.optimize_upload.collector import collect_workspace_upload_files
+        from helix.optimize_upload.naming import build_upload_identity
+        from helix.optimize_upload.collector import collect_workspace_upload_files
         identity = build_upload_identity(workspace)
         collected = collect_workspace_upload_files(workspace)
         manifest = build_manifest(identity, collected)
 
-        from triton_agent.optimize_upload.packager import build_upload_tarball
+        from helix.optimize_upload.packager import build_upload_tarball
         with build_upload_tarball(collected, manifest) as tarball_path:
             with tarfile.open(tarball_path, "r:gz") as tf:
                 names = tf.getnames()
@@ -185,22 +185,22 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
 
 class OptimizeUploadClientTests(unittest.TestCase):
     def test_load_upload_url_returns_default_when_unset(self) -> None:
-        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL, load_upload_url
+        from helix.optimize_upload.client import _DEFAULT_UPLOAD_URL, load_upload_url
 
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(load_upload_url(), _DEFAULT_UPLOAD_URL)
 
     def test_load_upload_url_returns_from_env(self) -> None:
-        from triton_agent.optimize_upload.client import load_upload_url
+        from helix.optimize_upload.client import load_upload_url
         url = "http://example.com:8080/uploads"
-        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_UPLOAD_URL": url}):
+        with patch.dict(os.environ, {"HELIX_OPTIMIZE_UPLOAD_URL": url}):
             self.assertEqual(load_upload_url(), url)
 
     def test_upload_tarball_sends_correct_headers(self) -> None:
         """Verify request headers using a local test server."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.client import upload_tarball
+        from helix.optimize_upload.client import upload_tarball
 
         captured: dict = {}
 
@@ -249,7 +249,7 @@ class OptimizeUploadClientTests(unittest.TestCase):
             self.assertEqual(captured["method"], "POST")
             self.assertEqual(captured["headers"].get("Content-Type"), "application/gzip")
             self.assertEqual(
-                captured["headers"].get("X-Triton-Agent-Upload-Uid"),
+                captured["headers"].get("X-Helix-Upload-Uid"),
                 "6f7c2f6d9b8c4d8ab2c4f91e7f9b5a12",
             )
         finally:
@@ -259,7 +259,7 @@ class OptimizeUploadClientTests(unittest.TestCase):
         """Test HTTP error surfaces as exception."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.client import upload_tarball
+        from helix.optimize_upload.client import upload_tarball
 
         class ErrorHandler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
@@ -296,7 +296,7 @@ class OptimizeUploadClientTests(unittest.TestCase):
         """Business failure: server returns ok=false -> RuntimeError."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.client import upload_tarball
+        from helix.optimize_upload.client import upload_tarball
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
@@ -325,7 +325,7 @@ class OptimizeUploadClientTests(unittest.TestCase):
         """Malformed response: ok=\"false\" string -> RuntimeError (not treated as truthy)."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.client import upload_tarball
+        from helix.optimize_upload.client import upload_tarball
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
@@ -354,7 +354,7 @@ class OptimizeUploadClientTests(unittest.TestCase):
         """Malformed response: stored_path missing -> RuntimeError."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.client import upload_tarball
+        from helix.optimize_upload.client import upload_tarball
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
@@ -404,9 +404,9 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
         (workspace / "opt-round-1").mkdir()
-        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL
-        from triton_agent.optimize_upload.models import UploadResponse
-        from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+        from helix.optimize_upload.client import _DEFAULT_UPLOAD_URL
+        from helix.optimize_upload.models import UploadResponse
+        from helix.optimize_upload.workflow import upload_optimize_workspace
 
         mock_response = UploadResponse(
             ok=True,
@@ -418,7 +418,7 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
         )
         with patch.dict(os.environ, {}, clear=True):
             with patch(
-                "triton_agent.optimize_upload.workflow.upload_tarball", return_value=mock_response
+                "helix.optimize_upload.workflow.upload_tarball", return_value=mock_response
             ) as mock_upload:
                 upload_optimize_workspace(workspace, verbose=True)
             mock_upload.assert_called_once()
@@ -426,7 +426,7 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
             self.assertTrue(call_url.startswith(_DEFAULT_UPLOAD_URL))
 
     def test_workflow_invalid_workspace_raises(self) -> None:
-        from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+        from helix.optimize_upload.workflow import upload_optimize_workspace
         with self.assertRaises(ValueError):
             upload_optimize_workspace(Path("/nonexistent"), verbose=True)
 
@@ -434,7 +434,7 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
         """Integration test: full workflow hits a real HTTP server."""
         import http.server
         import threading
-        from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+        from helix.optimize_upload.workflow import upload_optimize_workspace
 
         received_data: dict = {}
 
@@ -469,7 +469,7 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
         (workspace / "opt-round-1").mkdir()
 
         upload_url = f"http://127.0.0.1:{port}/uploads"
-        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_UPLOAD_URL": upload_url}):
+        with patch.dict(os.environ, {"HELIX_OPTIMIZE_UPLOAD_URL": upload_url}):
             response = upload_optimize_workspace(workspace, verbose=False)
             self.assertTrue(response.ok)
             self.assertEqual(response.upload_uid, "abc123")

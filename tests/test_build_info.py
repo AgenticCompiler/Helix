@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.build_info import (  # noqa: E402
+from helix.build_info import (  # noqa: E402
     _find_git_root,
     _load_embedded_commit,
     _resolve_source_checkout_commit,
@@ -21,20 +21,20 @@ class FindGitRootTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             (root / ".git").mkdir()
-            found = _find_git_root(root / "src" / "triton_agent")
+            found = _find_git_root(root / "src" / "helix")
             self.assertEqual(found, root)
 
     def test_finds_git_file_for_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             (root / ".git").write_text("gitdir: /some/other/path")
-            found = _find_git_root(root / "src" / "triton_agent")
+            found = _find_git_root(root / "src" / "helix")
             self.assertEqual(found, root)
 
     def test_returns_none_when_no_git_found(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
-            found = _find_git_root(root / "src" / "triton_agent")
+            found = _find_git_root(root / "src" / "helix")
             self.assertIsNone(found)
 
 
@@ -55,7 +55,7 @@ class ResolveSourceCheckoutCommitTests(unittest.TestCase):
 
     def test_returns_none_when_no_git_repo(self) -> None:
         with patch(
-            "triton_agent.build_info._find_git_root",
+            "helix.build_info._find_git_root",
             return_value=None,
         ):
             result = _resolve_source_checkout_commit()
@@ -151,13 +151,13 @@ class GetBuildCommitTests(unittest.TestCase):
         fake_source = "c" * 40
         fake_embedded = "d" * 40
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value=fake_source,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=fake_embedded,
         ), patch(
-            "triton_agent.build_info._is_installed_package",
+            "helix.build_info._is_installed_package",
             return_value=False,
         ):
             result = get_build_commit()
@@ -167,13 +167,13 @@ class GetBuildCommitTests(unittest.TestCase):
         fake_source = "c" * 40
         fake_embedded = "d" * 40
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value=fake_source,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=fake_embedded,
         ), patch(
-            "triton_agent.build_info._is_installed_package",
+            "helix.build_info._is_installed_package",
             return_value=True,
         ):
             result = get_build_commit()
@@ -181,13 +181,13 @@ class GetBuildCommitTests(unittest.TestCase):
 
     def test_installed_package_falls_back_to_unknown(self) -> None:
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value="c" * 40,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=None,
         ), patch(
-            "triton_agent.build_info._is_installed_package",
+            "helix.build_info._is_installed_package",
             return_value=True,
         ):
             result = get_build_commit()
@@ -196,10 +196,10 @@ class GetBuildCommitTests(unittest.TestCase):
     def test_falls_back_to_embedded(self) -> None:
         fake_embedded = "e" * 40
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value=None,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=fake_embedded,
         ):
             result = get_build_commit()
@@ -207,10 +207,10 @@ class GetBuildCommitTests(unittest.TestCase):
 
     def test_returns_none_when_both_unavailable(self) -> None:
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value=None,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=None,
         ):
             result = get_build_commit()
@@ -218,7 +218,7 @@ class GetBuildCommitTests(unittest.TestCase):
 
     def test_memoizes_result(self) -> None:
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value="f" * 40,
         ) as mock_resolve:
             first = get_build_commit()
@@ -233,7 +233,7 @@ class GetBuildInfoDisplayTests(unittest.TestCase):
 
     def test_shortens_40_char_to_12(self) -> None:
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value="a" * 40,
         ):
             result = get_build_info_display()
@@ -242,10 +242,10 @@ class GetBuildInfoDisplayTests(unittest.TestCase):
 
     def test_returns_unknown_when_no_commit(self) -> None:
         with patch(
-            "triton_agent.build_info._resolve_source_checkout_commit",
+            "helix.build_info._resolve_source_checkout_commit",
             return_value=None,
         ), patch(
-            "triton_agent.build_info._load_embedded_commit",
+            "helix.build_info._load_embedded_commit",
             return_value=None,
         ):
             result = get_build_info_display()

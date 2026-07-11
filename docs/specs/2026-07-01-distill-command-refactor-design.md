@@ -2,7 +2,7 @@
 
 ## User-Visible Semantics
 
-`triton-agent distill -i <input>` replaces the current `diff-skills-update`
+`helix distill -i <input>` replaces the current `diff-skills-update`
 command. The command distills optimization evidence into reusable optimize
 knowledge pattern cards, then verifies the distilled guidance by asking an agent
 to regenerate the optimization from the baseline and staged skills alone.

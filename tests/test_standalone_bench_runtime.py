@@ -2,10 +2,10 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Optional
 from unittest.mock import patch
 
@@ -13,6 +13,24 @@ from tests.run_skill_test_utils import (
     load_bench_runtime_module,
     make_skill_result,
 )
+
+@contextmanager
+def _without_preloaded_modules(*names: str):
+    saved: dict[str, ModuleType] = {}
+    missing: set[str] = set()
+    for name in names:
+        module = sys.modules.pop(name, None)
+        if module is None:
+            missing.add(name)
+        else:
+            saved[name] = module
+    try:
+        yield
+    finally:
+        for name in missing:
+            sys.modules.pop(name, None)
+        for name, module in saved.items():
+            sys.modules[name] = module
 
 
 class StandaloneBenchRuntimeTests(unittest.TestCase):
@@ -56,8 +74,9 @@ def build_bench_case_fn(operator_api, case):
                 encoding="utf-8",
             )
             original_import = module.importlib.import_module
-            with patch.object(module.importlib, "import_module", side_effect=fake_import):
-                cases, _resolution = module.load_bench_cases(bench_file, operator_file)
+            with _without_preloaded_modules("torch", "torch_npu"):
+                with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                    cases, _resolution = module.load_bench_cases(bench_file, operator_file)
 
         self.assertEqual([case.case_id for case in cases], ["case-a"])
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
@@ -412,7 +431,7 @@ def build_bench_case_fn(operator_api, case):
 
             with patch.dict(
                 os.environ,
-                {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)},
+                {"HELIX_BENCH_OUTPUT_DIR": str(keep_root)},
                 clear=False,
             ), patch.object(
                 module,
@@ -482,7 +501,7 @@ def build_bench_case_fn(operator_api, case):
                 os.chdir(root)
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./relative-keep-root"},
+                    {"HELIX_BENCH_OUTPUT_DIR": "./relative-keep-root"},
                     clear=False,
                 ), patch.object(
                     module,

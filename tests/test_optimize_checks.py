@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize import checks as optimize_checks
+from helix.optimize import checks as optimize_checks
 
 TRITON_ROUND_OPERATOR = """\
 import torch
@@ -93,7 +93,7 @@ class OptimizeCheckTests(unittest.TestCase):
             count_completed_round_directories=lambda path: 7 if path.name == "workspace" else 0,
             count_terminal_round_directories=lambda path: 9 if path.name == "workspace" else 0,
         )
-        with patch("triton_agent.optimize.checks.load_skill_script_module", return_value=module) as mocked:
+        with patch("helix.optimize.checks.load_skill_script_module", return_value=module) as mocked:
             baseline_result = optimize_checks.check_baseline(Path("/tmp/baseline"))
             round_result = optimize_checks.check_round(Path("/tmp/opt-round-1"))
             completed_count = optimize_checks.count_completed_round_directories(Path("/tmp/workspace"))
@@ -226,7 +226,7 @@ class OptimizeCheckTests(unittest.TestCase):
             pt_file.write_text("stub\n", encoding="utf-8")
 
             with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", None)
+                os.environ.pop("HELIX_OPTIMIZE_DELETE_PT_FILES", None)
                 result = optimize_checks.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
@@ -241,7 +241,7 @@ class OptimizeCheckTests(unittest.TestCase):
             pt_file = round_dir / "test_result.pt"
             pt_file.write_text("stub\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
                 result = optimize_checks.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
@@ -259,7 +259,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": value},
+                    {"HELIX_OPTIMIZE_DELETE_PT_FILES": value},
                     clear=False,
                 ):
                     result = optimize_checks.check_round(round_dir)
@@ -278,7 +278,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": value},
+                    {"HELIX_OPTIMIZE_DELETE_PT_FILES": value},
                     clear=False,
                 ):
                     result = optimize_checks.check_round(round_dir)
@@ -868,8 +868,8 @@ class OptimizeCheckTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW": "abc",
-                    "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN": "-1",
+                    "HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW": "abc",
+                    "HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN": "-1",
                 },
                 clear=False,
             ):

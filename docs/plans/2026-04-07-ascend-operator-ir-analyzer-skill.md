@@ -43,7 +43,7 @@
 - Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
 - Reuse: `skills/triton-npu-run-eval/scripts/run_runtime.py`
 
-- [ ] **Step 1: Load the shared remote runtime helpers from `skills/triton-npu-run-eval/scripts/run_runtime.py` without coupling the new skill to `triton_agent` package imports**
+- [ ] **Step 1: Load the shared remote runtime helpers from `skills/triton-npu-run-eval/scripts/run_runtime.py` without coupling the new skill to `helix` package imports**
 - [ ] **Step 2: Implement remote workspace creation, file staging, remote command execution, and archive copy-back using the same `--remote`, `--remote-workdir`, and `--keep-remote-workdir` semantics used elsewhere in the repository**
 - [ ] **Step 3: Ensure remote mode replays the compiler on the remote machine and copies the completed archive directory back to the requested local archive path**
 - [ ] **Step 4: Make remote failures short and actionable for missing artifacts, failed remote commands, or local archive collisions**

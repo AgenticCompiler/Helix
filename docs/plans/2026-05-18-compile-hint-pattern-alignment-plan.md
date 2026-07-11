@@ -13,8 +13,8 @@
 ### Task 1: Rewrite The Authored Pattern Card
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/references/patterns/compile_hint.md`
-- Reference: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/compile_hint.md`
+- Modify: `/Users/cdj/Projects/helix/skills/triton/triton-npu-optimize-knowledge/references/patterns/compile_hint.md`
+- Reference: `/Users/cdj/Projects/helix/skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/compile_hint.md`
 
 - [ ] **Step 1: Rewrite the title and opening sections to match the broader hinting strategy**
 
@@ -44,8 +44,8 @@ and that `## Summary` describes what the pattern is while `## Use When` describe
 ### Task 2: Regenerate And Verify The Pattern Index
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
-- Script: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `/Users/cdj/Projects/helix/skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Script: `/Users/cdj/Projects/helix/skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
 
 - [ ] **Step 1: Regenerate the checked-in pattern index**
 

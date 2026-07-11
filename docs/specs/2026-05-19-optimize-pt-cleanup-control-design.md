@@ -19,7 +19,7 @@ That behavior makes it easy to lose archived differential results that are still
 
 - `check-baseline` must never delete `.pt` files.
 - Normal optimize execution must preserve matching `.pt` files by default.
-- A new environment variable, `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`, should opt back into the current round and end-of-run cleanup behavior.
+- A new environment variable, `HELIX_OPTIMIZE_DELETE_PT_FILES`, should opt back into the current round and end-of-run cleanup behavior.
 - `--reset-optimize` must keep its current behavior and continue deleting workspace-root `*_result.pt` files regardless of the new environment variable.
 - Cleanup scope must stay limited to the existing optimize-owned PT naming rules:
   - `test_result.pt`
@@ -37,7 +37,7 @@ That behavior makes it easy to lose archived differential results that are still
 Use one explicit enable-only environment variable:
 
 ```text
-TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES
+HELIX_OPTIMIZE_DELETE_PT_FILES
 ```
 
 Behavior:
@@ -54,13 +54,13 @@ This keeps the default safe, avoids widening the CLI surface, and gives users a 
 
 Keep optimize PT cleanup policy anchored in the `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill-side contract code and continue reusing that logic from runtime through the existing bridge layer.
 
-This follows the repository rule that skill-side helper code must not import `triton_agent`, while runtime code may reuse skill-side behavior through `skill_loader`.
+This follows the repository rule that skill-side helper code must not import `helix`, while runtime code may reuse skill-side behavior through `skill_loader`.
 
 Concretely:
 
 - extend `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py` with a small helper that answers whether ordinary optimize PT cleanup is enabled
 - expose that helper through the existing `optimize_check` bridge module
-- reuse it from `src/triton_agent/optimize/pt_cleanup.py`
+- reuse it from `src/helix/optimize/pt_cleanup.py`
 
 This avoids duplicating environment-variable parsing in both `skills/` and `src/`.
 
@@ -81,7 +81,7 @@ This makes baseline validation a pure check instead of a check-plus-mutation ste
 
 `check_round()` should preserve its existing validation behavior and only make PT deletion conditional.
 
-When `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` is enabled:
+When `HELIX_OPTIMIZE_DELETE_PT_FILES` is enabled:
 
 - keep deleting matching PT files inside the current round directory
 - keep the existing informational issue text that reports which PT files were cleaned
@@ -111,7 +111,7 @@ The optimize execution flow should keep calling the helper during supervised and
 
 `reset_optimize_workspace()` should stay unchanged for PT handling.
 
-When `--reset-optimize` is active, workspace-root `*_result.pt` files should still be deleted unconditionally before the fresh run begins, regardless of `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`.
+When `--reset-optimize` is active, workspace-root `*_result.pt` files should still be deleted unconditionally before the fresh run begins, regardless of `HELIX_OPTIMIZE_DELETE_PT_FILES`.
 
 This preserves the existing meaning of a destructive fresh reset.
 
@@ -119,7 +119,7 @@ This preserves the existing meaning of a destructive fresh reset.
 
 Update user-facing docs in `README.md` to describe:
 
-- the new `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` environment variable
+- the new `HELIX_OPTIMIZE_DELETE_PT_FILES` environment variable
 - the default preservation behavior for normal optimize cleanup
 - the special cases:
   - `check-baseline` never deletes PT files
@@ -135,13 +135,13 @@ Add or update coverage in these areas:
   - confirm `check-baseline` no longer deletes `baseline/test_result.pt`
 - `tests/test_optimize_checks.py`
   - confirm `check-round` preserves round PT files by default
-  - confirm `check-round` deletes round PT files when `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` is enabled
+  - confirm `check-round` deletes round PT files when `HELIX_OPTIMIZE_DELETE_PT_FILES` is enabled
 - `tests/test_optimize_runtime.py`
   - confirm ordinary optimize PT cleanup preserves workspace-root and round PT files by default
-  - confirm ordinary optimize PT cleanup deletes those files when `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` is enabled
+  - confirm ordinary optimize PT cleanup deletes those files when `HELIX_OPTIMIZE_DELETE_PT_FILES` is enabled
   - confirm `reset_optimize_workspace()` still deletes workspace-root `*_result.pt` files regardless of the environment variable
 - `tests/test_cli.py`
-  - confirm the top-level environment-variable help text mentions `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`
+  - confirm the top-level environment-variable help text mentions `HELIX_OPTIMIZE_DELETE_PT_FILES`
 
 ## Scope Boundaries
 

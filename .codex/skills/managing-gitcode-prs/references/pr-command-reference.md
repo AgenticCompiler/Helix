@@ -2,7 +2,7 @@
 
 Use this reference only when you need the exact script flags or official endpoint mapping. Keep `SKILL.md` as the workflow entrypoint.
 
-For this workspace, prefer `-R midwinter1993/triton-agent` unless the user explicitly targets another repository.
+For this workspace, prefer `-R midwinter1993/helix` unless the user explicitly targets another repository.
 
 ## Preferred launcher for this skill
 
@@ -70,43 +70,43 @@ PATCH /api/v5/repos/{owner}/{repo}/pulls/{number}
 Standard create:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "New feature" --body "Description"
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --title "New feature" --body "Description"
 ```
 
 Explicit head:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --head feature-branch --title "Feature" --body "Description"
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --head feature-branch --title "Feature" --body "Description"
 ```
 
 Explicit base:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --base main --title "Feature" --body "Description"
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --base main --title "Feature" --body "Description"
 ```
 
 Draft:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "WIP: Feature" --draft
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --title "WIP: Feature" --draft
 ```
 
 Draft and prune source branch after merge:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "WIP: Feature" --draft --prune-source-branch
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --title "WIP: Feature" --draft --prune-source-branch
 ```
 
 Fill from latest commit:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --fill
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --fill
 ```
 
 Structured JSON output:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "New feature" --body "Description" --json
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --title "New feature" --body "Description" --json
 ```
 
 Notes:
@@ -122,33 +122,33 @@ Notes:
 Open PRs:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix
 ```
 
 Closed or merged:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --state closed
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --state merged
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --state closed
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --state merged
 ```
 
 Filter by branches:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --head feature/login --base main
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --head feature/login --base main
 ```
 
 Limit, sorting, pagination:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --limit 10
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --sort updated --direction desc --page 2
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --limit 10
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --sort updated --direction desc --page 2
 ```
 
 Structured output:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --json
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --json
 ```
 
 ## `view`
@@ -156,27 +156,27 @@ python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agen
 Basic details:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix
 ```
 
 With comments:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --comments
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --comments
 ```
 
 JSON output:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --json
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --comments --json
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --json
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --comments --json
 ```
 
 Time formatting for text output:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --time-format relative
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --time-format absolute
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --time-format relative
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --time-format absolute
 ```
 
 Notes:

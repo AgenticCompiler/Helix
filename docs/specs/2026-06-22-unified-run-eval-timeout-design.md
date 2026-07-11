@@ -2,7 +2,7 @@
 
 ## Summary
 
-Use `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment variable for both `run-test` and `run-bench`, and change its default from `900` seconds to `300` seconds. Make local `run-test` execute through an internal subprocess path so the timeout can actually interrupt stalled local test runs instead of applying only to remote test runs.
+Use `HELIX_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment variable for both `run-test` and `run-bench`, and change its default from `900` seconds to `300` seconds. Make local `run-test` execute through an internal subprocess path so the timeout can actually interrupt stalled local test runs instead of applying only to remote test runs.
 
 ## Problem
 
@@ -26,17 +26,17 @@ Use `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment 
 - Do not change profile-specific timeout controls in this change.
 - Do not add new CLI flags for test or benchmark timeout configuration.
 - Do not redesign benchmark or test execution semantics beyond the timeout-enforcement path.
-- Do not consolidate `src/triton_agent/process_runner.py` and `skills/triton-npu-run-eval/scripts/run_runtime.py` into one shared implementation; skill scripts must remain self-contained and must not import `triton_agent`.
+- Do not consolidate `src/helix/process_runner.py` and `skills/triton-npu-run-eval/scripts/run_runtime.py` into one shared implementation; skill scripts must remain self-contained and must not import `helix`.
 
 ## Design
 
-- `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` becomes the only documented timeout variable for `run-test` and `run-bench`.
-- The default for `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` becomes `300`.
-- `TRITON_AGENT_TEST_TIMEOUT_SECONDS` and `TRITON_AGENT_BENCH_TIMEOUT_SECONDS` stop affecting runtime behavior and are removed from CLI help and documentation.
+- `HELIX_EVAL_TIMEOUT_SECONDS` becomes the only documented timeout variable for `run-test` and `run-bench`.
+- The default for `HELIX_EVAL_TIMEOUT_SECONDS` becomes `300`.
+- `HELIX_TEST_TIMEOUT_SECONDS` and `HELIX_BENCH_TIMEOUT_SECONDS` stop affecting runtime behavior and are removed from CLI help and documentation.
 - The timeout is an idle timeout, not a wall-clock cap. A `300`-second default means “terminate the eval subprocess after 300 seconds without observable output,” not “terminate after 300 seconds total runtime.”
-- The shorter `300`-second default is deliberate. The request for this work is to make ordinary eval hangs surface sooner with one shared knob for `run-test` and `run-bench`; users whose remote environments legitimately need longer silent compile or execution gaps can raise `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` explicitly.
-- Profile execution remains on `TRITON_AGENT_PROFILE_TIMEOUT_SECONDS` with its current default. That exclusion is deliberate to keep this change scoped to ordinary `run-test` and `run-bench` flows, while avoiding an undocumented behavior change for profiling workloads that can have different setup and artifact-collection silence windows.
-- Eval runtime helpers in `run_runtime.py` should mirror the timeout-disable semantics already used in [process_runner.py](/Users/cdj/Projects/triton-agent/src/triton_agent/process_runner.py:188): `0` disables stall termination, while negative values remain invalid because `env_int()` already rejects them.
+- The shorter `300`-second default is deliberate. The request for this work is to make ordinary eval hangs surface sooner with one shared knob for `run-test` and `run-bench`; users whose remote environments legitimately need longer silent compile or execution gaps can raise `HELIX_EVAL_TIMEOUT_SECONDS` explicitly.
+- Profile execution remains on `HELIX_PROFILE_TIMEOUT_SECONDS` with its current default. That exclusion is deliberate to keep this change scoped to ordinary `run-test` and `run-bench` flows, while avoiding an undocumented behavior change for profiling workloads that can have different setup and artifact-collection silence windows.
+- Eval runtime helpers in `run_runtime.py` should mirror the timeout-disable semantics already used in [process_runner.py](/Users/cdj/Projects/helix/src/helix/process_runner.py:188): `0` disables stall termination, while negative values remain invalid because `env_int()` already rejects them.
 
 ### Worker Contract
 
@@ -63,7 +63,7 @@ Use `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment 
 ### Runtime And Documentation Changes
 
 - In `skills/triton-npu-run-eval/scripts/run_runtime.py`:
-  - Keep one shared `eval_stall_timeout_seconds()` helper that reads `TRITON_AGENT_EVAL_TIMEOUT_SECONDS`.
+  - Keep one shared `eval_stall_timeout_seconds()` helper that reads `HELIX_EVAL_TIMEOUT_SECONDS`.
   - Change its default from `900` to `300`.
   - Update buffered and streaming process runners so they only trigger stall termination when `stall_timeout_seconds > 0`.
 - In `skills/triton-npu-run-eval/scripts/bench_runner.py`:
@@ -74,7 +74,7 @@ Use `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment 
   - Add a private subprocess entrypoint for local test execution that accepts the resolved test mode, test path, operator path, result-file path, and verbosity setting.
   - Keep the existing in-process standalone and differential test implementations as the worker-side execution logic so test semantics stay the same.
   - Have the parent-side `run_local_test()` launch that worker through the existing runtime subprocess helper and decode the structured result payload from `--result-file`.
-- In `src/triton_agent/cli.py` and `README.md`:
+- In `src/helix/cli.py` and `README.md`:
   - Keep only the shared eval timeout variable in user-facing timeout documentation for `run-test` and `run-bench`.
   - Update the documented default from `900` to `300`.
 
@@ -86,7 +86,7 @@ Use `TRITON_AGENT_EVAL_TIMEOUT_SECONDS` as the single stall-timeout environment 
   - archived-result propagation for successful differential runs
   - parent-side `maybe_print_visible_devices()` behavior
 - Update `tests/test_bench_runner.py` assertions that currently expect `stall_timeout_seconds == 900` so they instead validate the unified helper and the new `300` default.
-- Update `tests/test_cli.py` help-text assertions so they no longer expect `TRITON_AGENT_TEST_TIMEOUT_SECONDS` or `TRITON_AGENT_BENCH_TIMEOUT_SECONDS`.
-- Add or update runtime-helper tests so `TRITON_AGENT_EVAL_TIMEOUT_SECONDS=0` disables stall termination, while negative values remain invalid.
+- Update `tests/test_cli.py` help-text assertions so they no longer expect `HELIX_TEST_TIMEOUT_SECONDS` or `HELIX_BENCH_TIMEOUT_SECONDS`.
+- Add or update runtime-helper tests so `HELIX_EVAL_TIMEOUT_SECONDS=0` disables stall termination, while negative values remain invalid.
 - Run:
   - `uv run python -m unittest tests.test_test_runner tests.test_bench_runner tests.test_cli -v`

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Change `triton-agent status` so round performance is counted only when the
+Change `helix status` so round performance is counted only when the
 round explicitly passed both correctness and benchmark validation.
 
 ## Goals
@@ -34,7 +34,7 @@ round explicitly passed both correctness and benchmark validation.
 
 ## Architecture
 
-`src/triton_agent/status/core.py` should load round state before reading any
+`src/helix/status/core.py` should load round state before reading any
 round perf artifact. The round is comparable only when the state loads
 successfully and both gate fields are `passed`. Metric-source selection should
 continue to come from the same round state object once the round is accepted.

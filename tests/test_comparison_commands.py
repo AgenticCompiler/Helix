@@ -10,16 +10,16 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-import triton_agent.commands.comparison as comparison_module
-from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.cli import build_parser
+import helix.commands.comparison as comparison_module
+from helix.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
 from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
     def test_package_bridge_module_is_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("triton_agent.comparison"))
+        self.assertIsNone(importlib.util.find_spec("helix.comparison"))
 
     def test_load_compare_result_reuses_compare_module(self) -> None:
         self.assertIs(comparison_module._load_compare_result(), load_compare_result_module())
@@ -217,7 +217,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_remote_result_files",
+                "helix.commands.comparison.compare_remote_result_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_result(parser, args)
@@ -246,7 +246,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_result_files",
+                "helix.commands.comparison.compare_result_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_result(parser, args)
@@ -280,12 +280,12 @@ class PerfArtifactsStructureTests(unittest.TestCase):
                 "os.environ",
                 {
                     remote_target_env_name(): "alice@example.com",
-                    remote_workdir_env_name(): "/tmp/triton-agent",
+                    remote_workdir_env_name(): "/tmp/helix",
                 },
                 clear=False,
             ):
                 with patch(
-                    "triton_agent.commands.comparison.compare_remote_result_files",
+                    "helix.commands.comparison.compare_remote_result_files",
                     return_value=0,
                 ) as mocked:
                     exit_code = handle_compare_result(parser, args)
@@ -295,7 +295,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
                 oracle.resolve(),
                 new.resolve(),
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
@@ -320,7 +320,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_perf_files",
+                "helix.commands.comparison.compare_perf_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_perf(parser, args)
@@ -353,7 +353,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_perf_files",
+                "helix.commands.comparison.compare_perf_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_perf(parser, args)
@@ -387,7 +387,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_perf_files",
+                "helix.commands.comparison.compare_perf_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_perf(parser, args)
@@ -421,7 +421,7 @@ class PerfArtifactsStructureTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.comparison.compare_perf_files",
+                "helix.commands.comparison.compare_perf_files",
                 return_value=0,
             ) as mocked:
                 exit_code = handle_compare_perf(parser, args)

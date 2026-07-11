@@ -10,14 +10,14 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.distill.agent import _prefixed_stream
-from triton_agent.distill.git_repo_workspaces import GIT_REPO_PLAN_SKILL_NAME
-from triton_agent.distill.models import DiscoveryResult
-from triton_agent.distill.models import DistillConfig
-from triton_agent.distill.git_repo_workspaces import build_workspace_plan_prompt
-from triton_agent.distill.workflow import _cleanup_git_repo_plan_dir
-from triton_agent.distill.workflow import run_distill
-from triton_agent.models import AgentResult
+from helix.distill.agent import _prefixed_stream
+from helix.distill.git_repo_workspaces import GIT_REPO_PLAN_SKILL_NAME
+from helix.distill.models import DiscoveryResult
+from helix.distill.models import DistillConfig
+from helix.distill.git_repo_workspaces import build_workspace_plan_prompt
+from helix.distill.workflow import _cleanup_git_repo_plan_dir
+from helix.distill.workflow import run_distill
+from helix.models import AgentResult
 
 
 class DistillWorkflowTests(unittest.TestCase):
@@ -27,14 +27,14 @@ class DistillWorkflowTests(unittest.TestCase):
             language="tilelang",
             base_revision="origin/main",
             fork_revision="abc123",
-            plan_path=Path("/repo/.triton-agent/workspace-plan.json"),
+            plan_path=Path("/repo/.helix/workspace-plan.json"),
         )
 
         self.assertEqual(GIT_REPO_PLAN_SKILL_NAME, "ascend-npu-plan-git-operator-workspaces")
         self.assertIn("Use the staged ascend-npu-plan-git-operator-workspaces skill", prompt)
         self.assertIn("Operator language:\n  tilelang", prompt)
         self.assertIn("Fork point", prompt)
-        self.assertIn("/repo/.triton-agent/workspace-plan.json", prompt)
+        self.assertIn("/repo/.helix/workspace-plan.json", prompt)
         self.assertNotIn("### Step 2: For EACH changed file", prompt)
         self.assertNotIn("## What NOT to do", prompt)
 
@@ -133,11 +133,11 @@ class DistillWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                    "helix.distill.workflow.ensure_editable_knowledge_skill",
                     return_value=knowledge_dir,
                 ),
-                patch("triton_agent.distill.workflow.rebuild_pattern_index"),
-                patch("triton_agent.distill.workflow.promote_editable_knowledge_skill") as promote,
+                patch("helix.distill.workflow.rebuild_pattern_index"),
+                patch("helix.distill.workflow.promote_editable_knowledge_skill") as promote,
             ):
                 promote.return_value = knowledge_dir
                 results = run_distill(config, agent_runner=agent_runner)
@@ -228,10 +228,10 @@ class DistillWorkflowTests(unittest.TestCase):
             try:
                 with (
                     patch(
-                        "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                        "helix.distill.workflow.ensure_editable_knowledge_skill",
                         return_value=knowledge_dir,
                     ),
-                    patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+                    patch("helix.distill.workflow.rebuild_pattern_index"),
                 ):
                     results = run_distill(config, agent_runner=agent_runner)
             finally:
@@ -258,7 +258,7 @@ class DistillWorkflowTests(unittest.TestCase):
                     "Use the staged ascend-npu-plan-git-operator-workspaces skill",
                     str(kwargs["prompt"]),
                 )
-                (root / ".triton-agent" / "workspace-plan.json").write_text(
+                (root / ".helix" / "workspace-plan.json").write_text(
                     json.dumps({"schema_version": 1, "operators": []}) + "\n",
                     encoding="utf-8",
                 )
@@ -281,32 +281,32 @@ class DistillWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.distill.workflow.detect_git_worktree",
+                    "helix.distill.workflow.detect_git_worktree",
                     return_value=(root, "headsha"),
                 ),
                 patch(
-                    "triton_agent.distill.workflow.detect_default_base_branch",
+                    "helix.distill.workflow.detect_default_base_branch",
                     return_value="origin/main",
                 ),
                 patch(
-                    "triton_agent.distill.workflow.compute_fork_point",
+                    "helix.distill.workflow.compute_fork_point",
                     return_value="abc123",
                 ),
-                patch("triton_agent.distill.workflow.scaffold_operator_workspaces", return_value=0),
+                patch("helix.distill.workflow.scaffold_operator_workspaces", return_value=0),
                 patch(
-                    "triton_agent.distill.workflow.operator_workspaces_created",
+                    "helix.distill.workflow.operator_workspaces_created",
                     return_value=True,
                 ),
                 patch(
-                    "triton_agent.distill.workflow.discover_operator_pairs",
+                    "helix.distill.workflow.discover_operator_pairs",
                     return_value=DiscoveryResult(pairs=(), skips=()),
                 ),
                 patch(
-                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                    "helix.distill.workflow.ensure_editable_knowledge_skill",
                     return_value=knowledge_dir,
                 ),
                 patch(
-                    "triton_agent.distill.workflow.snapshot_pattern_card_texts",
+                    "helix.distill.workflow.snapshot_pattern_card_texts",
                     return_value={},
                 ),
             ):
@@ -315,15 +315,15 @@ class DistillWorkflowTests(unittest.TestCase):
             self.assertEqual(results, [])
             self.assertEqual(len(calls), 1)
 
-    def test_git_repo_plan_cleanup_skips_symlinked_triton_agent_dir(self) -> None:
+    def test_git_repo_plan_cleanup_skips_symlinked_helix_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "workspace"
             root.mkdir()
-            target = Path(tmp) / "external-triton-agent"
+            target = Path(tmp) / "external-helix"
             target.mkdir()
             marker = target / "workspace-plan.json"
             marker.write_text("{}", encoding="utf-8")
-            link = root / ".triton-agent"
+            link = root / ".helix"
             try:
                 link.symlink_to(target, target_is_directory=True)
             except OSError as exc:
@@ -344,7 +344,7 @@ class DistillWorkflowTests(unittest.TestCase):
             op_dir.mkdir()
             (op_dir / "foo.py").write_text("x = 1\n", encoding="utf-8")
             (op_dir / "opt_foo.py").write_text("x = 2\n", encoding="utf-8")
-            skills_dir = root / ".triton-agent" / "distill-skills"
+            skills_dir = root / ".helix" / "distill-skills"
             output_dir = root / "distill-output"
 
             def ensure_skills(path: Path, *, language: str = "triton") -> Path:
@@ -405,10 +405,10 @@ class DistillWorkflowTests(unittest.TestCase):
 
             with (
                 patch(
-                    "triton_agent.distill.workflow.ensure_editable_knowledge_skill",
+                    "helix.distill.workflow.ensure_editable_knowledge_skill",
                     side_effect=ensure_skills,
                 ),
-                patch("triton_agent.distill.workflow.rebuild_pattern_index"),
+                patch("helix.distill.workflow.rebuild_pattern_index"),
             ):
                 results = run_distill(config, agent_runner=agent_runner)
 

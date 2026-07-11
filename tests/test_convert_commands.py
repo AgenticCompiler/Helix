@@ -13,32 +13,32 @@ from contextlib import redirect_stdout
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.convert.models import ConvertOptions
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.trace.core import TRACE_PATH_ENV
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.cli import build_parser
+from helix.convert.models import ConvertOptions
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.trace.core import TRACE_PATH_ENV
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 class ConvertCommandModuleTests(unittest.TestCase):
     def test_convert_command_module_exists(self) -> None:
-        self.assertIsNotNone(importlib.util.find_spec("triton_agent.commands.convert"))
+        self.assertIsNotNone(importlib.util.find_spec("helix.commands.convert"))
 
     def test_generation_command_module_no_longer_exports_convert_handlers(self) -> None:
-        import triton_agent.commands.generation as generation_commands
+        import helix.commands.generation as generation_commands
 
         self.assertFalse(hasattr(generation_commands, "handle_gen_convert"))
 
     def test_convert_orchestration_module_exists(self) -> None:
-        self.assertIsNotNone(importlib.util.find_spec("triton_agent.convert.orchestration"))
+        self.assertIsNotNone(importlib.util.find_spec("helix.convert.orchestration"))
 
     def test_convert_outputs_module_exists(self) -> None:
-        self.assertIsNotNone(importlib.util.find_spec("triton_agent.convert.outputs"))
+        self.assertIsNotNone(importlib.util.find_spec("helix.convert.outputs"))
 
 
 class ConvertRuntimeTests(unittest.TestCase):
     def test_resolve_convert_output_path_uses_triton_prefix(self) -> None:
-        from triton_agent.convert.outputs import resolve_convert_output_path
+        from helix.convert.outputs import resolve_convert_output_path
 
         output_path = resolve_convert_output_path(
             Path("/tmp/kernel.py"),
@@ -48,7 +48,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertEqual(output_path, Path("/tmp/triton_kernel.py"))
 
     def test_prepare_convert_target_rejects_existing_artifact_without_overwrite(self) -> None:
-        from triton_agent.convert.outputs import prepare_convert_target
+        from helix.convert.outputs import prepare_convert_target
 
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "triton_kernel.py"
@@ -58,7 +58,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 prepare_convert_target(output, force_overwrite=False)
 
     def test_build_convert_request_uses_convert_only_skills(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request
+        from helix.convert.orchestration import build_convert_request
 
         request = build_convert_request(
             Path("/tmp/kernel.py"),
@@ -94,7 +94,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIsNone(request.mcp_servers)
 
     def test_build_convert_request_attaches_mcp_servers_when_enabled(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request
+        from helix.convert.orchestration import build_convert_request
 
         request = build_convert_request(
             Path("/tmp/kernel.py"),
@@ -119,10 +119,10 @@ class ConvertRuntimeTests(unittest.TestCase):
             request.staged_skill_sources,
             {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
-        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
+        self.assertEqual(request.mcp_servers, ("helix-run-eval",))
 
     def test_build_convert_request_injects_remote_env(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request
+        from helix.convert.orchestration import build_convert_request
 
         request = build_convert_request(
             Path("/tmp/kernel.py"),
@@ -135,7 +135,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 output=None,
                 test_mode="differential",
                 prompt=None,
@@ -143,14 +143,14 @@ class ConvertRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(request.remote, "alice@example.com")
-        self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+        self.assertEqual(request.remote_workdir, "/tmp/helix")
         self.assertIsNotNone(request.extra_env)
         assert request.extra_env is not None
         self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com")
-        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
+        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/helix")
 
     def test_build_convert_request_appends_user_prompt(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request
+        from helix.convert.orchestration import build_convert_request
 
         request = build_convert_request(
             Path("/tmp/kernel.py"),
@@ -174,7 +174,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIn("Keep the exported function name.", request.prompt)
 
     def test_build_convert_request_enables_tool_trace_when_requested(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request
+        from helix.convert.orchestration import build_convert_request
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -201,12 +201,12 @@ class ConvertRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs")
+            self.assertEqual(trace_path.parent.parent, workdir / "helix-logs")
             self.assertTrue(trace_path.parent.name.startswith("convert-"))
             self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
     def test_handle_convert_builds_request_with_default_output(self) -> None:
-        from triton_agent.commands.convert import handle_convert
+        from helix.commands.convert import handle_convert
 
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,9 +232,9 @@ class ConvertRuntimeTests(unittest.TestCase):
                 converted.write_text("converted\n", encoding="utf-8")
                 return fake_result
 
-            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run):
+            with patch("helix.commands.convert.run_convert_request", side_effect=_fake_run):
                 with patch(
-                    "triton_agent.commands.convert._verify_converted_output",
+                    "helix.commands.convert._verify_converted_output",
                     return_value=type(
                         "Verify",
                         (),
@@ -259,7 +259,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             )
 
     def test_handle_convert_workspace_input_uses_workspace_as_workdir(self) -> None:
-        from triton_agent.commands.convert import handle_convert
+        from helix.commands.convert import handle_convert
 
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -287,9 +287,9 @@ class ConvertRuntimeTests(unittest.TestCase):
                 converted.write_text("converted\n", encoding="utf-8")
                 return fake_result
 
-            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run):
+            with patch("helix.commands.convert.run_convert_request", side_effect=_fake_run):
                 with patch(
-                    "triton_agent.commands.convert._verify_converted_output",
+                    "helix.commands.convert._verify_converted_output",
                     return_value=type(
                         "Verify",
                         (),
@@ -307,7 +307,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             )
 
     def test_handle_convert_reuses_default_differential_test_for_cli_verification(self) -> None:
-        from triton_agent.commands.convert import handle_convert
+        from helix.commands.convert import handle_convert
 
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -337,9 +337,9 @@ class ConvertRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="oracle\n", stderr=""), archived_oracle
                 return AgentResult(return_code=0, stdout="candidate\n", stderr=""), archived_candidate
 
-            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
-                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                    with patch("triton_agent.commands.convert.compare_result_files", return_value=0) as compare_mock:
+            with patch("helix.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("helix.commands.convert.compare_result_files", return_value=0) as compare_mock:
                         exit_code = handle_convert(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -356,7 +356,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             )
 
     def test_resolve_convert_test_file_falls_back_to_unique_standalone_test(self) -> None:
-        from triton_agent.commands.convert import _resolve_convert_test_file
+        from helix.commands.convert import _resolve_convert_test_file
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -387,7 +387,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertEqual(resolved, standalone_test.resolve())
 
     def test_resolve_convert_test_file_prefers_differential_over_standalone(self) -> None:
-        from triton_agent.commands.convert import _resolve_convert_test_file
+        from helix.commands.convert import _resolve_convert_test_file
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -420,7 +420,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertEqual(resolved, differential_test.resolve())
 
     def test_resolve_convert_test_file_prefers_requested_standalone_over_differential(self) -> None:
-        from triton_agent.commands.convert import _resolve_convert_test_file
+        from helix.commands.convert import _resolve_convert_test_file
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -453,7 +453,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertEqual(resolved, standalone_test.resolve())
 
     def test_verify_converted_output_uses_standalone_mode_without_result_comparison(self) -> None:
-        from triton_agent.commands.convert import _verify_converted_output
+        from helix.commands.convert import _verify_converted_output
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -490,8 +490,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 observed_targets.append(operator_path)
                 return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
 
-            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                with patch("triton_agent.commands.convert.compare_result_files") as compare_mock:
+            with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("helix.commands.convert.compare_result_files") as compare_mock:
                     verification = _verify_converted_output(request)
 
         self.assertEqual(verification.return_code, 0)
@@ -500,7 +500,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         compare_mock.assert_not_called()
 
     def test_verify_converted_output_prefers_requested_standalone_test_when_both_exist(self) -> None:
-        from triton_agent.commands.convert import _verify_converted_output
+        from helix.commands.convert import _verify_converted_output
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -537,8 +537,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 observed_test_calls.append((test_path, operator_path, test_mode))
                 return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
 
-            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                with patch("triton_agent.commands.convert.compare_result_files") as compare_mock:
+            with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("helix.commands.convert.compare_result_files") as compare_mock:
                     verification = _verify_converted_output(request)
 
         self.assertEqual(verification.return_code, 0)
@@ -549,7 +549,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         compare_mock.assert_not_called()
 
     def test_verify_converted_output_reports_standalone_failure_context(self) -> None:
-        from triton_agent.commands.convert import _verify_converted_output
+        from helix.commands.convert import _verify_converted_output
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -582,7 +582,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 self.assertEqual(operator_path, converted.resolve())
                 return AgentResult(return_code=7, stdout="", stderr="boom\n"), None
 
-            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+            with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
                 verification = _verify_converted_output(request)
 
         self.assertEqual(verification.return_code, 7)
@@ -591,7 +591,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIn("Converted output:", verification.summary)
 
     def test_verify_converted_output_reuses_existing_differential_baseline_result(self) -> None:
-        from triton_agent.commands.convert import _verify_converted_output
+        from helix.commands.convert import _verify_converted_output
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -630,8 +630,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 candidate_result.write_text("candidate\n", encoding="utf-8")
                 return AgentResult(return_code=0, stdout="candidate\n", stderr=""), candidate_result
 
-            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                with patch("triton_agent.commands.convert.compare_result_files", return_value=0) as compare_mock:
+            with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("helix.commands.convert.compare_result_files", return_value=0) as compare_mock:
                     verification = _verify_converted_output(request)
 
         self.assertEqual(verification.return_code, 0)
@@ -645,7 +645,7 @@ class ConvertRuntimeTests(unittest.TestCase):
         )
 
     def test_handle_convert_repairs_once_after_cli_verification_failure(self) -> None:
-        from triton_agent.commands.convert import handle_convert
+        from helix.commands.convert import handle_convert
 
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -680,9 +680,9 @@ class ConvertRuntimeTests(unittest.TestCase):
 
             compare_codes = iter([1, 0])
 
-            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
-                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                    with patch("triton_agent.commands.convert.compare_result_files", side_effect=lambda *_args: next(compare_codes)):
+            with patch("helix.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("helix.commands.convert.compare_result_files", side_effect=lambda *_args: next(compare_codes)):
                         exit_code = handle_convert(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -701,7 +701,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             )
 
     def test_handle_convert_stops_after_second_cli_verification_failure(self) -> None:
-        from triton_agent.commands.convert import handle_convert
+        from helix.commands.convert import handle_convert
 
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -727,20 +727,20 @@ class ConvertRuntimeTests(unittest.TestCase):
                     archive.write_text("oracle\n", encoding="utf-8")
                 return AgentResult(return_code=0, stdout="", stderr=""), archive
 
-            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
-                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
-                    with patch("triton_agent.commands.convert.compare_result_files", return_value=1):
+            with patch("helix.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("helix.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("helix.commands.convert.compare_result_files", return_value=1):
                         exit_code = handle_convert(parser, args)
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(run_calls["count"], 3)
 
     def test_run_convert_request_writes_tool_trace_summary(self) -> None:
-        from triton_agent.convert.orchestration import build_convert_request, run_convert_request
+        from helix.convert.orchestration import build_convert_request, run_convert_request
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "run-001" / "tool-traces.jsonl"
+            trace_path = workdir / "helix-logs" / "run-001" / "tool-traces.jsonl"
             request = build_convert_request(
                 workdir / "kernel.py",
                 workdir / "kernel.py",
@@ -780,9 +780,9 @@ class ConvertRuntimeTests(unittest.TestCase):
                     )
                     return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                with patch("triton_agent.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
-                    with patch("triton_agent.convert.orchestration.create_runner", return_value=DummyRunner()):
+            with patch("helix.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("helix.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("helix.convert.orchestration.create_runner", return_value=DummyRunner()):
                         result = run_convert_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -793,7 +793,7 @@ class ConvertRuntimeTests(unittest.TestCase):
 
 class ConvertBatchTests(unittest.TestCase):
     def test_resolve_batch_convert_operator_file_excludes_triton_prefixed_candidates(self) -> None:
-        from triton_agent.convert.batch import resolve_batch_convert_operator_file
+        from helix.convert.batch import resolve_batch_convert_operator_file
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -805,7 +805,7 @@ class ConvertBatchTests(unittest.TestCase):
             self.assertEqual(resolved, workspace / "kernel.py")
 
     def test_run_convert_batch_operator_filter_does_not_reinclude_triton_prefixed_files(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -846,7 +846,7 @@ class ConvertBatchTests(unittest.TestCase):
             )
 
     def test_run_convert_batch_accepts_root_as_single_workspace(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -881,7 +881,7 @@ class ConvertBatchTests(unittest.TestCase):
             self.assertEqual(seen_inputs, [root / "operator.py"])
 
     def test_run_convert_batch_applies_user_prompt_to_each_workspace_request(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -925,7 +925,7 @@ class ConvertBatchTests(unittest.TestCase):
                 self.assertIn("Avoid changing numerics.", prompt)
 
     def test_run_convert_batch_assigns_affinity_env_per_workspace(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -942,7 +942,7 @@ class ConvertBatchTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_convert_batch(
                     root,
                     ConvertOptions(
@@ -965,7 +965,7 @@ class ConvertBatchTests(unittest.TestCase):
             self.assertCountEqual(seen_devices, ["0", "1"])
 
     def test_run_convert_batch_allows_same_device_when_workers_per_npu_gt_1(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -982,8 +982,8 @@ class ConvertBatchTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             env_vars = {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             }
             with patch.dict(environ, env_vars, clear=False):
                 exit_code = run_convert_batch(
@@ -1009,7 +1009,7 @@ class ConvertBatchTests(unittest.TestCase):
             self.assertEqual(seen_devices, ["0", "0"])
 
     def test_run_convert_batch_does_not_inject_affinity_env_when_mcp_enabled(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1025,7 +1025,7 @@ class ConvertBatchTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_convert_batch(
                     root,
                     ConvertOptions(
@@ -1049,7 +1049,7 @@ class ConvertBatchTests(unittest.TestCase):
             self.assertEqual(seen_devices, [None, None])
 
     def test_run_convert_batch_passes_explicit_affinity_into_managed_mcp_scope(self) -> None:
-        from triton_agent.convert.batch import run_convert_batch
+        from helix.convert.batch import run_convert_batch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1064,7 +1064,7 @@ class ConvertBatchTests(unittest.TestCase):
                 def __exit__(self, exc_type, exc, tb):
                     return False
 
-            with patch("triton_agent.convert.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+            with patch("helix.convert.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
                 exit_code = run_convert_batch(
                     root,
                     ConvertOptions(
@@ -1094,7 +1094,7 @@ class ConvertBatchTests(unittest.TestCase):
             mocked.assert_called_once_with(npu_devices="0,1", workers_per_npu="2")
 
     def test_run_convert_request_enters_managed_mcp_scope_when_request_requires_mcp(self) -> None:
-        from triton_agent.convert.orchestration import run_convert_request
+        from helix.convert.orchestration import run_convert_request
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -1113,7 +1113,7 @@ class ConvertBatchTests(unittest.TestCase):
                 skill_name="triton-npu-convert-pytorch-operator",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             entered: list[str] = []
@@ -1132,17 +1132,17 @@ class ConvertBatchTests(unittest.TestCase):
                     del request
                     return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                with patch("triton_agent.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
-                    with patch("triton_agent.convert.orchestration.managed_mcp_scope", return_value=_DummyScope()):
-                        with patch("triton_agent.convert.orchestration.create_runner", return_value=DummyRunner()):
+            with patch("helix.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("helix.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("helix.convert.orchestration.managed_mcp_scope", return_value=_DummyScope()):
+                        with patch("helix.convert.orchestration.create_runner", return_value=DummyRunner()):
                             result = run_convert_request(request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(entered, ["enter", "exit"])
 
     def test_render_batch_convert_results_renders_summary(self) -> None:
-        from triton_agent.convert.batch import BatchConvertResult, render_batch_convert_results
+        from helix.convert.batch import BatchConvertResult, render_batch_convert_results
 
         stream = StringIO()
         exit_code = render_batch_convert_results(
@@ -1160,7 +1160,7 @@ class ConvertBatchTests(unittest.TestCase):
         self.assertIn("Summary: 1 succeeded, 1 failed", output)
 
     def test_main_convert_batch_show_output_prefixes_workspace_streams(self) -> None:
-        from triton_agent.cli import main
+        from helix.cli import main
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1178,7 +1178,7 @@ class ConvertBatchTests(unittest.TestCase):
                     stderr.write("warn line\n")
                 return AgentResult(return_code=0, stdout="convert start\n", stderr="warn line\n")
 
-            with patch("triton_agent.convert.batch.run_convert_request", side_effect=_fake_run):
+            with patch("helix.convert.batch.run_convert_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["convert-batch", "-i", str(root)])
 

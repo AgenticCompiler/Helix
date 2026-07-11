@@ -4,7 +4,7 @@
 
 - Rename the user-facing commands `optimize-verify` and `optimize-verify-batch` to `verify` and `verify-batch`.
 - Do not keep compatibility aliases for the old command names or old snake_case spellings.
-- Move verification implementation out of `src/triton_agent/optimize/` into a dedicated `src/triton_agent/verification/` package.
+- Move verification implementation out of `src/helix/optimize/` into a dedicated `src/helix/verification/` package.
 - Present verification as its own CLI help group instead of listing it under optimization.
 
 ## Goals
@@ -21,11 +21,11 @@
 
 ## User-Facing Behavior
 
-- `uv run triton-agent verify -i .`
-- `uv run triton-agent verify -i . --phase test`
-- `uv run triton-agent verify -i . --remote alice@example.com`
-- `uv run triton-agent verify-batch -i operators_root`
-- `uv run triton-agent verify-batch -i operators_root --force-verify`
+- `uv run helix verify -i .`
+- `uv run helix verify -i . --phase test`
+- `uv run helix verify -i . --remote alice@example.com`
+- `uv run helix verify-batch -i operators_root`
+- `uv run helix verify-batch -i operators_root --force-verify`
 
 The old commands:
 
@@ -47,9 +47,9 @@ must stop working instead of acting as hidden aliases.
 
 Create a dedicated package:
 
-- `src/triton_agent/verification/__init__.py`
-- `src/triton_agent/verification/core.py`
-- `src/triton_agent/verification/batch.py`
+- `src/helix/verification/__init__.py`
+- `src/helix/verification/core.py`
+- `src/helix/verification/batch.py`
 
 Move verification-specific types and helpers there:
 
@@ -62,9 +62,9 @@ Move verification-specific types and helpers there:
 
 Create a dedicated command entrypoint module:
 
-- `src/triton_agent/commands/verification.py`
+- `src/helix/commands/verification.py`
 
-`src/triton_agent/commands/optimize.py` should no longer own verify command handlers.
+`src/helix/commands/optimize.py` should no longer own verify command handlers.
 
 ## Behavior Preservation
 

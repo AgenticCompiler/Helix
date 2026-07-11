@@ -8,18 +8,18 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.log_check.batch import run_log_check_batch
-from triton_agent.log_check.log_check_launcher import (
+from helix.log_check.batch import run_log_check_batch
+from helix.log_check.log_check_launcher import (
     _LOG_CHECK_JSON_FILENAME,
     _PATTERN_ANALYSIS_JSON_FILENAME,
     build_log_check_request,
     build_log_check_prompt,
     run_log_check,
 )
-from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.trace.core import TRACE_PATH_ENV
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.staging import SkillLinkSet
+from helix.models import AgentRequest, AgentResult
+from helix.trace.core import TRACE_PATH_ENV
+from helix.terminal.logs import show_output_log_path
+from helix.skills.staging import SkillLinkSet
 
 
 def _make_log_check_json() -> str:
@@ -113,13 +113,13 @@ class LogCheckLauncherTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                "helix.log_check.log_check_launcher.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                "helix.log_check.log_check_launcher.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.log_check.log_check_launcher.create_runner",
+                "helix.log_check.log_check_launcher.create_runner",
                 return_value=DummyRunner(),
             ):
                 exit_code = run_log_check(target_path=target, agent_name="opencode")
@@ -130,7 +130,7 @@ class LogCheckLauncherTests(unittest.TestCase):
             self.assertTrue(request.run_id.startswith("log-check-"))
             self.assertEqual(
                 show_output_log_path(request),
-                resolved_target / "triton-agent-logs" / request.run_id / "show-output.log",
+                resolved_target / "helix-logs" / request.run_id / "show-output.log",
             )
 
     def test_build_log_check_request_enables_tool_trace_when_requested(self) -> None:
@@ -144,7 +144,7 @@ class LogCheckLauncherTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, target.resolve() / "triton-agent-logs")
+            self.assertEqual(trace_path.parent.parent, target.resolve() / "helix-logs")
             self.assertTrue(trace_path.parent.name.startswith("log-check-"))
             self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
@@ -182,13 +182,13 @@ class LogCheckLauncherTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                "helix.log_check.log_check_launcher.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                "helix.log_check.log_check_launcher.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.log_check.log_check_launcher.create_runner",
+                "helix.log_check.log_check_launcher.create_runner",
                 return_value=DummyRunner(),
             ):
                 exit_code = run_log_check(target_path=target, log_tools=True)
@@ -212,13 +212,13 @@ class LogCheckLauncherTests(unittest.TestCase):
                     return AgentResult(return_code=1, stdout="", stderr="")
 
             with patch(
-                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                "helix.log_check.log_check_launcher.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                "helix.log_check.log_check_launcher.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.log_check.log_check_launcher.create_runner",
+                "helix.log_check.log_check_launcher.create_runner",
                 return_value=DummyRunner(),
             ), patch("sys.stderr", stderr):
                 exit_code = run_log_check(target_path=target, agent_name="codex", show_output=True)
@@ -253,13 +253,13 @@ class LogCheckLauncherTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                "helix.log_check.log_check_launcher.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                "helix.log_check.log_check_launcher.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.log_check.log_check_launcher.create_runner",
+                "helix.log_check.log_check_launcher.create_runner",
                 return_value=DummyRunner(),
             ):
                 exit_code = run_log_check_batch(root, stdout=StringIO())

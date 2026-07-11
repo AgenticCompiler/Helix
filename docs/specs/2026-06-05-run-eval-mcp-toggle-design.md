@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add an explicit `--enable-mcp` toggle for agent-backed run-eval workflows so `triton-agent` can switch between:
+Add an explicit `--enable-mcp` toggle for agent-backed run-eval workflows so `helix` can switch between:
 
 - the existing script-oriented `triton-npu-run-eval` skill
 - a new MCP-oriented skill source staged under the same workspace-visible skill name
@@ -110,7 +110,7 @@ The current helper that derives managed MCP server names from staged skills shou
 Result:
 
 - non-MCP requests never attach `mcp_servers`
-- MCP requests attach `("triton-agent-run-eval",)`
+- MCP requests attach `("helix-run-eval",)`
 
 ### 4. Batch control split
 
@@ -156,7 +156,7 @@ The legacy `skills/triton-npu-run-eval/` skill remains unchanged and continues d
 
 ### 6. Shared HTTP MCP server tool surface
 
-Extend `src/triton_agent/run_eval_mcp_server.py` so the MCP server exposes:
+Extend `src/helix/run_eval_mcp_server.py` so the MCP server exposes:
 
 - `run-test-baseline`
 - `run-test-optimize`

@@ -56,7 +56,7 @@ Expected: FAIL because the API script and updated docs do not exist yet.
 
 - [ ] **Step 1: Add the API script**
 
-Implement `create`, `list`, and `view` on top of the official GitCode PR API with header-based auth and a default repo of `midwinter1993/triton-agent`.
+Implement `create`, `list`, and `view` on top of the official GitCode PR API with header-based auth and a default repo of `midwinter1993/helix`.
 
 - [ ] **Step 2: Update the skill docs**
 
@@ -96,7 +96,7 @@ Expected: `0 errors`.
 Run:
 
 ```bash
-uv run python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/triton-agent/.codex/skills/managing-gitcode-prs
+uv run python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/helix/.codex/skills/managing-gitcode-prs
 ```
 
 Expected: `Skill is valid!`

@@ -31,7 +31,7 @@ This advisor should not become a parallel optimize worker. The existing optimize
 - Add `--enable-subagent` to `optimize-batch`.
 - Thread the parsed value through `OptimizeRunOptions` and optimize request construction.
 - Fail explicitly when `--enable-subagent` is used with a backend other than `codex`, `opencode`, or `claude`.
-- Stage one built-in subagent named `triton-agent-perf-diagnosis-advisor` for supported backends.
+- Stage one built-in subagent named `helix-perf-diagnosis-advisor` for supported backends.
 - Ensure that staged diagnosis subagent runs may inspect existing test and benchmark harnesses, may collect fresh benchmark, profile, or IR evidence for diagnosis, and cannot perform optimize edits against operator source, generated optimized operators, or round artifacts.
 - Keep subagent registration generic so future built-in agents can be added through a registry instead of a new special-case code path.
 - Strongly recommend subagent use in optimize prompts and workspace guidance when pattern triage or diagnosis is unclear.
@@ -75,7 +75,7 @@ enable_subagent: bool = False
 
 This change registers one built-in subagent:
 
-- id: `triton-agent-perf-diagnosis-advisor`
+- id: `helix-perf-diagnosis-advisor`
 
 Its role is advisory diagnosis only. The rendered backend-specific definitions should instruct it to:
 
@@ -197,7 +197,7 @@ When `--enable-subagent` is active, the optimize worker prompt and temporary wor
 
 Representative behavior:
 
-- tell the main agent that `triton-agent-perf-diagnosis-advisor` is available in this workspace
+- tell the main agent that `helix-perf-diagnosis-advisor` is available in this workspace
 - recommend using it before deep diagnosis or code edits when the bottleneck hypothesis is still unclear
 - remind the main agent that subagents may help with supporting analysis only
 - remind the main agent that this subagent is diagnosis-only, may read existing harnesses and evidence, may collect fresh benchmark/profile/IR artifacts, and cannot perform optimization edits
@@ -216,7 +216,7 @@ Cleanup requirements:
 - do not replace user-owned agent directories
 - fail explicitly when the exact staged file path already exists or is a symlink
 
-Parent directories such as `.codex/agents/`, `.claude/agents/`, or `.opencode/agents/` may already exist for unrelated user-owned agents. That should be allowed as long as the target staged file path for `triton-agent-perf-diagnosis-advisor` does not already exist.
+Parent directories such as `.codex/agents/`, `.claude/agents/`, or `.opencode/agents/` may already exist for unrelated user-owned agents. That should be allowed as long as the target staged file path for `helix-perf-diagnosis-advisor` does not already exist.
 
 ### Interaction With Existing OpenCode Config Staging
 

@@ -28,4 +28,4 @@ Argument examples:
 - `run-test-convert(test_file="differential_test_<operator>.py", operator_file="triton_<operator>.py", test_mode="differential", ref_operator_file="<operator>.py")`
 - `run-test-optimize(test_file="test_<operator>.py", operator_file="opt_<operator>.py", test_mode="standalone")`
 - `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", test_mode="differential", ref_operator_file="<operator>.py")`
-- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", ref_operator_file="<operator>.py", remote="user@host:2222", remote_workdir="/tmp/triton-agent")`
+- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", ref_operator_file="<operator>.py", remote="user@host:2222", remote_workdir="/tmp/helix")`

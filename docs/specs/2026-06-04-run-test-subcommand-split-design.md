@@ -22,7 +22,7 @@ This is especially risky for optimize flows in `differential` mode, where the wo
 
 ## Non-Goals
 
-- Do not rename the repository-level `triton-agent run-test` command in this change.
+- Do not rename the repository-level `helix run-test` command in this change.
 - Do not remove compatibility support for existing external callers of `run-command.py run-test`.
 - Do not redesign benchmark, compare-result, or profile subcommands.
 
@@ -101,8 +101,8 @@ Update `triton-npu-run-eval` and dependent skills so agent-facing instructions u
 | `tests/test_generation_contracts.py` | Lock new skill wording |
 | `tests/test_codex_pretooluse_guard.py` | Accept staged helper invocation with new subcommands |
 | `tests/test_opencode_hook_guard.py` | Accept staged helper invocation with new subcommands |
-| `src/triton_agent/backends/codex_trace.py` | Classify new subcommands as correctness tests |
-| `src/triton_agent/backends/claude_trace.py` | Classify new subcommands as correctness tests |
+| `src/helix/backends/codex_trace.py` | Classify new subcommands as correctness tests |
+| `src/helix/backends/claude_trace.py` | Classify new subcommands as correctness tests |
 
 ## Verification
 

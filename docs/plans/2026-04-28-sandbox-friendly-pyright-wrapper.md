@@ -39,7 +39,7 @@ Expected: FAIL because the wrapper script and guidance do not exist yet.
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-export UV_CACHE_DIR="${UV_CACHE_DIR:-${TMPDIR:-/tmp}/triton-agent-uv-cache}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${TMPDIR:-/tmp}/helix-uv-cache}"
 ```
 
 - [ ] **Step 2: Make the script generate a temporary strict `pyright` config and run from repo root**

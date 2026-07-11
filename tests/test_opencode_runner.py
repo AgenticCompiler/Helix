@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.opencode import OpenCodeRunner
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.prompts import build_prompt
+from helix.backends.opencode import OpenCodeRunner
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.prompts import build_prompt
 
 
 class OpenCodeRunnerTests(unittest.TestCase):
@@ -198,7 +198,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -240,12 +240,12 @@ class OpenCodeRunnerTests(unittest.TestCase):
             with patch.dict(
                 "os.environ",
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
-                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                with patch("helix.backends.base.run_process", side_effect=_inspect_config):
                     result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -276,7 +276,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
             )
 
             stderr = StringIO()
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 result = runner.run(request, stderr=stderr)
 
             self.assertEqual(result.return_code, 0)
@@ -304,7 +304,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             def _inspect_config(*args, **kwargs):
@@ -312,7 +312,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 config_path = workspace / ".opencode" / "opencode.json"
                 self.assertTrue(config_path.exists())
                 config = json.loads(config_path.read_text(encoding="utf-8"))
-                server = config["mcp"]["triton-agent-run-eval"]
+                server = config["mcp"]["helix-run-eval"]
                 self.assertEqual(server["type"], "remote")
                 self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
                 self.assertIn("/mcp?workspace=", server["url"])
@@ -322,12 +322,12 @@ class OpenCodeRunnerTests(unittest.TestCase):
             with patch.dict(
                 "os.environ",
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
-                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                with patch("helix.backends.base.run_process", side_effect=_inspect_config):
                     result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -357,18 +357,18 @@ class OpenCodeRunnerTests(unittest.TestCase):
 
             def _inspect_hooks(*args, **kwargs):
                 del args, kwargs
-                plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
-                hook_dir = workspace / ".opencode" / "triton-agent-hooks"
+                plugin_file = workspace / ".opencode" / "plugins" / "helix-hook-guard.js"
+                hook_dir = workspace / ".opencode" / "helix-hooks"
                 self.assertTrue(plugin_file.exists())
                 self.assertTrue((hook_dir / "policy.json").exists())
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+            with patch("helix.backends.base.run_process", side_effect=_inspect_hooks):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            self.assertFalse((workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js").exists())
-            self.assertFalse((workspace / ".opencode" / "triton-agent-hooks").exists())
+            self.assertFalse((workspace / ".opencode" / "plugins" / "helix-hook-guard.js").exists())
+            self.assertFalse((workspace / ".opencode" / "helix-hooks").exists())
 
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -391,7 +391,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             stderr = StringIO()
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
+            with patch("helix.backends.base.run_process", return_value=_ok_result()):
                 runner.run(request, stderr=stderr)
             self.assertIn("[command]", stderr.getvalue())
             self.assertIn("opencode run", stderr.getvalue())
@@ -431,7 +431,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 min_rounds=3,
                 round_mode="checked",
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]

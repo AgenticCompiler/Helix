@@ -13,8 +13,8 @@
 - Introduce one internal execution distinction:
   - `measurement_profile=canonical` for `run-bench`
   - `measurement_profile=probe` for `probe-bench`
-- Cache only the baseline probe perf artifact under `.triton-agent/`.
-- Write the candidate probe perf artifact to `.triton-agent/` too, but do not cache it.
+- Cache only the baseline probe perf artifact under `.helix/`.
+- Write the candidate probe perf artifact to `.helix/` too, but do not cache it.
 - Support `--metric-source auto|kernel|total-op` on `probe-bench`.
 - Return one screening classification:
   - `likely_gain`
@@ -91,7 +91,7 @@ The command should not answer:
 Add one new public subcommand:
 
 ```bash
-triton-agent probe-bench \
+helix probe-bench \
   --bench-file bench_op.py \
   --operator-file opt_op.py \
   --baseline-operator-file baseline_op.py
@@ -139,16 +139,16 @@ Keep `src/` limited to public command wiring and bridge code.
 
 Expected runtime ownership:
 
-- `src/triton_agent/models.py`
+- `src/helix/models.py`
   - add `CommandKind.PROBE_BENCH`
-- `src/triton_agent/cli.py`
+- `src/helix/cli.py`
   - register the new parser and handler
-- `src/triton_agent/commands/execution.py`
+- `src/helix/commands/execution.py`
   - add `handle_probe_bench(...)`
   - validate paths
   - call the execution bridge
   - render concise default output
-- `src/triton_agent/execution.py`
+- `src/helix/execution.py`
   - add `run_local_probe_bench(...)`
   - add `run_remote_probe_bench(...)`
   - load a skill-side helper through the existing bridge pattern
@@ -157,7 +157,7 @@ Expected runtime ownership:
 
 It should mirror `run-bench` and `compare-perf` by loading a skill-side helper through `skill_loader.py`.
 
-That means no new `STAGE_RULES` entry is expected in `src/triton_agent/skill_staging.py`.
+That means no new `STAGE_RULES` entry is expected in `src/helix/skill_staging.py`.
 
 ### Skill-Side Helper
 
@@ -270,16 +270,16 @@ Probe artifacts must not reuse or overwrite canonical perf artifact paths.
 All probe artifacts should live under the workspace-local hidden directory:
 
 ```text
-.triton-agent/
+.helix/
 ```
 
 ### Baseline-Side Files
 
 Use fixed paths:
 
-- `.triton-agent/baseline_probe_perf.txt`
-- `.triton-agent/baseline_probe_perf.meta.json`
-- `.triton-agent/baseline_probe_perf.lock`
+- `.helix/baseline_probe_perf.txt`
+- `.helix/baseline_probe_perf.meta.json`
+- `.helix/baseline_probe_perf.lock`
 
 `baseline_probe_perf.txt` is the cached baseline fast-probe perf artifact.
 
@@ -293,7 +293,7 @@ Do not use one global fixed candidate path.
 
 Use a per-invocation hidden path such as:
 
-- `.triton-agent/candidate_probe_perf.<pid>.<run_token>.txt`
+- `.helix/candidate_probe_perf.<pid>.<run_token>.txt`
 
 This avoids clobbering concurrent `probe-bench` invocations in the same workspace.
 
@@ -301,7 +301,7 @@ Do not add candidate-side caching in the first version.
 
 ### Remote Copy-Back
 
-For `--remote`, probe execution may happen in a remote workspace, but the authoritative probe artifacts for caching and comparison should still be the local hidden files under `.triton-agent/`.
+For `--remote`, probe execution may happen in a remote workspace, but the authoritative probe artifacts for caching and comparison should still be the local hidden files under `.helix/`.
 
 `probe-bench` should reuse the same remote archive and copy-back pattern that `bench_runner.run_remote_bench(...)` already uses:
 
@@ -619,11 +619,11 @@ Because the new helper lives under `skills/*/scripts/`, completion should also i
 ## Files Expected To Change
 
 - `docs/specs/2026-06-27-probe-bench-design.md`
-- `src/triton_agent/models.py`
-- `src/triton_agent/cli.py`
-- `src/triton_agent/commands/execution.py`
-- `src/triton_agent/execution.py`
-- `src/triton_agent/run_eval_mcp_server.py` if MCP exposure is later desired
+- `src/helix/models.py`
+- `src/helix/cli.py`
+- `src/helix/commands/execution.py`
+- `src/helix/execution.py`
+- `src/helix/run_eval_mcp_server.py` if MCP exposure is later desired
 - `skills/common/ascend-npu-run-eval/scripts/probe_runner.py`
 - tests covering CLI, execution bridge, and probe helper behavior
 

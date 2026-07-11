@@ -37,8 +37,8 @@ from hook_runtime.pretooluse_adapter import run_with_policy  # noqa: E402
 
 
 _DENY_MESSAGE = (
-    "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected optimize runtime files or `triton-agent-logs/` output. "
+    "This read is blocked by helix workspace policy. Stay within the current workspace "
+    "and do not inspect protected optimize runtime files or `helix-logs/` output. "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -47,7 +47,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
@@ -58,7 +58,7 @@ def main() -> int:
     return run_with_policy(
         policy=_policy(workspace),
         payload=payload,
-        failure_prefix="triton-agent claude plugin PreToolUse",
+        failure_prefix="helix claude plugin PreToolUse",
     )
 
 
@@ -72,9 +72,9 @@ def _policy(workspace: Path) -> dict[str, Any]:
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
-            str(root / ".triton-agent"),
-            str(root / ".triton-agent" / "**"),
-            str(root / "triton-agent-logs" / "**"),
+            str(root / ".helix"),
+            str(root / ".helix" / "**"),
+            str(root / "helix-logs" / "**"),
         ],
         "deny_message": _DENY_MESSAGE,
     }

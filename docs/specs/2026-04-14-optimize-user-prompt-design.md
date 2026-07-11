@@ -71,8 +71,8 @@ Add `--prompt TEXT` to:
 Examples:
 
 ```bash
-uv run triton-agent optimize --input operator.py --prompt "Prioritize memory-coalescing improvements."
-uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
+uv run helix optimize --input operator.py --prompt "Prioritize memory-coalescing improvements."
+uv run helix optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 ```
 
 ### Prompt Layout

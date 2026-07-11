@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `TRITON_AGENT_BATCH_WORKERS_PER_NPU` so every batch command that already supports `TRITON_AGENT_BATCH_NPU_DEVICES` can allow more than one concurrent workspace per configured NPU while ignoring the new variable when device affinity is disabled.
+**Goal:** Add `HELIX_BATCH_WORKERS_PER_NPU` so every batch command that already supports `HELIX_BATCH_NPU_DEVICES` can allow more than one concurrent workspace per configured NPU while ignoring the new variable when device affinity is disabled.
 
-**Architecture:** Keep the behavior in `src/triton_agent/npu_affinity.py` and treat the new variable as a slot-expansion layer on top of the existing device lease pool. Batch callers should switch from “device tuple” semantics to “expanded slot tuple” semantics without changing the downstream `ASCEND_RT_VISIBLE_DEVICES=<device>` process contract.
+**Architecture:** Keep the behavior in `src/helix/npu_affinity.py` and treat the new variable as a slot-expansion layer on top of the existing device lease pool. Batch callers should switch from “device tuple” semantics to “expanded slot tuple” semantics without changing the downstream `ASCEND_RT_VISIBLE_DEVICES=<device>` process contract.
 
 **Tech Stack:** Python 3.11, `unittest`, `argparse`, `concurrent.futures`, existing batch orchestration modules, Markdown docs
 
@@ -12,11 +12,11 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/npu_affinity.py`
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/npu_affinity.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
+- Modify: `src/helix/cli.py`
 - Modify: `README.md`
 - Modify: `tests/test_npu_affinity.py`
 - Modify: `tests/test_optimize_runtime.py`
@@ -27,7 +27,7 @@
 ### Task 1: Add Shared Workers-Per-NPU Parsing And Slot Expansion
 
 **Files:**
-- Modify: `src/triton_agent/npu_affinity.py`
+- Modify: `src/helix/npu_affinity.py`
 - Modify: `tests/test_npu_affinity.py`
 
 - [ ] **Step 1: Write failing unit tests for the new affinity helpers**
@@ -37,7 +37,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from triton_agent.npu_affinity import (
+from helix.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_slots,
@@ -51,23 +51,23 @@ class BatchNpuAffinityTests(unittest.TestCase):
         self.assertEqual(parse_batch_workers_per_npu(None), 1)
 
     def test_parse_batch_workers_per_npu_rejects_zero(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+        with self.assertRaisesRegex(ValueError, "HELIX_BATCH_WORKERS_PER_NPU"):
             parse_batch_workers_per_npu("0")
 
     def test_parse_batch_workers_per_npu_rejects_non_integer(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+        with self.assertRaisesRegex(ValueError, "HELIX_BATCH_WORKERS_PER_NPU"):
             parse_batch_workers_per_npu("two")
 
     def test_configured_batch_npu_slots_ignores_workers_when_devices_unset(self) -> None:
-        with patch.dict(os.environ, {"TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3"}, clear=True):
+        with patch.dict(os.environ, {"HELIX_BATCH_WORKERS_PER_NPU": "3"}, clear=True):
             self.assertIsNone(configured_batch_npu_slots())
 
     def test_configured_batch_npu_slots_repeats_each_device_by_worker_count(self) -> None:
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=True,
         ):
@@ -80,13 +80,13 @@ Run: `uv run python -m unittest tests.test_npu_affinity -v`
 
 Expected:
 - `ImportError` or `AttributeError` for `parse_batch_workers_per_npu` / `configured_batch_npu_slots`
-- existing tests still discover `triton_agent.npu_affinity`
+- existing tests still discover `helix.npu_affinity`
 
-- [ ] **Step 3: Implement the new shared helpers in `src/triton_agent/npu_affinity.py`**
+- [ ] **Step 3: Implement the new shared helpers in `src/helix/npu_affinity.py`**
 
 ```python
-_BATCH_NPU_DEVICES_ENV = "TRITON_AGENT_BATCH_NPU_DEVICES"
-_BATCH_WORKERS_PER_NPU_ENV = "TRITON_AGENT_BATCH_WORKERS_PER_NPU"
+_BATCH_NPU_DEVICES_ENV = "HELIX_BATCH_NPU_DEVICES"
+_BATCH_WORKERS_PER_NPU_ENV = "HELIX_BATCH_WORKERS_PER_NPU"
 
 
 def parse_batch_workers_per_npu(raw: str | None) -> int:
@@ -126,7 +126,7 @@ def validate_batch_affinity_capacity(
     if max_concurrency > len(slots):
         raise ValueError(
             "--max-concurrency must not exceed the batch affinity capacity configured by "
-            "TRITON_AGENT_BATCH_NPU_DEVICES and TRITON_AGENT_BATCH_WORKERS_PER_NPU."
+            "HELIX_BATCH_NPU_DEVICES and HELIX_BATCH_WORKERS_PER_NPU."
         )
 ```
 
@@ -141,16 +141,16 @@ Expected:
 - [ ] **Step 5: Commit the shared affinity helper task**
 
 ```bash
-git add src/triton_agent/npu_affinity.py tests/test_npu_affinity.py
+git add src/helix/npu_affinity.py tests/test_npu_affinity.py
 git commit -m "feat: add batch workers per npu affinity helpers"
 ```
 
 ### Task 2: Teach Batch Commands To Use Expanded Slot Pools
 
 **Files:**
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_generation_batch.py`
 - Modify: `tests/test_convert_commands.py`
@@ -176,12 +176,12 @@ def test_run_optimize_batch_allows_shared_affinity_slots_per_device(self) -> Non
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=False,
         ):
-            with patch("triton_agent.optimize.batch.render_batch_optimize_results", return_value=0):
+            with patch("helix.optimize.batch.render_batch_optimize_results", return_value=0):
                 exit_code = run_optimize_batch(root, options, max_concurrency=4, stdout=StringIO(), run_request=fake_run_request)
 
         self.assertEqual(exit_code, 0)
@@ -207,8 +207,8 @@ def test_run_gen_eval_batch_allows_shared_affinity_slots_per_device(self) -> Non
         with patch.dict(
             environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=False,
         ):
@@ -236,8 +236,8 @@ def test_run_convert_batch_allows_shared_affinity_slots_per_device(self) -> None
         with patch.dict(
             environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=False,
         ):
@@ -260,12 +260,12 @@ def test_run_optimize_batch_rejects_concurrency_larger_than_effective_affinity_c
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=False,
         ):
-            with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+            with self.assertRaisesRegex(ValueError, "HELIX_BATCH_WORKERS_PER_NPU"):
                 run_optimize_batch(root, options, max_concurrency=5, stdout=StringIO())
 ```
 
@@ -280,7 +280,7 @@ Expected:
 - [ ] **Step 4: Update all three batch modules to use `configured_batch_npu_slots()`**
 
 ```python
-from triton_agent.npu_affinity import (
+from helix.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_slots,
@@ -305,15 +305,15 @@ Run: `uv run python -m unittest tests.test_optimize_runtime tests.test_generatio
 Expected:
 - `OK`
 - shared-slot tests pass with repeated device assignments
-- legacy tests with only `TRITON_AGENT_BATCH_NPU_DEVICES` still pass unchanged
+- legacy tests with only `HELIX_BATCH_NPU_DEVICES` still pass unchanged
 
 - [ ] **Step 6: Commit the batch runtime task**
 
 ```bash
 git add \
-  src/triton_agent/optimize/batch.py \
-  src/triton_agent/generation/batch.py \
-  src/triton_agent/convert/batch.py \
+  src/helix/optimize/batch.py \
+  src/helix/generation/batch.py \
+  src/helix/convert/batch.py \
   tests/test_optimize_runtime.py \
   tests/test_generation_batch.py \
   tests/test_convert_commands.py
@@ -323,7 +323,7 @@ git commit -m "feat: support shared batch workers per npu"
 ### Task 3: Surface The New Environment Variable In CLI Help And README
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Modify: `tests/test_cli.py`
 - Modify: `README.md`
 
@@ -333,8 +333,8 @@ git commit -m "feat: support shared batch workers per npu"
 def test_top_level_help_lists_supported_environment_variables(self) -> None:
     parser = build_parser()
     help_text = parser.format_help()
-    self.assertIn("TRITON_AGENT_BATCH_NPU_DEVICES", help_text)
-    self.assertIn("TRITON_AGENT_BATCH_WORKERS_PER_NPU", help_text)
+    self.assertIn("HELIX_BATCH_NPU_DEVICES", help_text)
+    self.assertIn("HELIX_BATCH_WORKERS_PER_NPU", help_text)
 ```
 
 - [ ] **Step 2: Run the focused CLI help test and confirm it fails first**
@@ -342,9 +342,9 @@ def test_top_level_help_lists_supported_environment_variables(self) -> None:
 Run: `uv run python -m unittest tests.test_cli.CliParserTests.test_top_level_help_lists_supported_environment_variables -v`
 
 Expected:
-- FAIL because `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is not yet listed
+- FAIL because `HELIX_BATCH_WORKERS_PER_NPU` is not yet listed
 
-- [ ] **Step 3: Update `src/triton_agent/cli.py` and `README.md` with the new capacity semantics**
+- [ ] **Step 3: Update `src/helix/cli.py` and `README.md` with the new capacity semantics**
 
 ```python
 _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
@@ -352,15 +352,15 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
         "Batch and runtime",
         (
             (
-                "TRITON_AGENT_BATCH_NPU_DEVICES",
+                "HELIX_BATCH_NPU_DEVICES",
                 "Comma-separated Ascend NPU device pool for batch workspaces.",
             ),
             (
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU",
+                "HELIX_BATCH_WORKERS_PER_NPU",
                 "Concurrent workspace slots contributed by each configured batch NPU (default: 1).",
             ),
             (
-                "TRITON_AGENT_CODE_AGENT_MAX_RETRIES",
+                "HELIX_CODE_AGENT_MAX_RETRIES",
                 "Retry limit for transient code-agent failures.",
             ),
         ),
@@ -369,13 +369,13 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
 ```
 
 ```md
-| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer capacity multiplier per configured NPU. Ignored unless `TRITON_AGENT_BATCH_NPU_DEVICES` is set. |
+| `HELIX_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer capacity multiplier per configured NPU. Ignored unless `HELIX_BATCH_NPU_DEVICES` is set. |
 ```
 
 ```md
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+export HELIX_BATCH_NPU_DEVICES=0,1
+export HELIX_BATCH_WORKERS_PER_NPU=2
+uv run helix optimize-batch --input operators_root --max-concurrency 4
 ```
 
 - [ ] **Step 4: Re-run the focused CLI test**
@@ -390,12 +390,12 @@ Expected:
 Check:
 - the environment-variable table uses the exact variable name
 - the batch affinity section explains `device_count * workers_per_npu`
-- the docs explicitly say the new variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset
+- the docs explicitly say the new variable is ignored when `HELIX_BATCH_NPU_DEVICES` is unset
 
 - [ ] **Step 6: Commit the docs/help task**
 
 ```bash
-git add src/triton_agent/cli.py tests/test_cli.py README.md
+git add src/helix/cli.py tests/test_cli.py README.md
 git commit -m "docs: describe batch workers per npu"
 ```
 
@@ -436,5 +436,5 @@ Expected:
 
 Include:
 - the exact test commands that passed
-- confirmation that one-device-per-workspace behavior remains unchanged when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is unset
-- confirmation that `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset
+- confirmation that one-device-per-workspace behavior remains unchanged when `HELIX_BATCH_WORKERS_PER_NPU` is unset
+- confirmation that `HELIX_BATCH_WORKERS_PER_NPU` is ignored when `HELIX_BATCH_NPU_DEVICES` is unset

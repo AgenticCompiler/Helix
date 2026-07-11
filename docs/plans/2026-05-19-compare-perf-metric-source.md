@@ -73,7 +73,7 @@ def test_handle_compare_perf_forwards_metric_source(self) -> None:
         )
 
         with patch(
-            "triton_agent.commands.comparison.compare_perf_files",
+            "helix.commands.comparison.compare_perf_files",
             return_value=0,
         ) as mocked:
             exit_code = handle_compare_perf(parser, args)
@@ -143,8 +143,8 @@ git commit -m "test: cover compare-perf metric source option"
 ### Task 2: Add Metric-Source Wiring Through All Compare-Perf Entrypoints
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/comparison.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/comparison.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run-command.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_comparison_commands.py`
@@ -176,7 +176,7 @@ compare_perf.add_argument(
 
 - [ ] **Step 3: Thread `metric_source` through the comparison wrapper API**
 
-Update the protocol and wrapper signatures in `src/triton_agent/commands/comparison.py`:
+Update the protocol and wrapper signatures in `src/helix/commands/comparison.py`:
 
 ```python
 class ComparePerfModule(Protocol):
@@ -238,7 +238,7 @@ Expected: PASS
 - [ ] **Step 6: Commit the entrypoint wiring**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/comparison.py skills/triton-npu-run-eval/scripts/run-command.py tests/test_cli.py tests/test_comparison_commands.py tests/test_skill_command_script.py
+git add src/helix/cli.py src/helix/commands/comparison.py skills/triton-npu-run-eval/scripts/run-command.py tests/test_cli.py tests/test_comparison_commands.py tests/test_skill_command_script.py
 git commit -m "feat: wire compare-perf metric source option"
 ```
 

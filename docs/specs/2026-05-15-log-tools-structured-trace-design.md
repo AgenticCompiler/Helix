@@ -11,7 +11,7 @@
 - Add `--log-tools` to `optimize` and `optimize-batch`.
 - Carry the option through `OptimizeRunOptions` and `AgentRequest`.
 - Record L0 `agent_invocation` events for all backends when trace collection is enabled.
-- Keep trace output under `triton-agent-logs/otel/<run-id>/trace.jsonl`.
+- Keep trace output under `helix-logs/otel/<run-id>/trace.jsonl`.
 - Always write `summary.json` and `agent-audit.md` for optimize archive cleanup, with explicit trace capability and evidence-gap fields.
 - Stage passive Codex/OpenCode trace hooks when `--log-tools` is enabled, without enabling guard denial unless `--enable-agent-hooks` is also enabled.
 

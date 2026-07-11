@@ -12,12 +12,12 @@ Suppress `run-test` output lines that begin with `[WARNING]` during non-verbose 
 2. Thread `verbose` into local `run_local_test()` and legacy local execution so non-verbose runs can filter result output.
 3. Apply the same filtering to remote `run-test` results before returning them.
 
-### Repo CLI wrapper: `src/triton_agent/execution.py`
+### Repo CLI wrapper: `src/helix/execution.py`
 
 1. Extend `run_local_test()` to accept `verbose`.
 2. Update the protocol definition to match the new test-runner signature.
 
-### Repo CLI command: `src/triton_agent/commands/execution.py`
+### Repo CLI command: `src/helix/commands/execution.py`
 
 1. Pass `args.verbose` into local `run_local_test()`.
 

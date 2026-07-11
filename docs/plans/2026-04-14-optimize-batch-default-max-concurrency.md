@@ -27,7 +27,7 @@ Expected: FAIL because the parser still defaults `optimize-batch --max-concurren
 
 - [ ] **Step 3: Write minimal implementation**
 
-Update the `CommandKind.OPTIMIZE_BATCH` CLI spec in `src/triton_agent/cli.py` so `max_concurrency_default=1`.
+Update the `CommandKind.OPTIMIZE_BATCH` CLI spec in `src/helix/cli.py` so `max_concurrency_default=1`.
 
 - [ ] **Step 4: Run test to verify it passes**
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix PyInstaller Packager"
+  short_description: "Package helix into OS-specific PyInstaller onefile executables."
+  default_prompt: "Package helix for the current operating system as a PyInstaller onefile executable, embed the skills tree, validate the executable, and summarize produced artifacts."

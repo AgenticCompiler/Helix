@@ -48,7 +48,7 @@
 - Add a second helper that parses a file for a required set of latency ids while ignoring unrelated fields.
 - Reuse that helper in:
   - `skills/triton-npu-run-eval/scripts/bench_runner.py` for `compare_perf_files`
-  - `src/triton_agent/optimize/status.py` for round perf extraction
+  - `src/helix/optimize/status.py` for round perf extraction
 - Keep `select_baseline_perf_file()` and `find_round_perf_file()` behavior unchanged unless tests show a discovery gap.
 
 ## Testing

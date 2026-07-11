@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add hook-gated optimize workflow state under `.triton-agent/state.json`, track per-round start/end timestamps, and archive completed round timings into `triton-agent-logs/<run-id>/round-timings.json` without changing non-hook optimize behavior.
+**Goal:** Add hook-gated optimize workflow state under `.helix/state.json`, track per-round start/end timestamps, and archive completed round timings into `helix-logs/<run-id>/round-timings.json` without changing non-hook optimize behavior.
 
 **Architecture:** Keep workflow-state authority in a skill-side helper under `skills/triton/triton-npu-optimize/scripts/`, then load it from runtime through a thin `src/` bridge. Baseline submit, round submit, and the new start-round script mutate state automatically when the runtime bootstrapped the state file, while runtime owns hook-gated bootstrap, prompt-phase summary rendering, and cleanup-time archive projection.
 
@@ -18,23 +18,23 @@
   Own JSON loading, validation, legal phase transitions, UTC timestamp generation, atomic writes, phase-summary rendering, and `round-timings.json` projection.
 - Create: `skills/triton-npu-optimize-start-round/scripts/optimize_start_round.py`
   Provide the `start-round` CLI that opens one round in workflow state immediately before the next optimize round begins.
-- Create: `src/triton_agent/optimize/workflow_state.py`
+- Create: `src/helix/optimize/workflow_state.py`
   Runtime-only bridge that loads the skill helper via `load_skill_script_module` and exposes typed wrappers for bootstrap, prompt summaries, and cleanup-time archive writing.
 - Modify: `skills/triton-npu-optimize-submit-baseline/scripts/optimize_submit_baseline.py`
-  Keep pure validation when workflow state is absent, but advance state automatically when `.triton-agent/state.json` is present.
+  Keep pure validation when workflow state is absent, but advance state automatically when `.helix/state.json` is present.
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py`
   Keep pure validation when workflow state is absent, but enforce active-round matching and complete the round automatically when state is present.
 - Modify: `skills/triton-npu-optimize-start-round/SKILL.md`
   Tell the agent to call the new script directly before editing the next round.
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-  Hook-gate workflow-state bootstrap and cleanup, including checked-mode `.triton-agent/` creation when hooks are enabled.
-- Modify: `src/triton_agent/optimize/archive.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+  Hook-gate workflow-state bootstrap and cleanup, including checked-mode `.helix/` creation when hooks are enabled.
+- Modify: `src/helix/optimize/archive.py`
   Reserve `round-timings.json` in the existing archive namespace and keep archive warnings aligned with current behavior.
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/execution.py`
   Pass `enable_agent_hooks` into artifact preparation and inject prompt summaries derived from workflow state before worker/supervisor launches.
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
   Accept a rendered workflow-phase summary on baseline, round, and supervisor prompt builders.
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
   Thread the optional workflow-phase summary through the optimize prompt dispatch path.
 - Create: `tests/test_optimize_workflow_state.py`
   Focused helper/bridge tests for schema validation, transitions, idempotency, and round-timing projection.
@@ -62,7 +62,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skill_loader import load_skill_script_module
+from helix.skill_loader import load_skill_script_module
 
 
 def load_workflow_state_module():
@@ -76,7 +76,7 @@ def test_bootstrap_state_writes_expected_hook_gated_baseline_payload(self) -> No
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        state_path = root / ".triton-agent" / "state.json"
+        state_path = root / ".helix" / "state.json"
         state_path.parent.mkdir()
 
         module.bootstrap_state(
@@ -106,7 +106,7 @@ def test_bootstrap_state_writes_expected_hook_gated_baseline_payload(self) -> No
 def test_start_round_is_idempotent_for_same_active_round(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
-        state_path = Path(tmp) / ".triton-agent" / "state.json"
+        state_path = Path(tmp) / ".helix" / "state.json"
         state_path.parent.mkdir()
         module.bootstrap_state(
             state_path,
@@ -129,7 +129,7 @@ def test_start_round_is_idempotent_for_same_active_round(self) -> None:
 def test_complete_round_records_end_time_and_resets_phase(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
-        state_path = Path(tmp) / ".triton-agent" / "state.json"
+        state_path = Path(tmp) / ".helix" / "state.json"
         state_path.parent.mkdir()
         module.bootstrap_state(
             state_path,
@@ -151,8 +151,8 @@ def test_write_round_timings_archive_only_includes_passed_rounds(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        state_path = root / ".triton-agent" / "state.json"
-        archive_path = root / "triton-agent-logs" / "optimize-20260622" / "round-timings.json"
+        state_path = root / ".helix" / "state.json"
+        archive_path = root / "helix-logs" / "optimize-20260622" / "round-timings.json"
         state_path.parent.mkdir()
         module.bootstrap_state(
             state_path,
@@ -177,7 +177,7 @@ def test_write_round_timings_archive_only_includes_passed_rounds(self) -> None:
 def test_load_state_rejects_unknown_schema_version(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
-        state_path = Path(tmp) / ".triton-agent" / "state.json"
+        state_path = Path(tmp) / ".helix" / "state.json"
         state_path.parent.mkdir()
         state_path.write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "unsupported workflow state schema_version"):
@@ -198,7 +198,7 @@ Expected: FAIL because `skills/triton/triton-npu-optimize/scripts/optimize_workf
 
 **Files:**
 - Create: `skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py`
-- Create: `src/triton_agent/optimize/workflow_state.py`
+- Create: `src/helix/optimize/workflow_state.py`
 - Test: `tests/test_optimize_workflow_state.py`
 
 - [ ] **Step 1: Add the canonical helper module with JSON validation, round parsing, and atomic writes**
@@ -308,7 +308,7 @@ def write_round_timings_archive(state_path: Path, archive_path: Path) -> bool:
 - [ ] **Step 4: Add the runtime bridge that uses the existing skill-loader instead of importing the skill helper directly**
 
 ```python
-from triton_agent.skill_loader import load_skill_script_module
+from helix.skill_loader import load_skill_script_module
 
 
 def _workflow_module():
@@ -415,8 +415,8 @@ def test_optimize_submit_baseline_updates_workflow_state_when_present(self) -> N
         )
         (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
-    (workspace / ".triton-agent").mkdir()
-    (workspace / ".triton-agent" / "state.json").write_text(
+    (workspace / ".helix").mkdir()
+    (workspace / ".helix" / "state.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
@@ -445,7 +445,7 @@ def test_optimize_submit_baseline_updates_workflow_state_when_present(self) -> N
             env=env,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-    state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+    state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
     self.assertEqual(state_payload["phase"], "awaiting_round_start")
     self.assertEqual(state_payload["baseline"]["status"], "passed")
 ```
@@ -516,8 +516,8 @@ def test_optimize_submit_round_updates_workflow_state_when_present(self) -> None
             ),
             encoding="utf-8",
         )
-        (workspace / ".triton-agent").mkdir()
-        (workspace / ".triton-agent" / "state.json").write_text(
+        (workspace / ".helix").mkdir()
+        (workspace / ".helix" / "state.json").write_text(
             json.dumps(
                 {
                     "schema_version": 1,
@@ -557,7 +557,7 @@ def test_optimize_submit_round_updates_workflow_state_when_present(self) -> None
             env=env,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+        state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
     self.assertEqual(state_payload["phase"], "awaiting_round_start")
     self.assertIsNone(state_payload["current_round"])
     self.assertEqual(state_payload["rounds"]["4"]["status"], "passed")
@@ -592,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     baseline_dir = Path(args.baseline_dir).expanduser().resolve()
     result = check_baseline(baseline_dir)
-    state_path = baseline_dir.parent / ".triton-agent" / "state.json"
+    state_path = baseline_dir.parent / ".helix" / "state.json"
     if result.status == "pass" and state_path.exists():
         _load_workflow_state_module().mark_baseline_passed(state_path)
     print(json.dumps(_build_cli_payload(result), ensure_ascii=True))
@@ -612,7 +612,7 @@ def main(argv: list[str] | None = None) -> int:
         final_round=args.final_round,
         optimize_target=args.optimize_target,
     )
-    state_path = round_dir.parent / ".triton-agent" / "state.json"
+    state_path = round_dir.parent / ".helix" / "state.json"
     if result.status == "pass" and state_path.exists():
         _load_workflow_state_module().complete_round(
             state_path,
@@ -637,7 +637,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     round_dir = Path(args.round_dir).expanduser().resolve()
-    state_path = round_dir.parent / ".triton-agent" / "state.json"
+    state_path = round_dir.parent / ".helix" / "state.json"
     if not state_path.exists():
         raise RuntimeError("optimize workflow state is not available; start-round requires --enable-agent-hook")
     _load_workflow_state_module().start_round(state_path, round_dir.name)
@@ -672,12 +672,12 @@ Expected: PASS
 ### Task 4: Hook-gate runtime bootstrap, prompt summaries, and cleanup-time `round-timings.json`
 
 **Files:**
-- Create: `src/triton_agent/optimize/workflow_state.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/archive.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/prompts.py`
+- Create: `src/helix/optimize/workflow_state.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/archive.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Test: `tests/test_optimize_guidance.py`
@@ -699,7 +699,7 @@ def test_prepare_checked_session_bootstraps_workflow_state_only_when_hooks_enabl
             source_operator_path=workdir / "kernel.py",
         )
         self.assertIsNone(state_without_hooks.workflow_state_path)
-        self.assertFalse((workdir / ".triton-agent").exists())
+        self.assertFalse((workdir / ".helix").exists())
 
         state_with_hooks = manager.prepare_checked_session(
             workdir,
@@ -707,7 +707,7 @@ def test_prepare_checked_session_bootstraps_workflow_state_only_when_hooks_enabl
             enable_agent_hooks=True,
             source_operator_path=workdir / "kernel.py",
         )
-        self.assertEqual(state_with_hooks.workflow_state_path, workdir / ".triton-agent" / "state.json")
+        self.assertEqual(state_with_hooks.workflow_state_path, workdir / ".helix" / "state.json")
         self.assertTrue(state_with_hooks.workflow_state_path.exists())
 ```
 
@@ -796,7 +796,7 @@ class OptimizeSessionArtifactsState:
     memory_file: MemoryFileState
     archive: ArchiveState
     subagent_stage_set: SubagentStageSet | None = None
-    hidden_triton_agent_dir: Path | None = None
+    hidden_helix_dir: Path | None = None
     supervisor_report_path: Path | None = None
     supervisor_history_dir: Path | None = None
     workflow_state_path: Path | None = None
@@ -825,10 +825,10 @@ _EXPECTED_NAMES = frozenset({
 ```python
 archive_state = self._archives.prepare(workdir, include_shared_guidance_snapshot=True)
 workflow_state_path = None
-hidden_triton_agent_dir = None
+hidden_helix_dir = None
 if enable_agent_hooks:
-    hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
-    workflow_state_path = hidden_triton_agent_dir / "state.json"
+    hidden_helix_dir = self._prepare_hidden_helix_dir(workdir)
+    workflow_state_path = hidden_helix_dir / "state.json"
     bootstrap_optimize_workflow_state(
         workflow_state_path,
         run_id=archive_state.run_id,
@@ -840,7 +840,7 @@ return OptimizeSessionArtifactsState(
     memory_file=memory_file_state,
     archive=archive_state,
     subagent_stage_set=subagent_stage_set,
-    hidden_triton_agent_dir=hidden_triton_agent_dir,
+    hidden_helix_dir=hidden_helix_dir,
     workflow_state_path=workflow_state_path,
 )
 ```
@@ -916,7 +916,7 @@ baseline_request = replace(
 )
 ```
 
-Also thread the same optional argument through `src/triton_agent/prompts.py`:
+Also thread the same optional argument through `src/helix/prompts.py`:
 
 ```python
 def build_prompt(
@@ -1031,14 +1031,14 @@ Expected: PASS
 Check these assertions in the final green test run:
 
 ```python
-self.assertFalse((workdir / ".triton-agent" / "state.json").exists())
+self.assertFalse((workdir / ".helix" / "state.json").exists())
 self.assertFalse((state.run_archive_dir / "round-timings.json").exists())
 ```
 
 for non-hook optimize sessions, and:
 
 ```python
-self.assertTrue((workdir / ".triton-agent" / "state.json").exists())
+self.assertTrue((workdir / ".helix" / "state.json").exists())
 self.assertTrue((state.run_archive_dir / "round-timings.json").exists())
 ```
 

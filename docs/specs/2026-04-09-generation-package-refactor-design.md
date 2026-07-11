@@ -2,38 +2,38 @@
 
 ## Summary
 
-- Replace the flat `triton_agent.generation` module with a `triton_agent/generation/` package.
-- Do not preserve the old `triton_agent.generation` import path as a compatibility shim.
+- Replace the flat `helix.generation` module with a `helix/generation/` package.
+- Do not preserve the old `helix.generation` import path as a compatibility shim.
 - Keep CLI behavior unchanged while making the generation code layout match the repository's current complexity more closely.
 
 ## Goals
 
 - Make generation code easier to navigate by separating models, output-path handling, runtime orchestration, and batch orchestration.
-- Bring generation structure closer to the clarity already present in `triton_agent/optimize/` without forcing a one-to-one mirror.
+- Bring generation structure closer to the clarity already present in `helix/optimize/` without forcing a one-to-one mirror.
 - Keep the public CLI behavior for `gen-test`, `gen-bench`, `gen-eval`, and `gen-eval-batch` unchanged.
 
 ## Non-Goals
 
 - Do not change prompt semantics, staged skill behavior, overwrite protection rules, or batch execution semantics.
-- Do not add compatibility imports for `triton_agent.generation`.
+- Do not add compatibility imports for `helix.generation`.
 - Do not introduce extra generation submodules unless they own a clear responsibility today.
 - Do not refactor unrelated optimize or execution code as part of this change.
 
 ## Proposed Package Shape
 
-- `src/triton_agent/generation/__init__.py`
+- `src/helix/generation/__init__.py`
   - Stable export surface for current generation helpers used elsewhere in the repository.
-- `src/triton_agent/generation/models.py`
+- `src/helix/generation/models.py`
   - `GenerationOptions`
-- `src/triton_agent/generation/outputs.py`
+- `src/helix/generation/outputs.py`
   - output path resolution
   - overwrite protection
   - target preparation helpers
-- `src/triton_agent/generation/orchestration.py`
+- `src/helix/generation/orchestration.py`
   - request construction
   - staged skill selection
   - runner invocation
-- `src/triton_agent/generation/batch.py`
+- `src/helix/generation/batch.py`
   - batch wrapper orchestration for `gen-eval-batch`
 
 ## Why This Shape
@@ -46,9 +46,9 @@
 ## Import Migration
 
 - Update all repository imports from:
-  - `triton_agent.generation`
-  - `triton_agent.generation_batch`
-- Replace them with imports from the new package modules or from `triton_agent.generation` package exports.
+  - `helix.generation`
+  - `helix.generation_batch`
+- Replace them with imports from the new package modules or from `helix.generation` package exports.
 - Delete the old top-level files after all imports and tests are updated.
 
 ## User-Visible Semantics

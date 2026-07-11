@@ -12,25 +12,25 @@
 
 ## File Structure
 
-- `src/triton_agent/cli.py`
+- `src/helix/cli.py`
   Parse `--enable-subagent` for `optimize` and `optimize-batch`.
-- `src/triton_agent/commands/optimize.py`
+- `src/helix/commands/optimize.py`
   Map parsed args into `OptimizeRunOptions` and reject unsupported backend combinations before filesystem checks.
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   Add `enable_subagent` to optimize options.
-- `src/triton_agent/models.py`
+- `src/helix/models.py`
   Add `enable_subagent` to `AgentRequest` so execution and artifacts can see it.
-- `src/triton_agent/subagents.py`
+- `src/helix/subagents.py`
   Hold generic staging data structures, backend path mapping, prepare/cleanup, and collision checks.
-- `src/triton_agent/optimize/subagents.py`
-  Hold the built-in `triton-agent-perf-diagnosis-advisor` definition, backend renderers, and optimize-specific recommendation text.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/subagents.py`
+  Hold the built-in `helix-perf-diagnosis-advisor` definition, backend renderers, and optimize-specific recommendation text.
+- `src/helix/optimize/orchestration.py`
   Carry `enable_subagent` into the optimize request and pass staged-skill context into artifact preparation.
-- `src/triton_agent/optimize/session_artifacts.py`
+- `src/helix/optimize/session_artifacts.py`
   Stage subagents together with optimize guidance and clean them up after each run.
-- `src/triton_agent/optimize/prompts.py`
+- `src/helix/optimize/prompts.py`
   Add worker prompt guidance that recommends using the diagnosis subagent without making it mandatory.
-- `src/triton_agent/optimize/memory_file.py`
+- `src/helix/optimize/memory_file.py`
   Add matching workspace guidance text for `AGENTS.md` / `CLAUDE.md`.
 - `tests/test_cli.py`
   Cover parser acceptance, default values, and unsupported backend rejection.
@@ -49,9 +49,9 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
 
 - [ ] **Step 1: Add failing parser tests for `--enable-subagent` on `optimize` and `optimize-batch`**
 
@@ -150,15 +150,15 @@ OK
 - [ ] **Step 6: Commit the CLI contract change**
 
 ```bash
-git add tests/test_cli.py src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py
+git add tests/test_cli.py src/helix/cli.py src/helix/commands/optimize.py src/helix/optimize/models.py
 git commit -m "feat: add optimize enable-subagent option"
 ```
 
 ### Task 2: Add Generic Subagent Staging Infrastructure
 
 **Files:**
-- Create: `src/triton_agent/subagents.py`
-- Create: `src/triton_agent/optimize/subagents.py`
+- Create: `src/helix/subagents.py`
+- Create: `src/helix/optimize/subagents.py`
 - Create: `tests/test_subagents.py`
 
 - [ ] **Step 1: Write failing staging tests for backend-native file paths, collisions, cleanup, and rendered analysis restrictions**
@@ -172,7 +172,7 @@ def test_prepare_codex_subagent_stages_toml_and_cleans_up(self) -> None:
         enable_cann_ext_api=False,
     )
     state = manager.prepare("codex", workspace, (definition,))
-    agent_path = workspace / ".codex" / "agents" / "triton-agent-perf-diagnosis-advisor.toml"
+    agent_path = workspace / ".codex" / "agents" / "helix-perf-diagnosis-advisor.toml"
     self.assertTrue(agent_path.exists())
     self.assertIn("must not perform optimization work", agent_path.read_text(encoding="utf-8"))
     self.assertEqual(manager.cleanup(state), [])
@@ -190,10 +190,10 @@ uv run python -m unittest tests.test_subagents -v
 Expected:
 
 ```text
-ERROR: No module named 'triton_agent.subagents'
+ERROR: No module named 'helix.subagents'
 ```
 
-- [ ] **Step 3: Implement the generic staging layer in `src/triton_agent/subagents.py`**
+- [ ] **Step 3: Implement the generic staging layer in `src/helix/subagents.py`**
 
 ```python
 @dataclass(frozen=True)
@@ -222,7 +222,7 @@ class SubagentManager:
         ...
 ```
 
-- [ ] **Step 4: Implement the optimize-owned diagnosis subagent definition in `src/triton_agent/optimize/subagents.py`**
+- [ ] **Step 4: Implement the optimize-owned diagnosis subagent definition in `src/helix/optimize/subagents.py`**
 
 ```python
 def perf_diagnosis_subagent_definition(
@@ -236,7 +236,7 @@ def perf_diagnosis_subagent_definition(
 
 def optimize_subagent_recommendation_lines() -> list[str]:
     return [
-        "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
+        "A diagnosis subagent named `helix-perf-diagnosis-advisor` is available in this workspace.",
         "Use it when the bottleneck hypothesis is still unclear before deeper optimize edits.",
     ]
 ```
@@ -258,16 +258,16 @@ OK
 - [ ] **Step 6: Commit the staging infrastructure**
 
 ```bash
-git add src/triton_agent/subagents.py src/triton_agent/optimize/subagents.py tests/test_subagents.py
+git add src/helix/subagents.py src/helix/optimize/subagents.py tests/test_subagents.py
 git commit -m "feat: add backend-native subagent staging"
 ```
 
 ### Task 3: Thread Subagents Through Optimize Session Artifacts
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 
@@ -286,7 +286,7 @@ def test_prepare_continuous_session_stages_subagent_when_enabled(self) -> None:
         staged_skill_names=("triton-npu-optimize-knowledge",),
     )
     self.assertTrue(
-        (workdir / ".codex" / "agents" / "triton-agent-perf-diagnosis-advisor.toml").exists()
+        (workdir / ".codex" / "agents" / "helix-perf-diagnosis-advisor.toml").exists()
     )
     self.assertEqual(manager.cleanup_continuous_session(state), [])
 ```
@@ -364,15 +364,15 @@ OK
 - [ ] **Step 6: Commit the optimize artifact integration**
 
 ```bash
-git add src/triton_agent/models.py src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/session_artifacts.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
+git add src/helix/models.py src/helix/optimize/orchestration.py src/helix/optimize/session_artifacts.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
 git commit -m "feat: stage optimize diagnosis subagents per session"
 ```
 
 ### Task 4: Inject Diagnosis Guidance And Backend Compatibility
 
 **Files:**
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
 - Modify: `tests/test_opencode_runner.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_cli.py`
@@ -390,7 +390,7 @@ def test_prepare_continuous_session_mentions_diagnosis_subagent_when_enabled(sel
         enable_subagent=True,
     )
     content = state.guidance_path.read_text(encoding="utf-8")
-    self.assertIn("triton-agent-perf-diagnosis-advisor", content)
+    self.assertIn("helix-perf-diagnosis-advisor", content)
     self.assertIn("cannot perform optimization edits", content)
 ```
 
@@ -454,7 +454,7 @@ def diagnosis_subagent_lines(*, enabled: bool) -> list[str]:
     if not enabled:
         return []
     return [
-        "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
+        "A diagnosis subagent named `helix-perf-diagnosis-advisor` is available in this workspace.",
         "It may inspect harnesses and collect benchmark, profiler, or IR evidence for diagnosis.",
         "It must not perform optimization edits or apply candidate patches.",
     ]
@@ -481,7 +481,7 @@ OK
 - [ ] **Step 6: Commit the guidance and backend-compatibility changes**
 
 ```bash
-git add src/triton_agent/optimize/prompts.py src/triton_agent/optimize/memory_file.py tests/test_optimize_guidance.py tests/test_opencode_runner.py tests/test_cli.py
+git add src/helix/optimize/prompts.py src/helix/optimize/memory_file.py tests/test_optimize_guidance.py tests/test_opencode_runner.py tests/test_cli.py
 git commit -m "feat: recommend optimize diagnosis subagent"
 ```
 
@@ -499,7 +499,7 @@ git commit -m "feat: recommend optimize diagnosis subagent"
 - [ ] **Step 2: Add one short behavior note near the optimize workflow description**
 
 ```markdown
-When `--enable-subagent` is set, optimize stages a backend-native `triton-agent-perf-diagnosis-advisor` subagent into the workspace. The main agent may call it for diagnosis help, but the subagent is limited to analysis work and must not edit operator implementations.
+When `--enable-subagent` is set, optimize stages a backend-native `helix-perf-diagnosis-advisor` subagent into the workspace. The main agent may call it for diagnosis help, but the subagent is limited to analysis work and must not edit operator implementations.
 ```
 
 - [ ] **Step 3: Re-read the spec and this plan and make sure the documented user contract still matches the implementation tasks exactly**
@@ -527,13 +527,13 @@ git commit -m "docs: describe optimize subagent support"
 ### Task 6: Verify The Whole Change
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/subagents.py`
-- Modify: `src/triton_agent/optimize/subagents.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/subagents.py`
+- Modify: `src/helix/optimize/subagents.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/backends/opencode.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_subagents.py`
 - Modify: `tests/test_optimize_guidance.py`

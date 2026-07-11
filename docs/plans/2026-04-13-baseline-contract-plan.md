@@ -13,8 +13,8 @@
 ### Task 1: Baseline contract helpers
 
 **Files:**
-- Create: `src/triton_agent/optimize/baseline.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Create: `src/helix/optimize/baseline.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_optimize_baseline.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -96,6 +96,6 @@ uv run python -m unittest tests.test_optimize_baseline -v
 - [ ] **Step 5: Commit baseline contract**
 
 ```bash
-git add src/triton_agent/optimize/baseline.py src/triton_agent/optimize/models.py tests/test_optimize_baseline.py
+git add src/helix/optimize/baseline.py src/helix/optimize/models.py tests/test_optimize_baseline.py
 git commit -m "feat: add optimize baseline artifact contract"
 ```

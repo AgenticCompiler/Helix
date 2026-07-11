@@ -146,7 +146,7 @@ profile-bench --bench-file bench_matmul.py --operator-file matmul.py --case-id f
 Profile one `msprof` benchmark case on a remote machine and keep the remote workspace:
 
 ```text
-profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-id fp16_2048 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-id fp16_2048 --remote user@host:2222 --remote-workdir /tmp/helix --keep-remote-workdir
 ```
 
 Fallback manual profiling when you intentionally bypass the helper:

@@ -9,16 +9,16 @@ from typing import cast
 import torch
 
 from env_registry import (
-    TRITON_AGENT_ACCURACY_MODE,
-    TRITON_AGENT_DTYPE_CLOSE_ATOL,
-    TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    HELIX_ACCURACY_MODE,
+    HELIX_DTYPE_CLOSE_ATOL,
+    HELIX_DTYPE_CLOSE_RTOL,
 )
 
 
 DEFAULT_ACCURACY_MODE = "npu-contract"
 ACCURACY_MODES = frozenset({DEFAULT_ACCURACY_MODE, "dtype-close"})
 _CURRENT_ACCURACY_MODE: ContextVar[str | None] = ContextVar(
-    "triton_agent_current_accuracy_mode",
+    "helix_current_accuracy_mode",
     default=None,
 )
 FLOAT_FAMILY = {
@@ -144,7 +144,7 @@ class InputInfo:
 
 
 def resolve_accuracy_mode(accuracy_mode: str | None) -> str:
-    raw_value = accuracy_mode if accuracy_mode is not None else os.environ.get(TRITON_AGENT_ACCURACY_MODE)
+    raw_value = accuracy_mode if accuracy_mode is not None else os.environ.get(HELIX_ACCURACY_MODE)
     if raw_value is None or not raw_value.strip():
         return DEFAULT_ACCURACY_MODE
     normalized = raw_value.strip().lower()
@@ -186,8 +186,8 @@ def dtype_close_tolerances_for_output_dtype(output_dtype: str) -> dict[str, floa
     matched_key = _dtype_close_tolerance_key(output_dtype)
     matched = DTYPE_CLOSE_TOLERANCES.get(matched_key, DTYPE_CLOSE_TOLERANCES["fallback"])
     tolerances = {"atol": float(matched["atol"]), "rtol": float(matched["rtol"])}
-    atol = optional_env_float(TRITON_AGENT_DTYPE_CLOSE_ATOL)
-    rtol = optional_env_float(TRITON_AGENT_DTYPE_CLOSE_RTOL)
+    atol = optional_env_float(HELIX_DTYPE_CLOSE_ATOL)
+    rtol = optional_env_float(HELIX_DTYPE_CLOSE_RTOL)
     if atol is not None:
         tolerances["atol"] = atol
     if rtol is not None:

@@ -240,8 +240,8 @@ Count as progress:
 
 Do not count as progress:
 
-- `triton-agent-logs/`
-- `.triton-agent/`
+- `helix-logs/`
+- `.helix/`
 - show-output logs
 - trace files
 - session metadata files
@@ -298,18 +298,18 @@ No special hidden retry path should bypass normal launch recording.
 
 ## Module Changes
 
-### `src/triton_agent/process_runner.py`
+### `src/helix/process_runner.py`
 
 - Add an optional generic external progress probe input to buffered and streaming process execution.
 - Refresh stall timing from probe-reported activity as well as process output.
 - Keep default behavior unchanged when no probe is provided.
 
-### `src/triton_agent/backends/base.py`
+### `src/helix/backends/base.py`
 
 - Preserve shared transient retry as the default for ordinary requests.
 - Respect a request-level opt-out so optimize worker launches can bypass shared backend retry.
 
-### `src/triton_agent/models.py`
+### `src/helix/models.py`
 
 - Add explicit request fields for:
   - disabling shared backend retry
@@ -322,14 +322,14 @@ Preferred field shape:
 
 The exact helper type name may vary, but the model should carry configuration rather than a live callback.
 
-### `src/triton_agent/optimize/execution.py`
+### `src/helix/optimize/execution.py`
 
 - Wrap worker launches in an optimize-owned recoverable failure loop.
 - Use the new longest-passing-prefix helper to recompute accepted progress after stalled runs.
 - Track per-unresolved-round recovery budgets.
 - Rebuild worker request bounds and recovery prompt notes after recoverable failures.
 
-### `src/triton_agent/optimize/recovery.py`
+### `src/helix/optimize/recovery.py`
 
 Add a new optimize-local module to keep `execution.py` focused.
 
@@ -383,7 +383,7 @@ Add or update tests for these cases.
 - budget exhaustion for one round terminates the optimize session clearly
 - baseline repair and supervisor launches do not accidentally enter round-prefix recovery behavior
 - business artifact changes such as `round-state.json`, `summary.md`, and `attempts.md` reset stall timing through the optimize progress source
-- excluded paths such as `triton-agent-logs/` and `.triton-agent/` do not reset stall timing
+- excluded paths such as `helix-logs/` and `.helix/` do not reset stall timing
 - directory `mtime` changes alone do not reset stall timing
 - non-recoverable worker-launch failures exit the recovery loop immediately
 - worker-launch success followed by ordinary batch validation failure stays on the existing post-run batch failure path rather than re-entering worker recovery
@@ -418,7 +418,7 @@ If all workspace file activity counts as progress, logs and trace files may supp
 Mitigation:
 
 - use an optimize-local whitelist of business artifacts
-- explicitly exclude `triton-agent-logs/` and `.triton-agent/`
+- explicitly exclude `helix-logs/` and `.helix/`
 
 ### Risk: skipping an invalid round
 

@@ -2,8 +2,8 @@
 
 ## Goal
 
-Make `triton-agent optimize-batch` accept the same agent-hook enable flags as
-`triton-agent optimize` so batch optimize runs can opt into request-scoped hook
+Make `helix optimize-batch` accept the same agent-hook enable flags as
+`helix optimize` so batch optimize runs can opt into request-scoped hook
 guard behavior without falling back to single-workspace invocations.
 
 ## User-Visible Semantics

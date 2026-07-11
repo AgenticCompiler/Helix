@@ -13,8 +13,8 @@ options instead of re-reading global environment state.
 
 - Add `--npu-devices` and `--workers-per-npu` as first-class CLI options for
   the batch-affinity feature set.
-- Preserve `TRITON_AGENT_BATCH_NPU_DEVICES` and
-  `TRITON_AGENT_BATCH_WORKERS_PER_NPU` as compatibility inputs during parsing.
+- Preserve `HELIX_BATCH_NPU_DEVICES` and
+  `HELIX_BATCH_WORKERS_PER_NPU` as compatibility inputs during parsing.
 - Make parsed CLI values the source of truth for batch command execution and
   managed MCP startup.
 - Keep the standalone `run-eval-mcp-server` executable behavior consistent with
@@ -38,14 +38,14 @@ options instead of re-reading global environment state.
 
 Today the batch-affinity feature is controlled directly by:
 
-- `TRITON_AGENT_BATCH_NPU_DEVICES`
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`
+- `HELIX_BATCH_NPU_DEVICES`
+- `HELIX_BATCH_WORKERS_PER_NPU`
 
 Runtime modules read those environment variables directly:
 
-- `src/triton_agent/batch/affinity.py` for batch command affinity,
+- `src/helix/batch/affinity.py` for batch command affinity,
   capacity checks, and `--concurrency max`
-- `src/triton_agent/eval/mcp_server.py` for managed and standalone
+- `src/helix/eval/mcp_server.py` for managed and standalone
   run-eval MCP device-pool startup
 
 This creates two practical issues:
@@ -80,19 +80,19 @@ The compatibility rule is:
 Examples:
 
 ```bash
-uv run triton-agent optimize-batch -i operators --concurrency max \
+uv run helix optimize-batch -i operators --concurrency max \
   --npu-devices 0,1 --workers-per-npu 2
 ```
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch -i operators --concurrency max
+export HELIX_BATCH_NPU_DEVICES=0,1
+export HELIX_BATCH_WORKERS_PER_NPU=2
+uv run helix optimize-batch -i operators --concurrency max
 ```
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
-uv run triton-agent optimize-batch -i operators --concurrency max \
+export HELIX_BATCH_NPU_DEVICES=0,1
+uv run helix optimize-batch -i operators --concurrency max \
   --npu-devices 3,4
 ```
 
@@ -118,7 +118,7 @@ selected command.
 
 ### 2. Batch-affinity helpers become pure input-driven helpers
 
-Refactor `src/triton_agent/batch/affinity.py` so that it no longer owns direct
+Refactor `src/helix/batch/affinity.py` so that it no longer owns direct
 environment lookup for batch command execution. It should keep:
 
 - device-list parsing
@@ -133,7 +133,7 @@ layer instead of reading `os.environ` themselves for the normal batch path.
 
 ### 3. Managed MCP startup receives explicit config
 
-When `--enable-mcp` causes `triton-agent` to auto-start the internal run-eval
+When `--enable-mcp` causes `helix` to auto-start the internal run-eval
 MCP server, that startup path should receive the normalized CLI values
 explicitly.
 
@@ -256,7 +256,7 @@ documenting environment variables as compatibility fallback:
 The docs should clearly say:
 
 - use `--npu-devices` and `--workers-per-npu` for new invocations
-- legacy `TRITON_AGENT_BATCH_*` variables still work
+- legacy `HELIX_BATCH_*` variables still work
 - explicit options override legacy environment variables
 - managed MCP still ignores workers-per-npu for runtime leasing
 
@@ -290,17 +290,17 @@ Repository verification should include:
 
 ## Files Expected To Change
 
-- `src/triton_agent/cli.py`
-- `src/triton_agent/batch/affinity.py`
-- `src/triton_agent/commands/generation.py`
-- `src/triton_agent/commands/convert.py`
-- `src/triton_agent/commands/optimize.py`
-- `src/triton_agent/commands/mcp_server.py`
-- `src/triton_agent/generation/models.py`
-- `src/triton_agent/convert/models.py`
-- `src/triton_agent/optimize/models.py`
-- `src/triton_agent/models.py`
-- `src/triton_agent/eval/mcp.py`
-- `src/triton_agent/eval/mcp_server.py`
+- `src/helix/cli.py`
+- `src/helix/batch/affinity.py`
+- `src/helix/commands/generation.py`
+- `src/helix/commands/convert.py`
+- `src/helix/commands/optimize.py`
+- `src/helix/commands/mcp_server.py`
+- `src/helix/generation/models.py`
+- `src/helix/convert/models.py`
+- `src/helix/optimize/models.py`
+- `src/helix/models.py`
+- `src/helix/eval/mcp.py`
+- `src/helix/eval/mcp_server.py`
 - `README.md`
 - corresponding tests

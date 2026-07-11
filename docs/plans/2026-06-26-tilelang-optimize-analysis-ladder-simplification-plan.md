@@ -14,9 +14,9 @@
 
 - Add: `docs/specs/2026-06-26-tilelang-optimize-analysis-ladder-simplification-design.md`
 - Modify: `skills/tilelang/tilelang-npu-optimize/SKILL.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/subagents.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/subagents.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_guidance.py`
@@ -60,9 +60,9 @@ Expected: `FAIL` because the current shared TileLang workflow still advertises I
 
 **Files:**
 - Modify: `skills/tilelang/tilelang-npu-optimize/SKILL.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/subagents.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/subagents.py`
 
 - [ ] **Step 1: Simplify the TileLang skill contract**
 

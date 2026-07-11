@@ -6,12 +6,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.baseline import (
+from helix.optimize.baseline import (
     baseline_gate_issues,
     inspect_baseline_artifacts,
     load_baseline_state,
 )
-from triton_agent.skills.loader import load_skill_script_module
+from helix.skills.loader import load_skill_script_module
 
 
 class OptimizeBaselineTests(unittest.TestCase):

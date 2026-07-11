@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Remove duplicated optimize-check models and contract parsing logic between `src/triton_agent/optimize/` and `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`.
+- Remove duplicated optimize-check models and contract parsing logic between `src/helix/optimize/` and `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`.
 - Keep `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` as the source of truth for optimize validation contracts.
 - Preserve direct `python3 scripts/optimize_check.py ...` execution inside staged skill copies.
 
@@ -43,9 +43,9 @@ This keeps the reusable validation contract inside the optimize-check skill, whi
 
 ### Runtime Bridge Layer
 
-- Add a small runtime bridge module under `src/triton_agent/optimize/` that loads the shared skill helper through the existing skill-loader path.
-- Re-export the shared dataclasses from `src/triton_agent/optimize/models.py`.
-- Re-export the shared baseline and round contract functions from `src/triton_agent/optimize/baseline.py` and `src/triton_agent/optimize/round_contract.py`.
+- Add a small runtime bridge module under `src/helix/optimize/` that loads the shared skill helper through the existing skill-loader path.
+- Re-export the shared dataclasses from `src/helix/optimize/models.py`.
+- Re-export the shared baseline and round contract functions from `src/helix/optimize/baseline.py` and `src/helix/optimize/round_contract.py`.
 
 This keeps existing runtime call sites stable while removing duplicated implementations.
 
@@ -58,5 +58,5 @@ This keeps existing runtime call sites stable while removing duplicated implemen
 ## Expected Outcome
 
 - Optimize contract models and parsing logic live in one place.
-- Runtime callers continue to use the existing `src/triton_agent/optimize/*` APIs.
+- Runtime callers continue to use the existing `src/helix/optimize/*` APIs.
 - Staged skills remain directly executable in copied workspaces.

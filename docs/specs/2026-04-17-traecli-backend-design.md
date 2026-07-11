@@ -28,7 +28,7 @@
 
 The repository already exposes backend selection through `--agent` and isolates command construction in backend-specific runner modules. Existing backends stage repository skills into backend-native workspace directories such as `.codex/skills` and `.claude/skills`.
 
-The current skill staging implementation in `src/triton_agent/skills.py` duplicates nearly the same copy, symlink-protection, and cleanup logic once per backend. Adding another backend by copying that pattern again would continue the redundancy without adding user-visible value.
+The current skill staging implementation in `src/helix/skills.py` duplicates nearly the same copy, symlink-protection, and cleanup logic once per backend. Adding another backend by copying that pattern again would continue the redundancy without adding user-visible value.
 
 Local inspection of the installed TraeCLI binary and help output on 2026-04-17 shows:
 
@@ -122,14 +122,14 @@ Why not choose this:
 
 ### CLI Surface
 
-- Extend `_AGENT_CHOICES` in `src/triton_agent/cli.py` to include `traecli`.
+- Extend `_AGENT_CHOICES` in `src/helix/cli.py` to include `traecli`.
 - Do not add TraeCLI-specific CLI flags in this change.
 
 ### Backend Module
 
 Add a new module:
 
-- `src/triton_agent/backends/traecli.py`
+- `src/helix/backends/traecli.py`
 
 Responsibilities:
 
@@ -148,11 +148,11 @@ The backend should not override shared mode selection, resume behavior, or outpu
 
 ### Backend Factory
 
-- Update `src/triton_agent/backends/factory.py` so `create_runner("traecli")` returns `TraeCLIRunner`.
+- Update `src/helix/backends/factory.py` so `create_runner("traecli")` returns `TraeCLIRunner`.
 
 ### Skill Staging Refactor
 
-Refactor `src/triton_agent/skills.py` so backend-specific skill staging uses a shared implementation plus a target-directory mapping.
+Refactor `src/helix/skills.py` so backend-specific skill staging uses a shared implementation plus a target-directory mapping.
 
 Recommended mapping shape:
 

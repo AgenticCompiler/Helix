@@ -2,7 +2,7 @@
 
 **Goal:** Stop `optimize-status` from warning on normal baseline-plus-candidate perf layouts while preserving warnings for truly ambiguous baseline perf discovery.
 
-**Architecture:** Keep the change local to `src/triton_agent/optimize/status.py` by refining baseline candidate selection. Lock the behavior with focused unit tests in the optimize-status and CLI suites.
+**Architecture:** Keep the change local to `src/helix/optimize/status.py` by refining baseline candidate selection. Lock the behavior with focused unit tests in the optimize-status and CLI suites.
 
 **Tech Stack:** Python, unittest
 

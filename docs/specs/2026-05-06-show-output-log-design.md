@@ -15,19 +15,19 @@ When `--show-output` is enabled for a non-interactive code-agent run, keep strea
 
 - Do not add a new CLI flag or log-path option in this change.
 - Do not change interactive mode behavior.
-- Do not redesign optimize session archives beyond keeping them under the shared `triton-agent-logs/` root.
+- Do not redesign optimize session archives beyond keeping them under the shared `helix-logs/` root.
 
 ## Storage
 
 For each workspace-scoped agent request, append to:
 
-`<workdir>/triton-agent-logs/<command-kind>.show-output.log`
+`<workdir>/helix-logs/<command-kind>.show-output.log`
 
 Examples:
 
-- `.../triton-agent-logs/gen-test.show-output.log`
-- `.../triton-agent-logs/convert.show-output.log`
-- `.../triton-agent-logs/optimize.show-output.log`
+- `.../helix-logs/gen-test.show-output.log`
+- `.../helix-logs/convert.show-output.log`
+- `.../helix-logs/optimize.show-output.log`
 
 Batch commands still write one log per workspace because each workspace already has its own request workdir.
 

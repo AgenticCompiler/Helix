@@ -12,7 +12,7 @@ Make generated run IDs easier to read by default while preserving a simple colli
 
 ## Design
 
-- Keep run ID generation centralized in `src/triton_agent/otel_trace.py`.
+- Keep run ID generation centralized in `src/helix/otel_trace.py`.
 - Format the base timestamp with `%Y%m%d-%H%M%S`.
 - Track per-process collisions by base run ID string and append `-2`, `-3`, and so on only when needed.
 

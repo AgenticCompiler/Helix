@@ -24,8 +24,8 @@ from bench_contract import (  # noqa: F401
 )
 from env_registry import (
     ASCEND_RT_VISIBLE_DEVICES,
-    TRITON_AGENT_BENCH_COPY_FILES,
-    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    HELIX_BENCH_COPY_FILES,
+    HELIX_BENCH_OUTPUT_DIR,
     TRITON_ALWAYS_COMPILE,
 )
 from npu_affinity import NpuDevicePool, affinity_env_for_device, parse_npu_devices
@@ -89,7 +89,7 @@ class _MsprofCaseOutcome:
 
 
 def _collect_env_copy_files(search_dir: Path) -> list[Path]:
-    patterns_str = os.environ.get(TRITON_AGENT_BENCH_COPY_FILES, "")
+    patterns_str = os.environ.get(HELIX_BENCH_COPY_FILES, "")
     if not patterns_str.strip():
         return []
     patterns = [p.strip() for p in patterns_str.split(",") if p.strip()]
@@ -703,7 +703,7 @@ def _run_local_bench_torch_npu_profiler_parallel(
     if callable(create_preserved_run_dir):
         preserved_run_dir = cast(
             Path | None,
-            create_preserved_run_dir(prefix="triton-agent-torch-npu-profiler-bench-"),
+            create_preserved_run_dir(prefix="helix-torch-npu-profiler-bench-"),
         )
 
     def _worker(case_id: str) -> PerfCaseRecord:
@@ -826,7 +826,7 @@ def _load_bench_runtime_module():
             return cached_module
 
         script_path = _bench_runtime_script_path()
-        module_name = f"triton_agent_bench_runtime_{script_path.stem}"
+        module_name = f"helix_bench_runtime_{script_path.stem}"
         spec = importlib.util.spec_from_file_location(module_name, script_path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Unable to load bench runtime helper: {script_path}")
@@ -1216,10 +1216,10 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
 
 
 def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
-    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
+    configured_root = os.environ.get(HELIX_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
-    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
+        return str(Path(configured_root).expanduser().resolve()), HELIX_BENCH_OUTPUT_DIR
+    return None, HELIX_BENCH_OUTPUT_DIR
 
 
 def _create_local_msprof_output_dir(
@@ -1227,7 +1227,7 @@ def _create_local_msprof_output_dir(
     preserved_run_dir: Path | None,
 ) -> PreservedRunDir:
     if preserved_run_dir is None:
-        temp_dir = tempfile.TemporaryDirectory(prefix="triton-agent-msprof-")
+        temp_dir = tempfile.TemporaryDirectory(prefix="helix-msprof-")
         return Path(temp_dir.name), temp_dir
     output_dir = preserved_run_dir.resolve() / f"case-{case_label}"
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -1351,7 +1351,7 @@ def _create_local_msprof_case_workspace(
     verbose: bool = False,
 ) -> CaseWorkspace:
     return _create_local_case_workspace(
-        prefix=f"triton-agent-msprof-case-{case_id}-",
+        prefix=f"helix-msprof-case-{case_id}-",
         input_paths=_bench_case_input_paths(
             bench_file,
             operator_file,
@@ -1577,7 +1577,7 @@ def _create_local_torch_npu_profiler_case_workspace(
     verbose: bool = False,
 ) -> CaseWorkspace:
     return _create_local_case_workspace(
-        prefix=f"triton-agent-torch-npu-profiler-case-{case_id}-",
+        prefix=f"helix-torch-npu-profiler-case-{case_id}-",
         input_paths=_bench_case_input_paths(
             bench_file,
             operator_file,
@@ -1700,7 +1700,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = _resolve_local_bench_profile_output_root()
     if configured_profile_root:
-        extra_env[TRITON_AGENT_BENCH_OUTPUT_DIR] = str(
+        extra_env[HELIX_BENCH_OUTPUT_DIR] = str(
             Path(configured_profile_root).expanduser().resolve()
         )
     extra_env[TRITON_ALWAYS_COMPILE] = "1"
@@ -2314,6 +2314,6 @@ def _create_local_msprof_preserved_run_dir() -> Path | None:
     if not root.exists():
         root.mkdir(parents=True, exist_ok=True)
         _set_directory_owner_only(root)
-    run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
+    run_dir = Path(tempfile.mkdtemp(prefix="helix-msprof-", dir=str(root)))
     _set_directory_owner_only(run_dir)
     return run_dir

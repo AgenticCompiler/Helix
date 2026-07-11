@@ -2,12 +2,12 @@
 
 ## Summary
 
-Extend the top-level `triton-agent` parser with a standard `-v` / `--version` flag that prints the CLI build commit and exits successfully.
+Extend the top-level `helix` parser with a standard `-v` / `--version` flag that prints the CLI build commit and exits successfully.
 
 ## Goals
 
-- Support `triton-agent -v`.
-- Support `triton-agent --version`.
+- Support `helix -v`.
+- Support `helix --version`.
 - Print only the build commit display value.
 - Reuse the existing build-info resolver so help output and version output stay aligned.
 
@@ -21,16 +21,16 @@ Extend the top-level `triton-agent` parser with a standard `-v` / `--version` fl
 
 ## User-Visible Behavior
 
-- `triton-agent -v` prints one line containing only the build commit display value, then exits with status `0`.
-- `triton-agent --version` prints the same output and exits with status `0`.
+- `helix -v` prints one line containing only the build commit display value, then exits with status `0`.
+- `helix --version` prints the same output and exits with status `0`.
 - The printed value matches `get_build_info_display()`.
 - When commit metadata is unavailable, the output is `unknown`.
 
 ## Implementation Notes
 
-- Add a top-level parser argument in `src/triton_agent/cli.py` using `argparse`'s standard version action.
+- Add a top-level parser argument in `src/helix/cli.py` using `argparse`'s standard version action.
 - Register both `-v` and `--version` on the root parser.
-- Use the existing `triton_agent.build_info.get_build_info_display()` helper as the version string source.
+- Use the existing `helix.build_info.get_build_info_display()` helper as the version string source.
 - Keep the change surgical: no new resolver logic, no new metadata files, and no changes to subparsers.
 
 ## Verification

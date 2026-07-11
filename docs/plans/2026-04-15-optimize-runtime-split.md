@@ -4,7 +4,7 @@
 
 **Goal:** Split `run_optimize_request()` into smaller helpers while preserving all optimize runtime behavior.
 
-**Architecture:** Keep shared skill staging and final cleanup in `run_optimize_request()`, and move the supervised and unsupervised execution branches into dedicated internal helper functions in `src/triton_agent/optimize/orchestration.py`.
+**Architecture:** Keep shared skill staging and final cleanup in `run_optimize_request()`, and move the supervised and unsupervised execution branches into dedicated internal helper functions in `src/helix/optimize/orchestration.py`.
 
 **Tech Stack:** Python, unittest, ruff, pyright, uv
 
@@ -22,7 +22,7 @@
 ### Task 2: Split The Runtime Function
 
 **Files:**
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - [ ] **Step 1: Add `_run_supervised_optimize_request(...)`**
 - [ ] **Step 2: Add `_run_unsupervised_optimize_request(...)`**

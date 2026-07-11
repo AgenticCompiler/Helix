@@ -13,7 +13,7 @@ Use the bundled helper script in this skill. Treat
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py <subcommand> ...
 ```
 
-For `probe-bench`, use the surface that actually exposes that subcommand in the current workspace. If the staged `cli.py` in this skill has not been updated yet, use the workspace's public `triton-agent probe-bench` command instead of guessing helper internals.
+For `probe-bench`, use the surface that actually exposes that subcommand in the current workspace. If the staged `cli.py` in this skill has not been updated yet, use the workspace's public `helix probe-bench` command instead of guessing helper internals.
 
 Read only the focused guide for the subcommand you are about to run:
 

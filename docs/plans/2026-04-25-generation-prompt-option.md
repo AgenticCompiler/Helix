@@ -11,10 +11,10 @@
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_commands.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/models.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/models.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/generation/orchestration.py`
 
 Steps:
 
@@ -28,7 +28,7 @@ Steps:
 
 **Files:**
 - Modify: `tests/test_generation_batch.py`
-- Modify: `src/triton_agent/generation/batch.py` only if shared request construction is insufficient
+- Modify: `src/helix/generation/batch.py` only if shared request construction is insufficient
 
 Steps:
 

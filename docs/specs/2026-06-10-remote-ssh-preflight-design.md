@@ -33,7 +33,7 @@ When a user explicitly passes `--remote user@host[:port]` to a top-level CLI com
 
 ## Implementation Shape
 
-- Add a small shared module under `src/triton_agent/` that:
+- Add a small shared module under `src/helix/` that:
   - parses the existing `user@host[:port]` target format
   - runs the non-interactive SSH probe
   - returns either success or a short actionable failure

@@ -42,7 +42,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_cli.py src/triton_agent/cli.py docs/specs/2026-04-14-optimize-supervisor-alias-design.md docs/plans/2026-04-14-optimize-supervisor-alias.md
+git add tests/test_cli.py src/helix/cli.py docs/specs/2026-04-14-optimize-supervisor-alias-design.md docs/plans/2026-04-14-optimize-supervisor-alias.md
 git commit -m "feat: add optimize supervisor alias"
 ```
 
@@ -50,7 +50,7 @@ git commit -m "feat: add optimize supervisor alias"
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -79,6 +79,6 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_cli.py src/triton_agent/cli.py
+git add tests/test_cli.py src/helix/cli.py
 git commit -m "test: cover optimize supervisor alias"
 ```

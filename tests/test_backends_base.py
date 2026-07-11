@@ -10,11 +10,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.base import AgentRunner
-from triton_agent.backends.hook_common import HookStageOptions
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.trace.core import TRACE_PATH_ENV, TRACE_RUN_ID_ENV
-from triton_agent.prompts import build_prompt
+from helix.backends.base import AgentRunner
+from helix.backends.hook_common import HookStageOptions
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.trace.core import TRACE_PATH_ENV, TRACE_RUN_ID_ENV
+from helix.prompts import build_prompt
 
 
 class SharedRunnerBaseTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 workdir=workspace,
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -70,7 +70,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 extra_env={"ASCEND_RT_VISIBLE_DEVICES": "2"},
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
 
         self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
@@ -100,7 +100,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 progress_probe=probe,
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked_run:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked_run:
                 runner.run(request)
 
             self.assertIs(mocked_run.call_args.kwargs["progress_probe"], probe)
@@ -126,7 +126,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 workdir=workspace,
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked_run:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked_run:
                 runner.run(request)
 
             self.assertIsNone(mocked_run.call_args.kwargs["progress_probe"])
@@ -150,10 +150,10 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
-            with patch("triton_agent.backends.base.run_process") as mocked:
+            with patch("helix.backends.base.run_process") as mocked:
                 result = runner.run(request)
 
         self.assertEqual(result.return_code, 1)
@@ -188,7 +188,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 events.append("run")
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_run):
+            with patch("helix.backends.base.run_process", side_effect=_inspect_run):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -220,7 +220,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
 
             with (
                 patch.object(runner, "_prepare_run_context") as mocked_prepare,
-                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+                patch("helix.backends.base.run_process", return_value=_ok_result()),
             ):
                 result = runner.run(request)
 
@@ -255,7 +255,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 events.append("run")
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_run):
+            with patch("helix.backends.base.run_process", side_effect=_inspect_run):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -281,7 +281,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
                 extra_env={
-                    TRACE_PATH_ENV: str(workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"),
+                    TRACE_PATH_ENV: str(workspace / "helix-logs" / "otel" / "run-001" / "trace.jsonl"),
                     TRACE_RUN_ID_ENV: "run-001",
                 },
                 run_id="run-override",
@@ -294,7 +294,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertIsInstance(options, HookStageOptions)
             self.assertTrue(options.trace_enabled)
             self.assertTrue(options.guard_enabled)
-            self.assertEqual(options.trace_path, workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl")
+            self.assertEqual(options.trace_path, workspace / "helix-logs" / "otel" / "run-001" / "trace.jsonl")
             self.assertEqual(options.run_id, "run-override")
             self.assertFalse(hasattr(options, "role"))
 
@@ -349,7 +349,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
             )
 
             with (
-                patch("triton_agent.backends.base.run_process", side_effect=RuntimeError("boom")),
+                patch("helix.backends.base.run_process", side_effect=RuntimeError("boom")),
             ):
                 with self.assertRaisesRegex(RuntimeError, "boom"):
                     runner.run(request)
@@ -380,7 +380,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
             with (
                 patch.dict(environ, {}, clear=False),
                 patch(
-                    "triton_agent.backends.base.run_process",
+                    "helix.backends.base.run_process",
                     side_effect=[
                         AgentResult(
                             return_code=1,
@@ -434,11 +434,11 @@ class SharedRunnerBaseTests(unittest.TestCase):
                     session_id="session-1",
                 )
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_run_process):
+            with patch("helix.backends.base.run_process", side_effect=_run_process):
                 result = runner.run(request, stdout=StringIO())
 
             self.assertEqual(result.return_code, 0)
-            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_path = workspace / "helix-logs" / "gen-test.show-output.log"
             self.assertTrue(log_path.exists())
             content = log_path.read_text(encoding="utf-8")
             self.assertEqual(content, "first streamed output\n")
@@ -465,7 +465,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 workdir=workspace,
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request, stdout=StringIO())
 
             self.assertFalse(mocked.call_args.kwargs["collect_stdout"])
@@ -493,9 +493,9 @@ class SharedRunnerBaseTests(unittest.TestCase):
             )
 
             with (
-                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "1"}, clear=False),
+                patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "1"}, clear=False),
                 patch(
-                    "triton_agent.backends.base.run_process",
+                    "helix.backends.base.run_process",
                     side_effect=[
                         AgentResult(
                             return_code=1,
@@ -545,8 +545,8 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
             )
             with (
-                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "0"}, clear=False),
-                patch("triton_agent.backends.base.run_process", return_value=transient) as mocked_run,
+                patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "0"}, clear=False),
+                patch("helix.backends.base.run_process", return_value=transient) as mocked_run,
                 patch("time.sleep") as mocked_sleep,
             ):
                 result = runner.run(request)
@@ -583,8 +583,8 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
             )
             with (
-                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "5"}, clear=False),
-                patch("triton_agent.backends.base.run_process", return_value=transient) as mocked_run,
+                patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "5"}, clear=False),
+                patch("helix.backends.base.run_process", return_value=transient) as mocked_run,
                 patch("time.sleep") as mocked_sleep,
             ):
                 result = runner.run(request)
@@ -620,8 +620,8 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
             )
             with (
-                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "5"}, clear=False),
-                patch("triton_agent.backends.base.run_process", return_value=transient) as mocked_run,
+                patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "5"}, clear=False),
+                patch("helix.backends.base.run_process", return_value=transient) as mocked_run,
                 patch("time.sleep") as mocked_sleep,
             ):
                 result = runner.run(request)
@@ -652,10 +652,10 @@ class SharedRunnerBaseTests(unittest.TestCase):
             )
 
             with (
-                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "abc"}, clear=False),
-                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+                patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "abc"}, clear=False),
+                patch("helix.backends.base.run_process", return_value=_ok_result()),
             ):
-                with self.assertRaisesRegex(ValueError, "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"):
+                with self.assertRaisesRegex(ValueError, "HELIX_CODE_AGENT_MAX_RETRIES"):
                     runner.run(request)
 
     def test_base_runner_resume_uses_shared_optimize_resume_prompt(self) -> None:
@@ -689,7 +689,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 round_mode="checked",
             )
 
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_prompt = mocked.call_args.args[0][-1]

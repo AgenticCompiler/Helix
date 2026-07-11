@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     args = parser.parse_args(argv)
     baseline_dir = Path(args.baseline_dir).expanduser().resolve()
     result = check_baseline(baseline_dir)
-    state_path = baseline_dir.parent / ".triton-agent" / "state.json"
+    state_path = baseline_dir.parent / ".helix" / "state.json"
     if result.status == "pass":
         try:
             if not state_path.exists():

@@ -35,10 +35,10 @@
 ### Task 3: Refactor runtime batch checking
 
 **Files:**
-- Modify: `src/triton_agent/optimize/checks.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/checks.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/prompts.py`
 
 - [ ] **Step 1: Normalize runtime check results to `status`**
 - [ ] **Step 2: Replace `_determine_batch_followup` with `check_batch_round`**

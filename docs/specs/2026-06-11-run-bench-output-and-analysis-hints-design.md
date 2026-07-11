@@ -8,7 +8,7 @@
 
 ## Problem
 
-- The main CLI `triton-agent run-bench` already accepts `-o/--output`, but the skill-local `skills/triton-npu-run-eval/scripts/run-command.py run-bench` parser does not expose the same option.
+- The main CLI `helix run-bench` already accepts `-o/--output`, but the skill-local `skills/triton-npu-run-eval/scripts/run-command.py run-bench` parser does not expose the same option.
 - `capture-ir` currently stops after printing `Capture manifest: ...`, which leaves users without a clear next step for navigating the archived IR.
 - `profile-bench` currently prints the profile directory and an inline summary, but it does not tell users how to re-render that summary later or where to look when the summary is insufficient.
 
@@ -29,7 +29,7 @@
 
 ### `run-bench --output`
 
-- Keep `triton-agent run-bench -o/--output <path>` as the user-facing CLI contract.
+- Keep `helix run-bench -o/--output <path>` as the user-facing CLI contract.
 - Add `--output <path>` to `skills/triton-npu-run-eval/scripts/run-command.py run-bench`.
 - Thread the parsed output path through both local and remote bench execution paths exactly as the main CLI already does today.
 - Continue printing the final resolved artifact path as:

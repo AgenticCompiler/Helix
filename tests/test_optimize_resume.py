@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.resume import classify_optimize_workspace
+from helix.optimize.resume import classify_optimize_workspace
 
 
 class OptimizeResumeTests(unittest.TestCase):

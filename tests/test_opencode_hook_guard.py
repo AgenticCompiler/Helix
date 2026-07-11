@@ -171,7 +171,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 _policy(workspace),
                 "bash",
                 "cat > learned_lessons.md << 'ENDOFFILE'\n"
-                "reference .triton-agent/state.json in prose\n"
+                "reference .helix/state.json in prose\n"
                 "ENDOFFILE",
                 workspace,
             )
@@ -234,10 +234,10 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
-    def test_blocks_triton_agent_logs_bash_read(self) -> None:
+    def test_blocks_helix_logs_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
 
@@ -246,27 +246,27 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
     @_skip_if_no_node
-    def test_blocks_triton_agent_logs_bare_relative_bash_read(self) -> None:
+    def test_blocks_helix_logs_bare_relative_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
 
             result = _evaluate_plugin(
                 _policy(workspace),
                 "bash",
-                "cat triton-agent-logs/gen-test.show-output.log",
+                "cat helix-logs/gen-test.show-output.log",
                 workspace,
             )
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
     @_skip_if_no_node
-    def test_blocks_triton_agent_logs_read_tool(self) -> None:
+    def test_blocks_helix_logs_read_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
 
@@ -275,28 +275,28 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
     @_skip_if_no_node
-    def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+    def test_allows_python_one_liner_opening_relative_helix_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
 
             result = _evaluate_plugin(
                 _policy(workspace),
                 "bash",
-                'python3 -c "print(open(\'triton-agent-logs/gen-test.show-output.log\').read())"',
+                'python3 -c "print(open(\'helix-logs/gen-test.show-output.log\').read())"',
                 workspace,
             )
 
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
-    def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
+    def test_allows_read_outside_helix_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            readme = workspace / "triton-agent-readme.md"
+            readme = workspace / "helix-readme.md"
             readme.write_text("not a log\n", encoding="utf-8")
 
             result = _evaluate_plugin(_policy(workspace), "bash", f"cat {readme}", workspace)
@@ -359,7 +359,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            runtime_state = workspace / ".triton-agent" / "state.json"
+            runtime_state = workspace / ".helix" / "state.json"
             runtime_state.parent.mkdir(parents=True)
             _write_workflow_state(
                 workspace,
@@ -376,7 +376,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertFalse(result["allowed"])
             self.assertIn("protected", str(result["message"]))
-            self.assertIn(".triton-agent/", str(result["message"]))
+            self.assertIn(".helix/", str(result["message"]))
 
     @_skip_if_no_node
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
@@ -527,7 +527,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_runtime_state_read_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir(parents=True)
             state_path.write_text("{}", encoding="utf-8")
 
@@ -539,10 +539,10 @@ class OpenCodeHookGuardTests(unittest.TestCase):
     def test_blocks_hidden_runtime_directory_listing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            runtime_dir = workspace / ".triton-agent"
+            runtime_dir = workspace / ".helix"
             runtime_dir.mkdir(parents=True)
 
-            result = _evaluate_plugin(_policy(workspace), "bash", "ls .triton-agent", workspace)
+            result = _evaluate_plugin(_policy(workspace), "bash", "ls .helix", workspace)
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
@@ -598,9 +598,9 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
 
 _DENY_MESSAGE = (
-    "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+    "This read is blocked by helix workspace policy. Stay within the current workspace "
     "and do not inspect protected runner-managed files (temporary optimize runtime files, "
-    "staged skill implementation files under .opencode/skills/*/scripts/, or triton-agent-logs/ output). "
+    "staged skill implementation files under .opencode/skills/*/scripts/, or helix-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -614,12 +614,12 @@ def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> 
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
-            str(root / ".triton-agent"),
-            str(root / ".triton-agent" / "**"),
-            str(root / ".opencode" / "plugins" / "triton-agent-hook-guard.js"),
-            str(root / ".opencode" / "triton-agent-hooks"),
-            str(root / ".opencode" / "triton-agent-hooks" / "**"),
-            str(root / "triton-agent-logs" / "**"),
+            str(root / ".helix"),
+            str(root / ".helix" / "**"),
+            str(root / ".opencode" / "plugins" / "helix-hook-guard.js"),
+            str(root / ".opencode" / "helix-hooks"),
+            str(root / ".opencode" / "helix-hooks" / "**"),
+            str(root / "helix-logs" / "**"),
             str(root / ".opencode" / "skills" / "*" / "scripts" / "**"),
             str(root / ".opencode" / "skills" / "*" / "*" / "scripts" / "**"),
         ],
@@ -691,13 +691,13 @@ def _trace_plugin_args(
 
 
 def _node_harness_source() -> str:
-    plugin_path = Path(__file__).resolve().parents[1] / "hooks" / "opencode" / "triton-agent-hook-guard.js"
+    plugin_path = Path(__file__).resolve().parents[1] / "hooks" / "opencode" / "helix-hook-guard.js"
     return textwrap.dedent(
         f"""
         import fs from "node:fs/promises";
         import os from "node:os";
         import path from "node:path";
-        import {{ TritonAgentHookGuard }} from {json.dumps(plugin_path.as_uri())};
+        import {{ HelixHookGuard }} from {json.dumps(plugin_path.as_uri())};
 
         const rawInput = await new Promise((resolve, reject) => {{
           let data = "";
@@ -709,20 +709,20 @@ def _node_harness_source() -> str:
           process.stdin.on("error", reject);
         }});
         const input = JSON.parse(rawInput);
-        const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "triton-agent-opencode-hook-"));
+        const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "helix-opencode-hook-"));
         const context = {{
           directory: tempRoot,
           project: {{ path: {{ root: "/" }} }},
           experimental_workspace: {{}},
         }};
-        await fs.mkdir(path.join(tempRoot, ".opencode", "triton-agent-hooks"), {{ recursive: true }});
+        await fs.mkdir(path.join(tempRoot, ".opencode", "helix-hooks"), {{ recursive: true }});
         await fs.writeFile(
-          path.join(tempRoot, ".opencode", "triton-agent-hooks", "policy.json"),
+          path.join(tempRoot, ".opencode", "helix-hooks", "policy.json"),
           JSON.stringify(input.policy),
           "utf8",
         );
 
-        const plugin = await TritonAgentHookGuard(context);
+        const plugin = await HelixHookGuard(context);
         const hook = plugin["tool.execute.before"];
         const args = input.args === null
           ? {{}}
@@ -747,13 +747,13 @@ def _node_harness_source() -> str:
 
 
 def _trace_harness_source() -> str:
-    plugin_path = Path(__file__).resolve().parents[1] / "hooks" / "opencode" / "triton-agent-hook-guard.js"
+    plugin_path = Path(__file__).resolve().parents[1] / "hooks" / "opencode" / "helix-hook-guard.js"
     return textwrap.dedent(
         f"""
         import fs from "node:fs/promises";
         import os from "node:os";
         import path from "node:path";
-        import {{ TritonAgentHookGuard }} from {json.dumps(plugin_path.as_uri())};
+        import {{ HelixHookGuard }} from {json.dumps(plugin_path.as_uri())};
 
         const rawInput = await new Promise((resolve, reject) => {{
           let data = "";
@@ -765,7 +765,7 @@ def _trace_harness_source() -> str:
           process.stdin.on("error", reject);
         }});
         const input = JSON.parse(rawInput);
-        const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "triton-agent-opencode-trace-"));
+        const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "helix-opencode-trace-"));
         const tracePath = path.join(tempRoot, "trace.jsonl");
         const policy = {{
           ...input.policy,
@@ -780,14 +780,14 @@ def _trace_harness_source() -> str:
           project: {{ path: {{ root: "/" }} }},
           experimental_workspace: {{}},
         }};
-        await fs.mkdir(path.join(tempRoot, ".opencode", "triton-agent-hooks"), {{ recursive: true }});
+        await fs.mkdir(path.join(tempRoot, ".opencode", "helix-hooks"), {{ recursive: true }});
         await fs.writeFile(
-          path.join(tempRoot, ".opencode", "triton-agent-hooks", "policy.json"),
+          path.join(tempRoot, ".opencode", "helix-hooks", "policy.json"),
           JSON.stringify(policy),
           "utf8",
         );
 
-        const plugin = await TritonAgentHookGuard(context);
+        const plugin = await HelixHookGuard(context);
         const beforeHook = plugin["tool.execute.before"];
         const afterHook = plugin["tool.execute.after"];
         const args = typeof input.args === "string"
@@ -820,7 +820,7 @@ def _write_workflow_state(
     current_round: Optional[int] = None,
     rounds: Optional[dict[str, object]] = None,
 ) -> None:
-    state_path = workspace / ".triton-agent" / "state.json"
+    state_path = workspace / ".helix" / "state.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": 1,

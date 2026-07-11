@@ -2,7 +2,7 @@
 
 ## Summary
 
-Refactor `src/triton_agent/` so modules are grouped by real ownership rather
+Refactor `src/helix/` so modules are grouped by real ownership rather
 than accumulated at the package root. The refactor should reduce root-level
 sprawl, make feature boundaries easier to read, and keep CLI behavior
 unchanged.
@@ -19,7 +19,7 @@ unchanged.
 ## Goals
 
 - Shrink the number of unrelated modules living directly under
-  `src/triton_agent/`.
+  `src/helix/`.
 - Continue the repository's existing direction of grouping code by feature or
   subsystem, such as `optimize/`, `convert/`, `generation/`, and `backends/`.
 - Prefer small, direct package names such as `skills/`, `eval/`, and
@@ -154,7 +154,7 @@ the code should live with optimize ownership instead of remaining at the root.
 ## Target Layout
 
 ```text
-src/triton_agent/
+src/helix/
   cli.py
   models.py
   paths.py

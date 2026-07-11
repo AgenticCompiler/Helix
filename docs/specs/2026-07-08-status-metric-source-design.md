@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add an optional `-m` / `--metric-source` flag to `triton-agent status` so users can force one comparison basis for status calculations:
+Add an optional `-m` / `--metric-source` flag to `helix status` so users can force one comparison basis for status calculations:
 
 - `auto`
 - `kernel`
@@ -12,9 +12,9 @@ When the flag is omitted, `status` must preserve current behavior and keep using
 
 ## User-Visible Behavior
 
-- `triton-agent status --metric-source kernel` recomputes best-view and trend-view speedups from kernel latency only.
-- `triton-agent status --metric-source total-op` recomputes best-view and trend-view speedups from total-op timing only.
-- `triton-agent status --metric-source auto` recomputes speedups using the existing kernel-first fallback behavior from shared perf parsing.
+- `helix status --metric-source kernel` recomputes best-view and trend-view speedups from kernel latency only.
+- `helix status --metric-source total-op` recomputes best-view and trend-view speedups from total-op timing only.
+- `helix status --metric-source auto` recomputes speedups using the existing kernel-first fallback behavior from shared perf parsing.
 - Omitting `--metric-source` preserves the current round-recorded basis, so existing `status` output does not change.
 
 `status` should not accept `--metric-source all`.

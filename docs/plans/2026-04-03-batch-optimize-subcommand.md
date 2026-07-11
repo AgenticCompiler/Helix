@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the new behavior in the CLI orchestration layer. The parser exposes a batch-only command shape, a small helper resolves candidate operator files per workspace, and a bounded thread pool reuses the existing single-workspace optimize execution helper so backend behavior, skill staging, optimize guidance, and supervision remain aligned with ordinary `optimize`.
 
-**Tech Stack:** Python 3.11, `argparse`, `concurrent.futures`, `unittest`, existing Triton agent CLI modules
+**Tech Stack:** Python 3.11, `argparse`, `concurrent.futures`, `unittest`, existing Helix CLI modules
 
 ---
 
@@ -23,9 +23,9 @@
 ### Task 2: Implement batch optimize orchestration
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/prompts.py`
 
 - [ ] **Step 1: Add the new command kind and parser wiring**
 - [ ] **Step 2: Extract a reusable single-workspace optimize execution helper from the existing CLI flow**
@@ -48,7 +48,7 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 

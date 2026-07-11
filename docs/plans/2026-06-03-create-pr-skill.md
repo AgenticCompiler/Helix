@@ -21,7 +21,7 @@
 Run:
 
 ```bash
-python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/init_skill.py create-pr --path /Users/cdj/Projects/triton-agent/.codex/skills --resources references --interface display_name="Create PR" --interface short_description="Run repo checks and open a GitCode PR" --interface default_prompt="Use $create-pr to validate this repository, push a fresh branch, and open a pull request."
+python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/init_skill.py create-pr --path /Users/cdj/Projects/helix/.codex/skills --resources references --interface display_name="Create PR" --interface short_description="Run repo checks and open a GitCode PR" --interface default_prompt="Use $create-pr to validate this repository, push a fresh branch, and open a pull request."
 ```
 
 Expected: `.codex/skills/create-pr/` exists with `SKILL.md`, `agents/openai.yaml`, and `references/`.
@@ -95,7 +95,7 @@ Expected: the metadata names the repo-local skill clearly and the default prompt
 Run:
 
 ```bash
-python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/triton-agent/.codex/skills/create-pr
+python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/helix/.codex/skills/create-pr
 ```
 
 Expected: `Skill is valid!`

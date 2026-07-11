@@ -14,9 +14,9 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/__init__.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/__init__.py`
 
 - [ ] **Step 1: Write the failing parser and help tests**
 
@@ -59,7 +59,7 @@ class CommandKind(str, Enum):
 Update the CLI command spec and help groups:
 
 ```python
-from triton_agent.commands.status import handle_status
+from helix.commands.status import handle_status
 
 CommandKind.STATUS: _CommandSpec(
     handler=handle_status,
@@ -75,10 +75,10 @@ Remove the old alias and keep examples current:
 
 ```python
 _TOP_LEVEL_EXAMPLES = (
-    "triton-agent gen-test -i kernel.py",
-    "triton-agent verify -i .",
-    "triton-agent status -i .",
-    "triton-agent optimize -i kernel.py --agent codex",
+    "helix gen-test -i kernel.py",
+    "helix verify -i .",
+    "helix status -i .",
+    "helix optimize -i kernel.py --agent codex",
 )
 
 aliases = {
@@ -96,11 +96,11 @@ Expected: PASS
 ### Task 2: Extract status runtime into a dedicated package
 
 **Files:**
-- Create: `src/triton_agent/status/__init__.py`
-- Create: `src/triton_agent/status/core.py`
-- Create: `src/triton_agent/status/render.py`
-- Modify: `src/triton_agent/optimize/render.py`
-- Delete: `src/triton_agent/optimize/status.py`
+- Create: `src/helix/status/__init__.py`
+- Create: `src/helix/status/core.py`
+- Create: `src/helix/status/render.py`
+- Modify: `src/helix/optimize/render.py`
+- Delete: `src/helix/optimize/status.py`
 - Rename: `tests/test_optimize_status.py` to `tests/test_status.py`
 - Rename: `tests/test_optimize_render.py` to `tests/test_status_render.py`
 
@@ -109,7 +109,7 @@ Expected: PASS
 Update the status-focused tests to import from the new package paths:
 
 ```python
-from triton_agent.status.core import (
+from helix.status.core import (
     inspect_optimize_status_workspace,
     parse_logged_best_round,
     workspace_has_optimize_artifacts,
@@ -117,8 +117,8 @@ from triton_agent.status.core import (
 ```
 
 ```python
-from triton_agent.optimize.models import OptimizeStatusWorkspace
-from triton_agent.status.render import render_optimize_status_results
+from helix.optimize.models import OptimizeStatusWorkspace
+from helix.status.render import render_optimize_status_results
 ```
 
 Keep the behavior assertions unchanged so the move stays behavior-preserving.
@@ -126,20 +126,20 @@ Keep the behavior assertions unchanged so the move stays behavior-preserving.
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m unittest tests.test_status tests.test_status_render -v`
-Expected: FAIL because `triton_agent.status` does not exist yet and the render helpers still live under `optimize/render.py`.
+Expected: FAIL because `helix.status` does not exist yet and the render helpers still live under `optimize/render.py`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Create the new status package and move the status-only code:
 
 ```python
-# src/triton_agent/status/__init__.py
-from triton_agent.status.core import (
+# src/helix/status/__init__.py
+from helix.status.core import (
     inspect_optimize_status_workspace,
     scan_optimize_status_workspaces,
     workspace_has_optimize_artifacts,
 )
-from triton_agent.status.render import render_optimize_status_results
+from helix.status.render import render_optimize_status_results
 
 __all__ = [
     "inspect_optimize_status_workspace",
@@ -150,8 +150,8 @@ __all__ = [
 ```
 
 ```python
-# src/triton_agent/optimize/render.py
-from triton_agent.optimize.models import BatchOptimizeResult
+# src/helix/optimize/render.py
+from helix.optimize.models import BatchOptimizeResult
 
 def render_batch_optimize_results(
     results: list[BatchOptimizeResult],
@@ -170,10 +170,10 @@ Expected: PASS
 ### Task 3: Give status its own command handler and update dependent imports
 
 **Files:**
-- Create: `src/triton_agent/commands/status.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/commands/__init__.py`
-- Modify: `src/triton_agent/verification/core.py`
+- Create: `src/helix/commands/status.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/commands/__init__.py`
+- Modify: `src/helix/verification/core.py`
 - Modify: `tests/test_verify.py`
 - Modify: `tests/test_verify_batch.py`
 - Modify: `tests/test_cli.py`
@@ -183,7 +183,7 @@ Expected: PASS
 Update tests so verification and CLI paths use the new status modules:
 
 ```python
-from triton_agent.status.core import inspect_optimize_status_workspace
+from helix.status.core import inspect_optimize_status_workspace
 
 args = parser.parse_args(["status", "-i", "workspace"])
 self.assertEqual(args.command_kind, CommandKind.STATUS)
@@ -194,19 +194,19 @@ Add or adjust a CLI-level assertion so the status command resolves through `comm
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m unittest tests.test_cli tests.test_verify tests.test_verify_batch -v`
-Expected: FAIL because the status handler still lives in `commands/optimize.py` and verification still imports `triton_agent.optimize.status`.
+Expected: FAIL because the status handler still lives in `commands/optimize.py` and verification still imports `helix.optimize.status`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Create a dedicated status handler:
 
 ```python
-from triton_agent.status.core import (
+from helix.status.core import (
     inspect_optimize_status_workspace,
     scan_optimize_status_workspaces,
     workspace_has_optimize_artifacts,
 )
-from triton_agent.status.render import render_optimize_status_results
+from helix.status.render import render_optimize_status_results
 
 def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     root = Path(args.input).expanduser().resolve()
@@ -216,7 +216,7 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
 Update verification to use the new import path:
 
 ```python
-from triton_agent.status.core import inspect_optimize_status_workspace
+from helix.status.core import inspect_optimize_status_workspace
 ```
 
 Remove the status handler from `commands/optimize.py` once the CLI imports `handle_status` from `commands/status.py`.
@@ -241,9 +241,9 @@ Replace user-facing command examples with `status`:
 ```md
 - `status`: summarize optimization progress across many workspaces.
 
-uv run triton-agent status --input operators_root
-uv run triton-agent status --input .
-uv run triton-agent status --input operators_root --format markdown
+uv run helix status --input operators_root
+uv run helix status --input .
+uv run helix status --input operators_root --format markdown
 ```
 
 Keep explanatory text explicit that `status` still reports optimization progress.

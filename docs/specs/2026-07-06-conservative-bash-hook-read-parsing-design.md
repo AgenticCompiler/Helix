@@ -30,8 +30,8 @@ These false positives block normal agent workflows.
 - Keep path detection conservative:
   - allow absolute paths
   - allow `./...` and `../...`
-  - allow known protected relative prefixes such as `.triton-agent/`,
-    `.codex/`, `.claude/`, `.opencode/`, and `triton-agent-logs/`
+  - allow known protected relative prefixes such as `.helix/`,
+    `.codex/`, `.claude/`, `.opencode/`, and `helix-logs/`
   - do not scan the full command string for embedded path fragments
   - do not parse `python -c`, heredoc bodies, or other embedded language text
 
@@ -41,7 +41,7 @@ These false positives block normal agent workflows.
   simple command is `python3`, not a read command.
 - `rm -rf ...; python3 -c "..."; grep -c ... /tmp/x; tail -5 /tmp/x` is
   allowed because the first simple command is `rm`, not a read command.
-- Direct reads such as `cat triton-agent-logs/file.log` and
+- Direct reads such as `cat helix-logs/file.log` and
   `sed -n '1,20p' .codex/skills/.../scripts/cli.py` remain blocked.
 
 ## Scope Boundaries

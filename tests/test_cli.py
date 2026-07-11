@@ -15,35 +15,35 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.cli as cli_module
-import triton_agent.commands.optimize as optimize_commands
-from triton_agent.cli import (
+import helix.cli as cli_module
+import helix.commands.optimize as optimize_commands
+from helix.cli import (
     _normalize_command_aliases,
     build_parser,
     main,
 )
-from triton_agent.commands.optimize import optimize_run_options_from_args
-from triton_agent.generation.outputs import prepare_generation_target
-from triton_agent.models import AgentResult
-from triton_agent.models import CommandKind
-from triton_agent.terminal.render import render_result
-from triton_agent.paths import (
+from helix.commands.optimize import optimize_run_options_from_args
+from helix.generation.outputs import prepare_generation_target
+from helix.models import AgentResult
+from helix.models import CommandKind
+from helix.terminal.render import render_result
+from helix.paths import (
     default_generated_output_path,
     resolve_execution_target,
 )
-from triton_agent.prompts import (
+from helix.prompts import (
     append_additional_user_instructions,
     build_optimize_round_prompt,
     build_prompt,
 )
-from triton_agent.optimize.prompts import (
+from helix.optimize.prompts import (
     build_optimize_baseline_prompt,
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
 )
-from triton_agent.optimize.env import optimize_min_speedup_env_name
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
-from triton_agent.eval.runners import _normalize_agent_result as normalize_agent_result
+from helix.optimize.env import optimize_min_speedup_env_name
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.eval.runners import _normalize_agent_result as normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
@@ -193,7 +193,7 @@ class CliParserTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.log_check.run_log_check_batch",
+                "helix.commands.log_check.run_log_check_batch",
                 side_effect=_fake_run_log_check_batch,
             ):
                 exit_code = main(
@@ -238,15 +238,15 @@ class CliParserTests(unittest.TestCase):
         )
         self.assertEqual(args.prompt, "Avoid broad operator rewrites.")
 
-        from triton_agent.commands.generation import generation_options_from_args
-        from triton_agent.generation.models import GenerationOptions
+        from helix.commands.generation import generation_options_from_args
+        from helix.generation.models import GenerationOptions
 
         options = generation_options_from_args(args)
         self.assertIsInstance(options, GenerationOptions)
         self.assertEqual(options.prompt, "Avoid broad operator rewrites.")
 
     def test_agent_generation_commands_accept_log_tools_option(self) -> None:
-        from triton_agent.commands.generation import generation_options_from_args
+        from helix.commands.generation import generation_options_from_args
 
         parser = build_parser()
         for command in ("gen-eval", "gen-eval-batch", "gen-test", "gen-bench"):
@@ -330,16 +330,16 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.workers_per_npu, "2")
 
     def test_handle_run_eval_mcp_server_passes_explicit_batch_affinity_values(self) -> None:
-        from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
+        from helix.commands.mcp_server import handle_run_eval_mcp_server
 
         args = argparse.Namespace(port=1234, npu_devices="0,1", workers_per_npu="2")
-        with patch("triton_agent.commands.mcp_server.serve_http_server_forever", return_value=0) as mocked:
+        with patch("helix.commands.mcp_server.serve_http_server_forever", return_value=0) as mocked:
             exit_code = handle_run_eval_mcp_server(argparse.ArgumentParser(), args)
         self.assertEqual(exit_code, 0)
         mocked.assert_called_once_with(port=1234, npu_devices="0,1", workers_per_npu="2")
 
     def test_generation_run_eval_commands_accept_enable_mcp_option(self) -> None:
-        from triton_agent.commands.generation import generation_options_from_args
+        from helix.commands.generation import generation_options_from_args
 
         parser = build_parser()
         for command, input_value in (
@@ -384,8 +384,8 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["convert", "-i", "kernel.py", "--prompt", "Keep the API shape."])
         self.assertEqual(args.prompt, "Keep the API shape.")
-        from triton_agent.commands.convert import convert_options_from_args
-        from triton_agent.convert.models import ConvertOptions
+        from helix.commands.convert import convert_options_from_args
+        from helix.convert.models import ConvertOptions
 
         options = convert_options_from_args(args)
         self.assertIsInstance(options, ConvertOptions)
@@ -397,15 +397,15 @@ class CliParserTests(unittest.TestCase):
             ["convert-batch", "-i", "kernels", "--prompt", "Avoid numerics changes."]
         )
         self.assertEqual(args.prompt, "Avoid numerics changes.")
-        from triton_agent.commands.convert import convert_options_from_args
-        from triton_agent.convert.models import ConvertOptions
+        from helix.commands.convert import convert_options_from_args
+        from helix.convert.models import ConvertOptions
 
         options = convert_options_from_args(args)
         self.assertIsInstance(options, ConvertOptions)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
 
     def test_convert_commands_accept_log_tools_option(self) -> None:
-        from triton_agent.commands.convert import convert_options_from_args
+        from helix.commands.convert import convert_options_from_args
 
         parser = build_parser()
         for command in ("convert", "convert-batch"):
@@ -416,7 +416,7 @@ class CliParserTests(unittest.TestCase):
                 self.assertTrue(options.log_tools)
 
     def test_convert_commands_accept_enable_mcp_option(self) -> None:
-        from triton_agent.commands.convert import convert_options_from_args
+        from helix.commands.convert import convert_options_from_args
 
         parser = build_parser()
         for command, input_value in (("convert", "kernel.py"), ("convert-batch", "kernels")):
@@ -461,8 +461,8 @@ class CliParserTests(unittest.TestCase):
         )
         self.assertEqual(args.prompt, "Avoid changing numerics.")
 
-        from triton_agent.commands.generation import generation_options_from_args
-        from triton_agent.generation.models import GenerationOptions
+        from helix.commands.generation import generation_options_from_args
+        from helix.generation.models import GenerationOptions
 
         options = generation_options_from_args(args)
         self.assertIsInstance(options, GenerationOptions)
@@ -473,8 +473,8 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-test", "-i", "kernel.py", "--prompt", "Preserve helper names."])
         self.assertEqual(args.prompt, "Preserve helper names.")
 
-        from triton_agent.commands.generation import generation_options_from_args
-        from triton_agent.generation.models import GenerationOptions
+        from helix.commands.generation import generation_options_from_args
+        from helix.generation.models import GenerationOptions
 
         options = generation_options_from_args(args)
         self.assertIsInstance(options, GenerationOptions)
@@ -487,16 +487,16 @@ class CliParserTests(unittest.TestCase):
         )
         self.assertEqual(args.prompt, "Keep benchmark shapes small.")
 
-        from triton_agent.commands.generation import generation_options_from_args
-        from triton_agent.generation.models import GenerationOptions
+        from helix.commands.generation import generation_options_from_args
+        from helix.generation.models import GenerationOptions
 
         options = generation_options_from_args(args)
         self.assertIsInstance(options, GenerationOptions)
         self.assertEqual(options.prompt, "Keep benchmark shapes small.")
 
     def test_build_generation_request_carries_batch_affinity_values(self) -> None:
-        from triton_agent.generation.models import GenerationOptions
-        from triton_agent.generation.orchestration import build_generation_request
+        from helix.generation.models import GenerationOptions
+        from helix.generation.orchestration import build_generation_request
 
         options = GenerationOptions(
             interact=False,
@@ -586,7 +586,7 @@ class CliParserTests(unittest.TestCase):
 class CliMCPServerCommandTests(unittest.TestCase):
     def test_main_routes_run_eval_mcp_server_command(self) -> None:
         with patch(
-            "triton_agent.commands.mcp_server.serve_http_server_forever",
+            "helix.commands.mcp_server.serve_http_server_forever",
             return_value=7,
         ) as mocked:
             exit_code = main(["run-eval-mcp-server", "--port", "8765"])
@@ -596,7 +596,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
 
     def test_main_prints_build_commit_for_long_version_flag(self) -> None:
         stdout = StringIO()
-        with patch("triton_agent.cli.get_build_info_display", return_value="deadbeefcafe"):
+        with patch("helix.cli.get_build_info_display", return_value="deadbeefcafe"):
             with redirect_stdout(stdout):
                 with self.assertRaises(SystemExit) as exc:
                     main(["--version"])
@@ -605,7 +605,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
 
     def test_main_prints_build_commit_for_short_version_flag(self) -> None:
         stdout = StringIO()
-        with patch("triton_agent.cli.get_build_info_display", return_value="deadbeefcafe"):
+        with patch("helix.cli.get_build_info_display", return_value="deadbeefcafe"):
             with redirect_stdout(stdout):
                 with self.assertRaises(SystemExit) as exc:
                     main(["-v"])
@@ -629,33 +629,33 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertIn("convert", help_text)
         self.assertIn("convert-batch", help_text)
         self.assertIn("Examples:", help_text)
-        self.assertIn("triton-agent gen-test -i kernel.py", help_text)
-        self.assertIn("triton-agent optimize -i kernel.py --agent codex", help_text)
-        self.assertIn("triton-agent verify -i .", help_text)
-        self.assertIn("triton-agent status -i .", help_text)
+        self.assertIn("helix gen-test -i kernel.py", help_text)
+        self.assertIn("helix optimize -i kernel.py --agent codex", help_text)
+        self.assertIn("helix verify -i .", help_text)
+        self.assertIn("helix status -i .", help_text)
 
     def test_top_level_help_lists_supported_environment_variables(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
         self.assertIn("Environment variables:", help_text)
-        self.assertIn("TRITON_AGENT_BATCH_NPU_DEVICES", help_text)
-        self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
-        self.assertIn("TRITON_AGENT_BENCH_OUTPUT_DIR", help_text)
+        self.assertIn("HELIX_BATCH_NPU_DEVICES", help_text)
+        self.assertIn("HELIX_CODE_AGENT_MAX_RETRIES", help_text)
+        self.assertIn("HELIX_BENCH_OUTPUT_DIR", help_text)
         self.assertIn(remote_target_env_name(), help_text)
         self.assertIn(remote_workdir_env_name(), help_text)
-        self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
+        self.assertIn("HELIX_OPTIMIZE_DELETE_PT_FILES", help_text)
         self.assertIn(optimize_min_speedup_env_name(), help_text)
-        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
-        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
-        self.assertIn("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR", help_text)
-        self.assertIn("TRITON_AGENT_STALL_TIMEOUT_SECONDS", help_text)
-        self.assertIn("TRITON_AGENT_SSH_TIMEOUT_SECONDS", help_text)
-        self.assertIn("TRITON_AGENT_SCP_TIMEOUT_SECONDS", help_text)
-        self.assertIn("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", help_text)
-        self.assertNotIn("TRITON_AGENT_TEST_TIMEOUT_SECONDS", help_text)
-        self.assertNotIn("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", help_text)
-        self.assertIn("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", help_text)
-        self.assertIn("TRITON_AGENT_DEBUG", help_text)
+        self.assertIn("HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
+        self.assertIn("HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
+        self.assertIn("HELIX_COMPILER_SOURCE_CACHE_DIR", help_text)
+        self.assertIn("HELIX_STALL_TIMEOUT_SECONDS", help_text)
+        self.assertIn("HELIX_SSH_TIMEOUT_SECONDS", help_text)
+        self.assertIn("HELIX_SCP_TIMEOUT_SECONDS", help_text)
+        self.assertIn("HELIX_EVAL_TIMEOUT_SECONDS", help_text)
+        self.assertNotIn("HELIX_TEST_TIMEOUT_SECONDS", help_text)
+        self.assertNotIn("HELIX_BENCH_TIMEOUT_SECONDS", help_text)
+        self.assertIn("HELIX_PROFILE_TIMEOUT_SECONDS", help_text)
+        self.assertIn("HELIX_DEBUG", help_text)
         self.assertIn("LLM_API_KEY", help_text)
         self.assertIn("LLM_MODEL", help_text)
         self.assertIn("LLM_BASE_URL", help_text)
@@ -700,13 +700,13 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "--remote",
                 "alice@example.com",
                 "--remote-workdir",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 "--keep-remote-workdir",
             ]
         )
         self.assertEqual(args.phase, "bench")
         self.assertEqual(args.remote, "alice@example.com")
-        self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
+        self.assertEqual(args.remote_workdir, "/tmp/helix")
         self.assertTrue(args.keep_remote_workdir)
 
     def test_verify_batch_maps_to_command_kind(self) -> None:
@@ -737,13 +737,13 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "--remote",
                 "alice@example.com",
                 "--remote-workdir",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 "--keep-remote-workdir",
             ]
         )
         self.assertEqual(args.command_kind, CommandKind.VERIFY_BATCH)
         self.assertEqual(args.remote, "alice@example.com")
-        self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
+        self.assertEqual(args.remote_workdir, "/tmp/helix")
         self.assertTrue(args.keep_remote_workdir)
 
     def test_verify_with_explicit_concurrency_accepts_batch_options(self) -> None:
@@ -775,7 +775,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.verify.run_verify_batch",
+                "helix.commands.verify.run_verify_batch",
                 side_effect=_fake_run_verify_batch,
             ):
                 with redirect_stderr(stderr):
@@ -2273,11 +2273,11 @@ class PathResolutionTests(unittest.TestCase):
         super().setUp()
         self._upload_patches = [
             patch(
-                "triton_agent.commands.optimize.upload_optimize_workspace",
+                "helix.commands.optimize.upload_optimize_workspace",
                 return_value=None,
             ),
             patch(
-                "triton_agent.optimize.batch.upload_optimize_workspace",
+                "helix.optimize.batch.upload_optimize_workspace",
                 return_value=None,
             ),
         ]
@@ -2322,7 +2322,7 @@ class PathResolutionTests(unittest.TestCase):
         stderr = StringIO()
         with redirect_stderr(stderr):
             with self.assertRaises(SystemExit) as exc:
-                main(["status", "-i", "/tmp/definitely-missing-triton-agent-root"])
+                main(["status", "-i", "/tmp/definitely-missing-helix-root"])
 
         self.assertEqual(exc.exception.code, 2)
         self.assertIn("Input path does not exist", stderr.getvalue())
@@ -3155,7 +3155,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
@@ -3178,7 +3178,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
@@ -3197,7 +3197,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
@@ -3221,7 +3221,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root)])
 
@@ -3231,15 +3231,15 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("found multiple candidate operator files", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
 
-    def test_main_optimize_batch_ignores_hidden_triton_agent_dir(self) -> None:
+    def test_main_optimize_batch_ignores_hidden_helix_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             good = root / "good"
-            hidden_triton_agent_dir = root / ".triton-agent"
+            hidden_helix_dir = root / ".helix"
             good.mkdir()
-            hidden_triton_agent_dir.mkdir()
+            hidden_helix_dir.mkdir()
             (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
-            (hidden_triton_agent_dir / "round-brief.md").write_text("Pending\n", encoding="utf-8")
+            (hidden_helix_dir / "round-brief.md").write_text("Pending\n", encoding="utf-8")
 
             stdout = StringIO()
             seen_inputs: list[Path] = []
@@ -3248,13 +3248,13 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
-            self.assertNotIn(".triton-agent", stdout.getvalue())
+            self.assertNotIn(".helix", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 0 failed", stdout.getvalue())
 
     def test_main_optimize_batch_reports_skipped_workspaces_from_status_file(self) -> None:
@@ -3278,7 +3278,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root)])
 
@@ -3316,7 +3316,7 @@ class PathResolutionTests(unittest.TestCase):
                     active -= 1
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
@@ -3336,13 +3336,13 @@ class PathResolutionTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
                 with patch(
-                    "triton_agent.commands.optimize.run_optimize_batch",
+                    "helix.commands.optimize.run_optimize_batch",
                     side_effect=_fake_run_optimize_batch,
                 ):
                     exit_code = main(
@@ -3363,7 +3363,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_batch",
+                "helix.commands.optimize.run_optimize_batch",
                 side_effect=_fake_run_optimize_batch,
             ):
                 exit_code = main(
@@ -3437,8 +3437,8 @@ class PathResolutionTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+                    "HELIX_BATCH_NPU_DEVICES": "4,5",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "9",
                 },
                 clear=False,
             ):
@@ -3516,8 +3516,8 @@ class PathResolutionTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
@@ -3545,7 +3545,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_batch",
+                "helix.commands.optimize.run_optimize_batch",
                 side_effect=_fake_run_optimize_batch,
             ):
                 exit_code = main(
@@ -3570,7 +3570,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_batch",
+                "helix.commands.optimize.run_optimize_batch",
                 side_effect=_fake_run_optimize_batch,
             ):
                 exit_code = main(
@@ -3610,7 +3610,7 @@ class PathResolutionTests(unittest.TestCase):
                     stderr.write("warn line\n")
                 return AgentResult(return_code=0, stdout="round 1 start\n", stderr="warn line\n")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root)])
 
@@ -3672,7 +3672,7 @@ class PathResolutionTests(unittest.TestCase):
                 captured_modes[request.workdir.name] = request.bench_mode
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(
                     [
                         "optimize-batch",
@@ -3742,7 +3742,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             stdout = StringIO()
-            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+            with patch("helix.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(
                         [
@@ -3795,7 +3795,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
@@ -3818,7 +3818,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
@@ -3837,7 +3837,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
@@ -3861,7 +3861,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["gen-eval-batch", "-i", str(root)])
 
@@ -3900,7 +3900,7 @@ class PathResolutionTests(unittest.TestCase):
                     active -= 1
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root), "--concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
@@ -3919,7 +3919,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.generation.run_gen_eval_batch",
+                "helix.commands.generation.run_gen_eval_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -3944,7 +3944,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.generation.run_gen_eval_batch",
+                "helix.commands.generation.run_gen_eval_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -3967,7 +3967,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.generation.run_gen_eval_batch",
+                "helix.commands.generation.run_gen_eval_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4001,7 +4001,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.convert.run_convert_batch",
+                "helix.commands.convert.run_convert_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4026,7 +4026,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.convert.run_convert_batch",
+                "helix.commands.convert.run_convert_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4049,7 +4049,7 @@ class PathResolutionTests(unittest.TestCase):
                 return 0
 
             with patch(
-                "triton_agent.commands.convert.run_convert_batch",
+                "helix.commands.convert.run_convert_batch",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4087,7 +4087,7 @@ class PathResolutionTests(unittest.TestCase):
                     stderr.write("warn line\n")
                 return AgentResult(return_code=0, stdout="repair start\n", stderr="warn line\n")
 
-            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+            with patch("helix.generation.batch.run_generation_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["gen-eval-batch", "-i", str(root)])
 
@@ -4160,7 +4160,7 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("helix.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-test",
@@ -4190,7 +4190,7 @@ class PathResolutionTests(unittest.TestCase):
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("helix.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-test",
@@ -4225,10 +4225,10 @@ class PathResolutionTests(unittest.TestCase):
                 del args, kwargs
                 seen_env["remote"] = os.environ.get(remote_target_env_name())
                 seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
-                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
+                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/helix-123"
 
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_test",
+                "helix.commands.execution.run_remote_test",
                 side_effect=fake_run_remote_test,
             ):
                 exit_code = main(
@@ -4241,13 +4241,13 @@ class PathResolutionTests(unittest.TestCase):
                         "--remote",
                         "alice@example.com",
                         "--remote-workdir",
-                        "/tmp/triton-agent",
+                        "/tmp/helix",
                     ]
                 )
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_env["remote"], "alice@example.com")
-            self.assertEqual(seen_env["remote_workdir"], "/tmp/triton-agent")
+            self.assertEqual(seen_env["remote_workdir"], "/tmp/helix")
 
     def test_main_clears_stale_remote_workdir_when_remote_has_no_workdir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4263,7 +4263,7 @@ class PathResolutionTests(unittest.TestCase):
                 del args, kwargs
                 seen_env["remote"] = os.environ.get(remote_target_env_name())
                 seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
-                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
+                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/helix-123"
 
             with patch.dict(
                 os.environ,
@@ -4271,7 +4271,7 @@ class PathResolutionTests(unittest.TestCase):
                 clear=False,
             ):
                 with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                    "triton_agent.commands.execution.run_remote_test",
+                    "helix.commands.execution.run_remote_test",
                     side_effect=fake_run_remote_test,
                 ):
                     exit_code = main(
@@ -4319,8 +4319,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/helix-abc"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -4348,8 +4348,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/helix-abc"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -4382,7 +4382,7 @@ class PathResolutionTests(unittest.TestCase):
                 side_effect=RuntimeError(
                     "Run `ssh-copy-id alice@example.com` and enter the remote login password."
                 ),
-            ), patch("triton_agent.commands.execution.run_remote_test") as mocked:
+            ), patch("helix.commands.execution.run_remote_test") as mocked:
                 with redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -4410,7 +4410,7 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_local_test",
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, None),
             ) as mocked:
                 exit_code = main(
@@ -4441,7 +4441,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("helix.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -4493,10 +4493,10 @@ class PathResolutionTests(unittest.TestCase):
 
                 return _Runner()
 
-            with patch("triton_agent.generation.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch("triton_agent.generation.orchestration.create_runner", side_effect=_fake_create_runner):
-                    with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=[]):
-                        with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
+            with patch("helix.generation.orchestration.build_prompt", side_effect=_fake_build_prompt):
+                with patch("helix.generation.orchestration.create_runner", side_effect=_fake_create_runner):
+                    with patch("helix.generation.orchestration.SkillLinkManager.prepare_skills", return_value=[]):
+                        with patch("helix.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
                             exit_code = main(
                                 [
                                     "gen-test",
@@ -4673,7 +4673,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_request",
+                "helix.commands.optimize.run_optimize_request",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4737,7 +4737,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_request",
+                "helix.commands.optimize.run_optimize_request",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4859,7 +4859,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_request",
+                "helix.commands.optimize.run_optimize_request",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -4981,7 +4981,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.optimize.run_optimize_request",
+                "helix.commands.optimize.run_optimize_request",
                 side_effect=_fake_run,
             ):
                 exit_code = main(
@@ -5062,16 +5062,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5115,16 +5115,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
@@ -5169,16 +5169,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
@@ -5310,8 +5310,8 @@ class PathResolutionTests(unittest.TestCase):
             (root / "opt-note.md").write_text("history\n", encoding="utf-8")
             (root / "learned_lessons.md").write_text("notes\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
-            (root / ".triton-agent").mkdir()
-            (root / "triton-agent-logs").mkdir()
+            (root / ".helix").mkdir()
+            (root / "helix-logs").mkdir()
             baseline_dir = root / "baseline"
             baseline_dir.mkdir()
             (root / "opt_kernel.py").write_text("print('opt')\n", encoding="utf-8")
@@ -5327,14 +5327,14 @@ class PathResolutionTests(unittest.TestCase):
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize", return_value=fake_result):
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch("helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize", return_value=fake_result):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5352,7 +5352,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertFalse((root / "opt-note.md").exists())
             self.assertFalse((root / "learned_lessons.md").exists())
             self.assertFalse((root / "opt-round-1").exists())
-            self.assertFalse((root / ".triton-agent").exists())
+            self.assertFalse((root / ".helix").exists())
             self.assertFalse((root / "baseline").exists())
             self.assertFalse((root / "opt_kernel.py").exists())
             self.assertTrue(test_harness.exists())
@@ -5399,16 +5399,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5463,16 +5463,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5560,16 +5560,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5591,16 +5591,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(["optimize", "-i", str(root)])
@@ -5622,16 +5622,16 @@ class PathResolutionTests(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                    "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                                "helix.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(["optimize", "-i", "."])
@@ -5680,16 +5680,16 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5711,16 +5711,16 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5740,16 +5740,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5768,16 +5768,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5805,16 +5805,16 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                 return_value=fake_result,
             ) as mocked:
-                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch("helix.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        "helix.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                            "helix.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -5867,7 +5867,7 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             fake_result = AgentResult(return_code=0, stdout="test stdout\n", stderr="test stderr\n")
 
-            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("helix.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 with redirect_stdout(stdout), redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -5898,7 +5898,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, archive)):
+            with patch("helix.commands.execution.run_local_test", return_value=(fake_result, archive)):
                 with redirect_stdout(stdout):
                     exit_code = main(
                         [
@@ -5936,8 +5936,8 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, archive)):
-                with patch("triton_agent.commands.execution.compare_result_files", return_value=1) as compare_mock:
+            with patch("helix.commands.execution.run_local_test", return_value=(fake_result, archive)):
+                with patch("helix.commands.execution.compare_result_files", return_value=1) as compare_mock:
                     with redirect_stdout(stdout):
                         exit_code = main(
                             [
@@ -5972,8 +5972,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/helix-abc"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -6014,8 +6014,8 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, None, "/tmp/triton-agent-keep"),
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/helix-keep"),
             ):
                 with redirect_stdout(stdout):
                     exit_code = main(
@@ -6032,7 +6032,7 @@ class PathResolutionTests(unittest.TestCase):
                     )
 
             self.assertEqual(exit_code, 0)
-            self.assertIn("Remote workspace: /tmp/triton-agent-keep", stdout.getvalue())
+            self.assertIn("Remote workspace: /tmp/helix-keep", stdout.getvalue())
 
     def test_main_run_bench_executes_locally_and_prints_perf_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -6047,7 +6047,7 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             fake_result = AgentResult(return_code=0, stdout="latency-a: 1.0\n", stderr="bench stderr\n")
 
-            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+            with patch("helix.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
                 with redirect_stdout(stdout), redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -6088,7 +6088,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+            with patch("helix.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
                 exit_code = main(
                     [
                         "run-bench",
@@ -6120,7 +6120,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# kernel: k\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
+            with patch("helix.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-bench",
@@ -6150,7 +6150,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n# kernel: k\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
+            with patch("helix.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-bench",
@@ -6202,7 +6202,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("helix.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",
@@ -6226,8 +6226,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_bench",
-                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+                "helix.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/helix-bench"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -6265,8 +6265,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_remote_bench",
-                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+                "helix.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/helix-bench"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -6305,8 +6305,8 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_bench",
-                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+                "helix.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/helix-bench"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -6347,8 +6347,8 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.execution.run_remote_bench",
-                return_value=(fake_result, None, "/tmp/triton-agent-keep-bench"),
+                "helix.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/helix-keep-bench"),
             ):
                 with redirect_stdout(stdout):
                     exit_code = main(
@@ -6365,7 +6365,7 @@ class PathResolutionTests(unittest.TestCase):
                     )
 
             self.assertEqual(exit_code, 0)
-            self.assertIn("Remote workspace: /tmp/triton-agent-keep-bench", stdout.getvalue())
+            self.assertIn("Remote workspace: /tmp/helix-keep-bench", stdout.getvalue())
 
     def test_main_run_bench_reports_missing_perf_artifact_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -6376,7 +6376,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stderr = StringIO()
-            with patch("triton_agent.commands.execution.run_local_bench", side_effect=FileNotFoundError("missing perf")):
+            with patch("helix.commands.execution.run_local_bench", side_effect=FileNotFoundError("missing perf")):
                 with redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -6401,7 +6401,7 @@ class PathResolutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_result_files", return_value=0) as mocked:
+            with patch("helix.commands.comparison.compare_result_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-result",
@@ -6428,7 +6428,7 @@ class PathResolutionTests(unittest.TestCase):
             new.write_text("new", encoding="utf-8")
 
             with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
-                "triton_agent.commands.comparison.compare_remote_result_files", return_value=0
+                "helix.commands.comparison.compare_remote_result_files", return_value=0
             ) as mocked:
                 exit_code = main(
                     [
@@ -6462,7 +6462,7 @@ class PathResolutionTests(unittest.TestCase):
             new.write_text("new", encoding="utf-8")
 
             with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.comparison.compare_remote_result_files", return_value=0
+                "helix.commands.comparison.compare_remote_result_files", return_value=0
             ) as mocked:
                 exit_code = main(
                     [
@@ -6496,7 +6496,7 @@ class PathResolutionTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\n", encoding="utf-8")
             compare.write_text("latency-a: 11\n", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
+            with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-perf",
@@ -6523,7 +6523,7 @@ class PathResolutionTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\n", encoding="utf-8")
             compare.write_text("latency-a: 11\n", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
+            with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-perf",
@@ -6551,7 +6551,7 @@ class PathResolutionTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\n", encoding="utf-8")
             compare.write_text("latency-a: 11\n", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
+            with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-perf",
@@ -6713,7 +6713,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("`start-round`", prompt)
         self.assertIn("`set-current-round-state`", prompt)
         self.assertIn("Write `supervisor-report.md`", prompt)
-        self.assertNotIn(".triton-agent/supervisor-report.md", prompt)
+        self.assertNotIn(".helix/supervisor-report.md", prompt)
         self.assertIn("The CLI will read that supervisor report", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)
         self.assertIn("replace the Triton kernel path with pure PyTorch computation", prompt)
@@ -6926,10 +6926,10 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
             remote="alice@example.com:2200",
-            remote_workdir="/tmp/triton-agent",
+            remote_workdir="/tmp/helix",
         )
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
-        self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
+        self.assertIn("Remote execution root: /tmp/helix", prompt)
         self.assertIn("When you execute generated test cases in this task", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
@@ -6943,10 +6943,10 @@ class PromptTests(unittest.TestCase):
             bench_mode="torch-npu-profiler",
             force_overwrite=False,
             remote="alice@example.com:2200",
-            remote_workdir="/tmp/triton-agent",
+            remote_workdir="/tmp/helix",
         )
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
-        self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
+        self.assertIn("Remote execution root: /tmp/helix", prompt)
         self.assertIn("both generated artifacts must be executed", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
@@ -7348,7 +7348,7 @@ class CliHelpColorTests(unittest.TestCase):
         self.assertIn("\033[36m--help\033[0m", output)
         self.assertIn("\033[36mgen-eval\033[0m", output)
         self.assertIn("\033[36mconvert-batch\033[0m", output)
-        self.assertIn("\033[36mTRITON_AGENT_BATCH_NPU_DEVICES\033[0m", output)
+        self.assertIn("\033[36mHELIX_BATCH_NPU_DEVICES\033[0m", output)
         self.assertNotIn("Generate, run, \033[36mverify\033[0m", output)
         self.assertNotIn("Show optimization \033[36mstatus\033[0m for one workspace.", output)
 

@@ -34,7 +34,7 @@ The round record structure should still keep `Primary analysis level`, `Supporti
 
 ### 2. Make Shared Prompt Builders Respect TileLang Limits
 
-Update `src/triton_agent/optimize/prompts.py` so TileLang prompt construction:
+Update `src/helix/optimize/prompts.py` so TileLang prompt construction:
 
 - emits the shortened analysis ladder
 - does not tell the worker to escalate to IR or compiler-source analysis

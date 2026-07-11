@@ -4,13 +4,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.claude import ClaudeRunner
-from triton_agent.backends.codex import CodexRunner
-from triton_agent.backends.factory import create_runner
-from triton_agent.backends.openhands import OpenHandsRunner
-from triton_agent.backends.opencode import OpenCodeRunner
-from triton_agent.backends.pi import PiRunner
-from triton_agent.backends.traecli import TraeCLIRunner
+from helix.backends.claude import ClaudeRunner
+from helix.backends.codex import CodexRunner
+from helix.backends.factory import create_runner
+from helix.backends.openhands import OpenHandsRunner
+from helix.backends.opencode import OpenCodeRunner
+from helix.backends.pi import PiRunner
+from helix.backends.traecli import TraeCLIRunner
 
 
 class BackendFactoryTests(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 ## Context
 
-`OptimizeGuidanceManager` currently renders temporary optimize guidance for `AGENTS.md` and `CLAUDE.md` through inline string concatenation in [src/triton_agent/optimize/guidance.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/guidance.py).
+`OptimizeGuidanceManager` currently renders temporary optimize guidance for `AGENTS.md` and `CLAUDE.md` through inline string concatenation in [src/helix/optimize/guidance.py](/Users/cdj/Projects/helix/src/helix/optimize/guidance.py).
 
 That approach works, but the guidance text is now harder to read and maintain because:
 
@@ -49,7 +49,7 @@ It includes:
 
 It does not include:
 
-- optimize launch prompts in `src/triton_agent/prompts.py`
+- optimize launch prompts in `src/helix/prompts.py`
 - skill content under `skills/`
 - archive, cleanup, or runtime session-recording behavior
 

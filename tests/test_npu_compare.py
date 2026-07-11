@@ -106,9 +106,9 @@ class NpuCompareTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
-                "TRITON_AGENT_RUN_TEST_ATOL": "0",
-                "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+                "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                "HELIX_RUN_TEST_ATOL": "0",
+                "HELIX_RUN_TEST_RTOL": "0.01",
             },
             clear=False,
         ):

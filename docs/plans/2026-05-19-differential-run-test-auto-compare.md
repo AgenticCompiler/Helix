@@ -37,8 +37,8 @@ Expected: FAIL because `run-test` does not yet accept `--oracle-result` / `--com
 ### Task 2: Implement Auto-Compare In Both Entrypoints
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/execution.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/execution.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run-command.py`
 
 - [ ] **Step 1: Extend `run-test` argument parsing**

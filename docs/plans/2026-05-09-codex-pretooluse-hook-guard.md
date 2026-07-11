@@ -14,15 +14,15 @@
 
 - Create: `hooks/codex/hooks.json`
 - Create: `hooks/codex/pretooluse_guard.py`
-- Create: `src/triton_agent/agent_hooks.py`
+- Create: `src/helix/agent_hooks.py`
 - Create: `tests/test_agent_hooks.py`
 - Create: `tests/test_codex_pretooluse_guard.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/backends/base.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/backends/base.py`
 - Modify: `tests/test_backends_base.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_commands.py`
@@ -49,7 +49,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.agent_hooks import AgentHookManager
+from helix.agent_hooks import AgentHookManager
 
 
 class AgentHookManagerTests(unittest.TestCase):
@@ -63,7 +63,7 @@ class AgentHookManagerTests(unittest.TestCase):
             state = manager.prepare_hooks("codex", workspace)
 
             hooks_json = workspace / ".codex" / "hooks.json"
-            hook_dir = workspace / ".codex" / "triton-agent-hooks"
+            hook_dir = workspace / ".codex" / "helix-hooks"
             policy_json = hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
             self.assertTrue(hooks_json.exists())
@@ -78,7 +78,7 @@ class AgentHookManagerTests(unittest.TestCase):
                 policy["deny_read_globs"],
                 [str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**")],
             )
-            self.assertIn("triton-agent workspace policy", policy["deny_message"])
+            self.assertIn("helix workspace policy", policy["deny_message"])
 
             warnings = manager.cleanup(state)
 
@@ -104,7 +104,7 @@ class AgentHookManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            hook_dir = workspace / ".codex" / "triton-agent-hooks"
+            hook_dir = workspace / ".codex" / "helix-hooks"
             hook_dir.mkdir(parents=True)
 
             manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
 Run: `uv run python -m unittest tests.test_agent_hooks -v`
 
-Expected: `ERROR` with `ModuleNotFoundError: No module named 'triton_agent.agent_hooks'`.
+Expected: `ERROR` with `ModuleNotFoundError: No module named 'helix.agent_hooks'`.
 
 ## Task 2: Add Failing Guard Script Tests
 
@@ -278,7 +278,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
 
 _DENY_MESSAGE = (
-    "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+    "This read is blocked by helix workspace policy. Stay within the current workspace "
     "and do not inspect staged skill implementation files under .codex/skills/*/scripts/. "
     "Use the skill instructions and documented command interface instead."
 )
@@ -338,7 +338,7 @@ Create `hooks/codex/hooks.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json"
+            "command": "python3 .codex/helix-hooks/pretooluse_guard.py --policy .codex/helix-hooks/policy.json"
           }
         ]
       }
@@ -392,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
         policy = load_policy(Path(args.policy))
         payload = json.load(sys.stdin)
     except Exception as exc:
-        print(f"triton-agent hook guard failed open: {exc}", file=sys.stderr)
+        print(f"helix hook guard failed open: {exc}", file=sys.stderr)
         return 0
 
     reason = evaluate_payload(policy, payload)
@@ -523,11 +523,11 @@ Expected: `OK`.
 ## Task 4: Implement Hook Staging Manager
 
 **Files:**
-- Create: `src/triton_agent/agent_hooks.py`
+- Create: `src/helix/agent_hooks.py`
 
 - [ ] **Step 1: Add the hook staging manager**
 
-Create `src/triton_agent/agent_hooks.py`:
+Create `src/helix/agent_hooks.py`:
 
 ```python
 from __future__ import annotations
@@ -538,7 +538,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-_CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"
+_CODEX_HOOK_DIR = Path(".codex") / "helix-hooks"
 _DENY_READ_GLOBS = (Path(".codex") / "skills" / "*" / "scripts" / "**",)
 
 
@@ -580,7 +580,7 @@ class AgentHookManager:
             "workspace_root": str(workspace),
             "allow_read_roots": [str(workspace)],
             "deny_read_globs": [str(workspace / path) for path in _DENY_READ_GLOBS],
-            "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead.",
+            "deny_message": "This read is blocked by helix workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead.",
         }
         target_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
 
@@ -616,12 +616,12 @@ Expected: `OK`.
 ## Task 5: Integrate Hook Staging Behind The Optimize Flag
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/backends/base.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/backends/base.py`
 - Modify: `tests/test_backends_base.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_commands.py`
@@ -645,12 +645,12 @@ Expected: failures because the request model, optimize options, parser, and runn
 
 - [ ] **Step 3: Integrate hook staging behind the explicit flag**
 
-Modify `src/triton_agent/backends/base.py`:
+Modify `src/helix/backends/base.py`:
 
 ```python
 from pathlib import Path
 
-from triton_agent.agent_hooks import AgentHookManager
+from helix.agent_hooks import AgentHookManager
 ```
 
 Add a helper near `_log_launch_command()`:
@@ -713,7 +713,7 @@ Add this paragraph near the shared agent option or environment-variable section 
 ```markdown
 ### Optional Codex Hook Guard
 
-When `optimize --enable-agent-hooks --agent codex` is used, `triton-agent` stages a temporary workspace-local `.codex/hooks.json` before launching Codex. The hook blocks shell reads outside the current workspace and shell reads of staged skill implementation files under `.codex/skills/*/scripts/`, returning a short policy message to the agent instead. Existing workspace `.codex/hooks.json` files are not merged or overwritten; `triton-agent` fails fast so user-owned hook configuration stays explicit. Without `--enable-agent-hooks`, no hook files are staged.
+When `optimize --enable-agent-hooks --agent codex` is used, `helix` stages a temporary workspace-local `.codex/hooks.json` before launching Codex. The hook blocks shell reads outside the current workspace and shell reads of staged skill implementation files under `.codex/skills/*/scripts/`, returning a short policy message to the agent instead. Existing workspace `.codex/hooks.json` files are not merged or overwritten; `helix` fails fast so user-owned hook configuration stays explicit. Without `--enable-agent-hooks`, no hook files are staged.
 ```
 
 - [ ] **Step 2: Run a documentation diff check**
@@ -753,6 +753,6 @@ Expected: `OK`.
 
 - [ ] **Step 5: Review the final diff**
 
-Run: `git diff -- docs/specs/2026-05-09-codex-pretooluse-hook-guard-design.md docs/plans/2026-05-09-codex-pretooluse-hook-guard.md hooks/codex src/triton_agent tests README.md`
+Run: `git diff -- docs/specs/2026-05-09-codex-pretooluse-hook-guard-design.md docs/plans/2026-05-09-codex-pretooluse-hook-guard.md hooks/codex src/helix tests README.md`
 
 Expected: The diff only contains the Codex hook guard design, plan, templates, staging manager, opt-in optimize integration, tests, and README note.

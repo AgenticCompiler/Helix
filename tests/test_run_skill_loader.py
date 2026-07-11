@@ -8,15 +8,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skills.loader import (
+from helix.skills.loader import (
     load_operator_eval_script_module,
     load_skill_script_module,
     operator_eval_script_path,
     skill_script_path,
 )
-import triton_agent.optimize.naming as optimize_naming
-import triton_agent.optimize.pt_cleanup as optimize_pt_cleanup
-from triton_agent.optimize.models import BaselineState, OptimizeCheckResult, RoundState
+import helix.optimize.naming as optimize_naming
+import helix.optimize.pt_cleanup as optimize_pt_cleanup
+from helix.optimize.models import BaselineState, OptimizeCheckResult, RoundState
 
 
 def _top_level_defined_names(path: Path) -> set[str]:
@@ -30,10 +30,10 @@ def _top_level_defined_names(path: Path) -> set[str]:
 
 class RunSkillLoaderTests(unittest.TestCase):
     def test_test_runner_wrapper_module_has_been_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("triton_agent.test_runner"))
+        self.assertIsNone(importlib.util.find_spec("helix.test_runner"))
 
     def test_bench_runner_wrapper_module_has_been_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("triton_agent.bench_runner"))
+        self.assertIsNone(importlib.util.find_spec("helix.bench_runner"))
 
     def test_operator_eval_script_path_points_to_run_eval_cli(self) -> None:
         path = operator_eval_script_path("cli")
@@ -201,13 +201,13 @@ class RunSkillLoaderTests(unittest.TestCase):
 
         self.assertIs(optimize_pt_cleanup.cleanup_dir_pt_files, module.cleanup_dir_pt_files)
 
-    def test_run_skill_scripts_do_not_import_triton_agent(self) -> None:
+    def test_run_skill_scripts_do_not_import_helix(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
         for path in sorted(scripts_dir.glob("*.py")):
             with self.subTest(path=path.name):
                 content = path.read_text(encoding="utf-8")
-                self.assertNotIn("import triton_agent", content)
-                self.assertNotIn("from triton_agent", content)
+                self.assertNotIn("import helix", content)
+                self.assertNotIn("from helix", content)
 
     def test_optimize_state_round_check_script_does_not_import_runtime_sources_directly(self) -> None:
         expected = (
@@ -257,15 +257,15 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertNotIn("from src.", content)
         self.assertNotIn("import src.", content)
 
-    def test_optimize_state_skill_scripts_do_not_import_triton_agent(self) -> None:
+    def test_optimize_state_skill_scripts_do_not_import_helix(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         scripts_dir = repo_root / "skills" / "common" / "ascend-npu-optimize-state" / "scripts"
         self.assertTrue(scripts_dir.is_dir())
         for path in sorted(scripts_dir.rglob("*.py")):
             with self.subTest(path=path.relative_to(scripts_dir).as_posix()):
                 content = path.read_text(encoding="utf-8")
-                self.assertNotIn("import triton_agent", content)
-                self.assertNotIn("from triton_agent", content)
+                self.assertNotIn("import helix", content)
+                self.assertNotIn("from helix", content)
 
     def test_optimize_state_baseline_directory_keeps_only_baseline_specific_scripts(self) -> None:
         scripts_dir = (

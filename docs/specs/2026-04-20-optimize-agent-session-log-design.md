@@ -21,7 +21,7 @@ Record each optimize code agent launch in a run-level session log so later debug
 
 Write JSON Lines to:
 
-`triton-agent-logs/triton-agent/<run-id>/agent-sessions.jsonl`
+`helix-logs/helix/<run-id>/agent-sessions.jsonl`
 
 Each line contains only:
 
