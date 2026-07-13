@@ -262,47 +262,6 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
 
-    def test_subagent_start_bootstraps_baseline_state_for_optimize_agent(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp)
-
-            result = _run_hook(
-                "subagent_start.py",
-                {
-                    "hook_event_name": "SubagentStart",
-                    "subagent_type": "helix-optimizer",
-                    "agent_id": "agent-opt-1",
-                    "cwd": str(workspace),
-                },
-            )
-
-            self.assertEqual(result.returncode, 0)
-            state_payload = json.loads(
-                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
-            )
-            owner_payload = json.loads(
-                (workspace / ".helix" / "plugin-owner.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(state_payload["phase"], "baseline")
-            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"})
-
-    def test_subagent_start_ignores_unrelated_subagent(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp)
-
-            result = _run_hook(
-                "subagent_start.py",
-                {
-                    "hook_event_name": "SubagentStart",
-                    "subagent_type": "researcher",
-                    "agent_id": "agent-other-1",
-                    "cwd": str(workspace),
-                },
-            )
-
-            self.assertEqual(result.returncode, 0)
-            self.assertFalse((workspace / ".helix").exists())
-
     def test_session_end_removes_runtime_dir_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -339,56 +298,6 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
-
-    def test_subagent_stop_removes_runtime_dir_only_for_matching_owner(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp)
-            runtime_dir = workspace / ".helix"
-            runtime_dir.mkdir()
-            (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
-            (runtime_dir / "plugin-owner.json").write_text(
-                json.dumps({"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"}),
-                encoding="utf-8",
-            )
-            (workspace / "baseline").mkdir()
-
-            result = _run_hook(
-                "subagent_stop.py",
-                {
-                    "hook_event_name": "SubagentStop",
-                    "subagent_type": "helix-optimizer",
-                    "agent_id": "agent-opt-1",
-                    "cwd": str(workspace),
-                },
-            )
-
-            self.assertEqual(result.returncode, 0)
-            self.assertFalse(runtime_dir.exists())
-            self.assertTrue((workspace / "baseline").exists())
-
-    def test_subagent_stop_ignores_non_owner_agent_id(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp)
-            runtime_dir = workspace / ".helix"
-            runtime_dir.mkdir()
-            (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
-            (runtime_dir / "plugin-owner.json").write_text(
-                json.dumps({"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"}),
-                encoding="utf-8",
-            )
-
-            result = _run_hook(
-                "subagent_stop.py",
-                {
-                    "hook_event_name": "SubagentStop",
-                    "subagent_type": "helix-optimizer",
-                    "agent_id": "agent-opt-2",
-                    "cwd": str(workspace),
-                },
-            )
-
-            self.assertEqual(result.returncode, 0)
-            self.assertTrue(runtime_dir.exists())
 
     def test_pretooluse_guard_allows_edit_when_workflow_state_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

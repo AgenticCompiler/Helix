@@ -37,7 +37,6 @@ def build_claude_optimize_plugin_assets(
     *,
     language: str = "triton",
     enable_cann_ext_api: bool = False,
-    enable_subagent: bool = False,
 ) -> ClaudeOptimizePluginAssets:
     optimize_skill_names, optimize_skill_sources = resolve_staged_skills(
         CommandKind.OPTIMIZE,
@@ -76,13 +75,11 @@ def build_claude_optimize_plugin(
     *,
     language: str = "triton",
     enable_cann_ext_api: bool = False,
-    enable_subagent: bool = False,
 ) -> Path:
     root = output_dir.resolve()
     assets = build_claude_optimize_plugin_assets(
         language=language,
         enable_cann_ext_api=enable_cann_ext_api,
-        enable_subagent=enable_subagent,
     )
 
     if root.exists():
@@ -241,11 +238,6 @@ def _render_plugin_readme() -> str:
         "and first-session compiler source provisioning, plus one Triton convert agent "
         "with the minimum Triton convert skill set.\n\n"
         "## Usage\n\n"
-        "### Use as a subagent\n\n"
-        "After installing the plugin, start Claude in the target workspace and ask:\n\n"
-        "`Please use the triton-optimizer:helix-optimizer agent to optimize "
-        "@your_triton_operator.py in the current directory. Stop after reaching Xx speedup "
-        "over the baseline or after X rounds.`\n\n"
         "### Start Claude with the optimize agent\n\n"
         "Run:\n\n"
         "`claude --agent triton-optimizer:helix-optimizer`\n\n"
