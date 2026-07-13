@@ -9,11 +9,6 @@ import shutil
 import sys
 
 
-PLUGIN_AGENT_NAME = "helix-optimizer"
-PLUGIN_OWNER_FILENAME = "plugin-owner.json"
-_AGENT_TYPE_KEYS = ("subagent_type", "subagentType", "agent_type")
-
-
 def _bootstrap_support_import() -> None:
     current_dir = Path(__file__).resolve().parent
     candidates = (
@@ -151,60 +146,6 @@ def cleanup_runtime_tree(runtime_dir: Path) -> None:
     if runtime_dir.is_dir():
         shutil.rmtree(runtime_dir)
 
-
-def resolve_agent_type(payload: dict[str, object]) -> str | None:
-    for key in _AGENT_TYPE_KEYS:
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return None
-
-
-def is_optimize_subagent_payload(payload: dict[str, object]) -> bool:
-    """Return True only for optimize subagent or typed-agent payloads."""
-    agent_type = resolve_agent_type(payload)
-    if agent_type is None:
-        return False
-    return agent_type == PLUGIN_AGENT_NAME or agent_type.endswith(f":{PLUGIN_AGENT_NAME}")
-
-
-def record_runtime_owner(runtime_dir: Path, *, agent_id: str, agent_type: str) -> None:
-    (runtime_dir / PLUGIN_OWNER_FILENAME).write_text(
-        json.dumps({"agent_id": agent_id, "agent_type": agent_type}, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
-def runtime_owner(runtime_dir: Path) -> dict[str, str] | None:
-    owner_path = runtime_dir / PLUGIN_OWNER_FILENAME
-    try:
-        payload = json.loads(owner_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    agent_id = payload.get("agent_id")
-    agent_type = payload.get("agent_type")
-    if not isinstance(agent_id, str) or not agent_id:
-        return None
-    if not isinstance(agent_type, str) or not agent_type:
-        return None
-    return {"agent_id": agent_id, "agent_type": agent_type}
-
-
-def should_cleanup_for_subagent(payload: dict[str, object], runtime_dir: Path) -> bool:
-    owner = runtime_owner(runtime_dir)
-    if owner is None:
-        return False
-    agent_id = payload.get("agent_id")
-    agent_type = resolve_agent_type(payload)
-    if not isinstance(agent_id, str) or not agent_id:
-        return False
-    if agent_type is None:
-        return False
-    return owner["agent_id"] == agent_id and owner["agent_type"] == agent_type
-
-
 def resolve_workspace(payload: dict[str, object]) -> Path | None:
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd:
@@ -260,17 +201,10 @@ def _edit_blocked_workflow_guidance(problem: str) -> str:
 
 __all__ = [
     "BootstrapResult",
-    "PLUGIN_AGENT_NAME",
-    "PLUGIN_OWNER_FILENAME",
     "bootstrap_runtime_state",
     "cleanup_runtime_tree",
     "compiler_source_read_root",
     "prepare_compiler_source_context",
-    "record_runtime_owner",
-    "is_optimize_subagent_payload",
-    "resolve_agent_type",
     "resolve_workspace",
-    "runtime_owner",
-    "should_cleanup_for_subagent",
     "validate_existing_state",
 ]

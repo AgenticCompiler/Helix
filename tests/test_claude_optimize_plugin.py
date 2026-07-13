@@ -78,12 +78,14 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertNotIn("torch-npu-optimize-knowledge", assets.optimize_skill_names)
         self.assertNotIn("torch-npu-optimize-knowledge", assets.skill_names)
 
-    def test_plugin_builder_api_does_not_expose_optimize_target(self) -> None:
+    def test_plugin_builder_api_does_not_expose_optimize_target_or_subagent_option(self) -> None:
         asset_parameters = inspect.signature(build_claude_optimize_plugin_assets).parameters
         builder_parameters = inspect.signature(build_claude_optimize_plugin).parameters
 
         self.assertNotIn("optimize_target", asset_parameters)
         self.assertNotIn("optimize_target", builder_parameters)
+        self.assertNotIn("enable_subagent", asset_parameters)
+        self.assertNotIn("enable_subagent", builder_parameters)
 
     def test_plugin_builder_renders_optimize_and_convert_agents_without_standalone_prompt_files(self) -> None:
         assets = build_claude_optimize_plugin_assets()
@@ -149,6 +151,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertIn("optimize workflow", readme_text)
         self.assertIn("convert workflow", readme_text)
         self.assertNotIn("optimize hook flow", readme_text)
+        self.assertNotIn("Use as a subagent", readme_text)
 
     def test_build_plugin_writes_expected_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,8 +164,8 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertTrue((built_dir / "agents" / "helix-optimizer.md").exists())
             self.assertTrue((built_dir / "agents" / "helix-convert.md").exists())
             self.assertTrue((built_dir / "hooks" / "hooks.json").exists())
-            self.assertTrue((built_dir / "hooks" / "subagent_start.py").exists())
-            self.assertTrue((built_dir / "hooks" / "subagent_stop.py").exists())
+            self.assertFalse((built_dir / "hooks" / "subagent_start.py").exists())
+            self.assertFalse((built_dir / "hooks" / "subagent_stop.py").exists())
             self.assertTrue((built_dir / "skills").is_dir())
             self.assertFalse((built_dir / "CLAUDE.md").exists())
             self.assertFalse((built_dir / "prompts.md").exists())
@@ -192,8 +195,8 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             hooks_manifest = json.loads((built_dir / "hooks" / "hooks.json").read_text(encoding="utf-8"))
             self.assertIn("SessionStart", hooks_manifest["hooks"])
             self.assertIn("SessionEnd", hooks_manifest["hooks"])
-            self.assertIn("SubagentStart", hooks_manifest["hooks"])
-            self.assertIn("SubagentStop", hooks_manifest["hooks"])
+            self.assertNotIn("SubagentStart", hooks_manifest["hooks"])
+            self.assertNotIn("SubagentStop", hooks_manifest["hooks"])
 
     def test_build_plugin_copies_latest_hook_runtime_tool_use_decision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,39 +316,6 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
-
-    def test_built_plugin_subagent_start_bootstraps_baseline_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpdir = Path(tmp)
-            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
-            workspace = tmpdir / "workspace"
-            workspace.mkdir()
-
-            completed = subprocess.run(
-                [sys.executable, str(plugin_dir / "hooks" / "subagent_start.py")],
-                input=json.dumps(
-                    {
-                        "hook_event_name": "SubagentStart",
-                        "subagent_type": "helix-optimizer",
-                        "agent_id": "agent-opt-1",
-                        "cwd": str(workspace),
-                    }
-                ),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-            self.assertEqual(completed.returncode, 0, completed.stderr)
-            state_payload = json.loads(
-                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
-            )
-            owner_payload = json.loads(
-                (workspace / ".helix" / "plugin-owner.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(state_payload["phase"], "baseline")
-            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"})
-
 
 if __name__ == "__main__":
     unittest.main()
