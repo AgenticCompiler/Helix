@@ -477,6 +477,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
                 "env_registry.py",
+                "torch_npu_warnings.py",
             ],
         )
         self.assertIn(
@@ -552,6 +553,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
                 "env_registry.py",
+                "torch_npu_warnings.py",
             ],
         )
         self.assertIn(
@@ -625,6 +627,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
                 "env_registry.py",
+                "torch_npu_warnings.py",
             ],
         )
 

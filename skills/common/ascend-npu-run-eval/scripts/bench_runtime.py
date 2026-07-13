@@ -37,6 +37,7 @@ from profile_csv_parser import (
     resolve_perf_metrics,
 )
 from result_payload import ResultPayload, make_result
+from torch_npu_warnings import suppress_torch_npu_owner_mismatch_warning
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +429,6 @@ def _profile_case_with_profiler(
     try:
         profiler_api = torch_npu.profiler
         experimental_config = profiler_api._ExperimentalConfig(
-            aic_metrics=None,
             profiler_level=profiler_api.ProfilerLevel.Level1,
             l2_cache=False,
             data_simplification=False,
@@ -668,6 +668,7 @@ def _sanitize_case_id(case_id: str) -> str:
 
 
 def _bootstrap_torch_npu() -> None:
+    suppress_torch_npu_owner_mismatch_warning()
     loaded_torch = sys.modules.get("torch")
     if loaded_torch is not None and hasattr(loaded_torch, "npu"):
         return
@@ -713,6 +714,7 @@ def runtime_support_paths() -> list[Path]:
         script_dir / "perf_artifacts.py",
         script_dir / "profile_csv_parser.py",
         script_dir / "env_registry.py",
+        script_dir / "torch_npu_warnings.py",
     ]
 
 
