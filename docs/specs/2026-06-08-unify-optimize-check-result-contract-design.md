@@ -25,7 +25,7 @@
 ## Non-Goals
 
 - Do not add a new shared skill only to host this dataclass.
-- Do not make skill-side helpers import `triton_agent`.
+- Do not make skill-side helpers import `helix`.
 - Do not change runtime behavior or optimize check semantics.
 
 ## Verification

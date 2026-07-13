@@ -378,7 +378,7 @@ If an old payload only contains `{"results": [...]}`, compare should fail with a
 
 ### Metadata handling
 
-`parse_test_metadata()` should be the canonical parser in `skills/triton-npu-run-eval/scripts/test_runner.py`, and `src/triton_agent/execution.py` should delegate to it through the existing wrapper.
+`parse_test_metadata()` should be the canonical parser in `skills/triton-npu-run-eval/scripts/test_runner.py`, and `src/helix/execution.py` should delegate to it through the existing wrapper.
 
 Comparison callers should resolve compute-kind semantics as:
 
@@ -473,9 +473,9 @@ The CLI should print a concise summary plus enough case detail to guide repair. 
 | `skills/triton-npu-run-eval/scripts/compare_result.py` | Thin archive-comparison wrapper around the shared NPU compare module |
 | `skills/triton-npu-run-eval/scripts/test_runner.py` | Import-and-call standalone tests, upgrade differential archiving, and route both modes through shared compare helpers |
 | `skills/triton-npu-run-eval/scripts/run-command.py` | Remove `--compare-level` from helper CLI surfaces |
-| `src/triton_agent/commands/comparison.py` | Remove compare-level plumbing |
-| `src/triton_agent/commands/execution.py` | Remove compare-level plumbing and keep automatic differential compare on the shared rule set |
-| `src/triton_agent/commands/convert.py` | Remove compare-level plumbing and keep convert verification on the shared rule set |
+| `src/helix/commands/comparison.py` | Remove compare-level plumbing |
+| `src/helix/commands/execution.py` | Remove compare-level plumbing and keep automatic differential compare on the shared rule set |
+| `src/helix/commands/convert.py` | Remove compare-level plumbing and keep convert verification on the shared rule set |
 | `skills/triton-npu-gen-test/SKILL.md` | Update generation instructions so the skill emits the new compute-kind metadata and runtime hook contract |
 | `skills/triton-npu-gen-test/references/test-standalone-spec.md` | Require import-only standalone structure, `# compute-kind:`, shared compare helper, and `main(operator_api)` |
 | `skills/triton-npu-gen-test/references/test-differential-spec.md` | Require `# compute-kind:` and declarative case contract that supports archiving inputs plus results |

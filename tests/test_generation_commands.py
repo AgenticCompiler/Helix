@@ -9,23 +9,23 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.generation import handle_gen_bench, handle_gen_eval, handle_gen_test
-from triton_agent.generation.models import GenerationOptions
-from triton_agent.generation.outputs import (
+from helix.cli import build_parser
+from helix.commands.generation import handle_gen_bench, handle_gen_eval, handle_gen_test
+from helix.generation.models import GenerationOptions
+from helix.generation.outputs import (
     prepare_generation_targets,
     resolve_generation_output_path,
 )
-from triton_agent.generation.orchestration import build_generation_request
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.trace.core import TRACE_PATH_ENV
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.generation.orchestration import build_generation_request
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.trace.core import TRACE_PATH_ENV
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 class GenerationHelpersTests(unittest.TestCase):
     def test_generation_orchestration_module_replaces_runtime_module(self) -> None:
-        self.assertIsNotNone(importlib.util.find_spec("triton_agent.generation.orchestration"))
-        self.assertIsNone(importlib.util.find_spec("triton_agent.generation.runtime"))
+        self.assertIsNotNone(importlib.util.find_spec("helix.generation.orchestration"))
+        self.assertIsNone(importlib.util.find_spec("helix.generation.runtime"))
 
     def test_resolve_generation_output_path_uses_differential_name_for_gen_test(self) -> None:
         operator = Path("/tmp/kernel.py")
@@ -117,7 +117,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 min_rounds=None,
                 continue_optimize=False,
                 output=None,
@@ -202,11 +202,11 @@ class GenerationHelpersTests(unittest.TestCase):
             request.staged_skill_sources,
             {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
-        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
+        self.assertEqual(request.mcp_servers, ("helix-run-eval",))
 
     def test_build_generation_request_without_run_eval_skill_omits_mcp_servers(self) -> None:
         with patch(
-            "triton_agent.generation.orchestration.resolve_staged_skills",
+            "helix.generation.orchestration.resolve_staged_skills",
             return_value=(("ascend-npu-gen-test",), None),
         ):
             request = build_generation_request(
@@ -368,7 +368,7 @@ class GenerationHelpersTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs")
+            self.assertEqual(trace_path.parent.parent, workdir / "helix-logs")
             self.assertTrue(trace_path.parent.name.startswith("generate-"))
             self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
@@ -385,7 +385,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com:2200",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 min_rounds=None,
                 continue_optimize=False,
                 output=None,
@@ -396,11 +396,11 @@ class GenerationHelpersTests(unittest.TestCase):
         )
 
         self.assertEqual(request.remote, "alice@example.com:2200")
-        self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+        self.assertEqual(request.remote_workdir, "/tmp/helix")
         self.assertIsNotNone(request.extra_env)
         assert request.extra_env is not None
         self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com:2200")
-        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
+        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/helix")
 
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
@@ -446,7 +446,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 captured["output_path"] = request.output_path
                 return fake_result
 
-            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+            with patch("helix.commands.generation.run_generation_request", side_effect=_fake_run):
                 exit_code = handle_gen_test(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -472,7 +472,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 captured["output_path"] = request.output_path
                 return fake_result
 
-            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+            with patch("helix.commands.generation.run_generation_request", side_effect=_fake_run):
                 exit_code = handle_gen_test(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -497,7 +497,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 captured["output_path"] = request.output_path
                 return fake_result
 
-            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+            with patch("helix.commands.generation.run_generation_request", side_effect=_fake_run):
                 exit_code = handle_gen_bench(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -518,7 +518,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                     "--remote",
                     "alice@example.com",
                     "--remote-workdir",
-                    "/tmp/triton-agent",
+                    "/tmp/helix",
                 ]
             )
 
@@ -531,7 +531,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 captured["bench_mode"] = request.bench_mode
                 return fake_result
 
-            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+            with patch("helix.commands.generation.run_generation_request", side_effect=_fake_run):
                 exit_code = handle_gen_eval(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -564,7 +564,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 captured["workdir"] = request.workdir
                 return fake_result
 
-            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+            with patch("helix.commands.generation.run_generation_request", side_effect=_fake_run):
                 exit_code = handle_gen_eval(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -601,7 +601,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["gen-eval", "-i", str(operator), "--force-overwrite"])
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.generation.run_generation_request", return_value=fake_result):
+            with patch("helix.commands.generation.run_generation_request", return_value=fake_result):
                 exit_code = handle_gen_eval(parser, args)
 
             self.assertEqual(exit_code, 0)
@@ -611,11 +611,11 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertFalse(existing_perf.exists())
 
     def test_run_generation_request_writes_tool_trace_summary(self) -> None:
-        from triton_agent.generation.orchestration import run_generation_request
+        from helix.generation.orchestration import run_generation_request
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "run-001" / "tool-traces.jsonl"
+            trace_path = workdir / "helix-logs" / "run-001" / "tool-traces.jsonl"
             request = build_generation_request(
                 CommandKind.GEN_TEST,
                 workdir / "kernel.py",
@@ -659,9 +659,9 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                     )
                     return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
-                    with patch("triton_agent.generation.orchestration.create_runner", return_value=DummyRunner()):
+            with patch("helix.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("helix.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("helix.generation.orchestration.create_runner", return_value=DummyRunner()):
                         result = run_generation_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -670,7 +670,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
 
     def test_run_generation_request_enters_managed_mcp_scope_when_request_requires_mcp(self) -> None:
-        from triton_agent.generation.orchestration import run_generation_request
+        from helix.generation.orchestration import run_generation_request
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -689,7 +689,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             entered: list[str] = []
@@ -708,10 +708,10 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                     del request
                     return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
-                    with patch("triton_agent.generation.orchestration.managed_mcp_scope", return_value=_DummyScope()):
-                        with patch("triton_agent.generation.orchestration.create_runner", return_value=DummyRunner()):
+            with patch("helix.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("helix.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("helix.generation.orchestration.managed_mcp_scope", return_value=_DummyScope()):
+                        with patch("helix.generation.orchestration.create_runner", return_value=DummyRunner()):
                             result = run_generation_request(request)
 
             self.assertEqual(result.return_code, 0)

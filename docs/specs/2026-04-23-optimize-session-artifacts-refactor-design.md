@@ -2,12 +2,12 @@
 
 ## Context
 
-`src/triton_agent/optimize/guidance.py` currently mixes several different responsibilities behind `OptimizeGuidanceManager`:
+`src/helix/optimize/guidance.py` currently mixes several different responsibilities behind `OptimizeGuidanceManager`:
 
 - rendering temporary optimize memory files (`AGENTS.md` / `CLAUDE.md`)
 - backing up, writing, restoring, and deleting those memory files
-- creating and cleaning supervised runtime handoff files under `.triton-agent/`
-- archiving optimize session outputs under `triton-agent-logs/`
+- creating and cleaning supervised runtime handoff files under `.helix/`
+- archiving optimize session outputs under `helix-logs/`
 - recording agent session ids into `agent-sessions.jsonl`
 
 The implementation still works, but the current shape is hard to reason about because one file and one manager own several artifact domains with different lifecycles.
@@ -40,17 +40,17 @@ Owns:
 
 Does not own:
 
-- `.triton-agent/` runtime files
-- `triton-agent-logs/`
+- `.helix/` runtime files
+- `helix-logs/`
 - session recording
 
 ### `runtime_handoff`
 
 Owns:
 
-- `.triton-agent/round-brief.md`
-- `.triton-agent/supervisor-report.md`
-- `.triton-agent/history/`
+- `.helix/round-brief.md`
+- `.helix/supervisor-report.md`
+- `.helix/history/`
 - supervised runtime-tree cleanup
 
 Does not own:
@@ -63,7 +63,7 @@ Does not own:
 
 Owns:
 
-- `triton-agent-logs/triton-agent/<run-id>/`
+- `helix-logs/helix/<run-id>/`
 - `shared-guidance.md` snapshots
 - `final/`
 - `history/`
@@ -116,7 +116,7 @@ This refactor should preserve current optimize behavior:
 
 - same memory-file contents
 - same backup and restore semantics
-- same `.triton-agent/` runtime files
+- same `.helix/` runtime files
 - same archive layout
 - same session-recording behavior
 

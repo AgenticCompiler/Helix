@@ -10,7 +10,7 @@ The distill workflow calls `rebuild_pattern_index()` after successful distill or
 
 ## Design
 
-Move generated-index implementation into runtime code under `src/triton_agent/optimize_knowledge/`:
+Move generated-index implementation into runtime code under `src/helix/optimize_knowledge/`:
 
 - `pattern_index.py` owns pattern-card parsing, high-priority reminder generation, and pattern-index rendering.
 - `symptom_index.py` owns symptom-card parsing and symptom-index rendering.

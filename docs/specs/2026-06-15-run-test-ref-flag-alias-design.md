@@ -21,7 +21,7 @@
 
 - Update both CLI entrypoints:
   - `skills/triton-npu-run-eval/scripts/run-command.py`
-  - `src/triton_agent/cli.py`
+  - `src/helix/cli.py`
 - Update downstream argument consumers to read `args.ref_result` and `args.ref_operator_file`.
 - Preserve archive derivation and baseline execution behavior; this is a naming cleanup, not a workflow redesign.
 - Update MCP server argument emission to forward canonical `--ref-*` flags.

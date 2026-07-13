@@ -13,9 +13,9 @@
 ### Task 1: Add The Batch CLI Surface
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/generation.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/generation.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
@@ -51,7 +51,7 @@ Expected: PASS
 ### Task 2: Add Batch Discovery And Summary Helpers
 
 **Files:**
-- Create: `src/triton_agent/generation_batch.py`
+- Create: `src/helix/generation_batch.py`
 - Create: `tests/test_generation_batch.py`
 
 - [ ] **Step 1: Write the failing helper tests**
@@ -91,9 +91,9 @@ Expected: PASS
 ### Task 3: Wire Batch Runtime To Single-Workspace `gen-eval`
 
 **Files:**
-- Modify: `src/triton_agent/generation.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/generation_batch.py`
+- Modify: `src/helix/generation.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/generation_batch.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing batch CLI tests**
@@ -145,9 +145,9 @@ Re-read the parser and the README examples together so the documented flags and 
 
 **Files:**
 - Modify: `README.md`
-- Modify: `src/triton_agent/*`
+- Modify: `src/helix/*`
 - Modify: `tests/*`
-- Create: `src/triton_agent/generation_batch.py`
+- Create: `src/helix/generation_batch.py`
 - Create: `tests/test_generation_batch.py`
 
 - [ ] **Step 1: Run targeted suites**

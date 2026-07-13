@@ -2,7 +2,7 @@
 
 ## Summary
 
-Extend the existing OpenCode workspace config staging so the backend denies both built-in `general` and `explore` task subagents for every `opencode` launch managed by `triton-agent`.
+Extend the existing OpenCode workspace config staging so the backend denies both built-in `general` and `explore` task subagents for every `opencode` launch managed by `helix`.
 
 ## Goals
 
@@ -18,7 +18,7 @@ Extend the existing OpenCode workspace config staging so the backend denies both
 
 ## Design
 
-Update `src/triton_agent/backends/opencode.py` so `_opencode_workspace_config()` writes:
+Update `src/helix/backends/opencode.py` so `_opencode_workspace_config()` writes:
 
 - `agent.build.permission.task.general = "deny"`
 - `agent.build.permission.task.explore = "deny"`

@@ -8,7 +8,7 @@
 
 ## Goals
 
-- Treat `src/triton_agent/cli.py` as a thin executable entrypoint instead of a secondary public API surface.
+- Treat `src/helix/cli.py` as a thin executable entrypoint instead of a secondary public API surface.
 - Remove redundant passthrough helpers from `cli.py` when the same behavior already lives in dedicated modules.
 - Replace the CLI's repeated command-option branching with a table-driven command definition that is easier to extend safely.
 - Move shared backend runner flow into the backend base class so each backend focuses on command construction and true backend-specific behavior.
@@ -24,7 +24,7 @@
 
 ### CLI passthrough wrappers
 
-- `src/triton_agent/cli.py` currently re-exports helpers such as local and remote run wrappers, compare wrappers, output rendering, and backend factory creation.
+- `src/helix/cli.py` currently re-exports helpers such as local and remote run wrappers, compare wrappers, output rendering, and backend factory creation.
 - These helpers are thin one-line forwards to the real modules and make the entrypoint look like a library API.
 - Repository tests already mostly target the real command modules, so the remaining wrapper imports can be removed with focused test updates.
 
@@ -48,11 +48,11 @@
   - building the parser
   - dispatching the parsed command to the right handler
 - Remove passthrough helper functions that duplicate behavior from:
-  - `triton_agent.execution`
-  - `triton_agent.comparison`
-  - `triton_agent.generation.outputs`
-  - `triton_agent.output`
-  - `triton_agent.backends.factory`
+  - `helix.execution`
+  - `helix.comparison`
+  - `helix.generation.outputs`
+  - `helix.output`
+  - `helix.backends.factory`
 - Update tests to import those helpers from their real modules instead of through `cli.py`.
 
 ## Table-Driven Command Definitions
@@ -73,7 +73,7 @@
 
 ## Backend Base Class
 
-- Extend `src/triton_agent/backends/base.py` with a reusable runner skeleton that provides:
+- Extend `src/helix/backends/base.py` with a reusable runner skeleton that provides:
   - shared `run()` implementation
   - shared `resume()` implementation using `build_optimize_resume_prompt()`
   - shared verbose launch logging
@@ -87,7 +87,7 @@
 
 ## Testing Strategy
 
-- Update tests that currently import helper functions from `triton_agent.cli` to import from the dedicated modules instead.
+- Update tests that currently import helper functions from `helix.cli` to import from the dedicated modules instead.
 - Add or adjust CLI tests so parser behavior still covers:
   - command aliases
   - command defaults

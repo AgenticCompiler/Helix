@@ -20,10 +20,10 @@ class CompilerSourceInfo:
 
 
 def _compiler_source_cache_dir() -> Path:
-    configured = os.environ.get("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR")
+    configured = os.environ.get("HELIX_COMPILER_SOURCE_CACHE_DIR")
     if configured:
         return Path(configured).expanduser().resolve()
-    return (Path.home() / ".triton-agent").resolve()
+    return (Path.home() / ".helix").resolve()
 
 
 def default_compiler_source_path(cache_dir: Path | None = None) -> Path:

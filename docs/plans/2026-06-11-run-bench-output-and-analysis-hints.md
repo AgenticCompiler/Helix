@@ -4,7 +4,7 @@
 
 **Goal:** Add `--output` to both `run-bench` entrypoints, print an IR-inspection hint after successful `capture-ir` runs, and print a `profile-report` hint after successful `profile-bench` runs.
 
-**Architecture:** Keep the main CLI behavior unchanged except for stronger regression coverage, because `src/triton_agent/commands/execution.py` already threads `args.output` into the bench runner. Implement the missing behavior in the skill-local script surfaces (`skills/triton-npu-run-eval/scripts/run-command.py` and `skills/triton-npu-analyze-ir/scripts/capture_ir.py`) with small helper functions so the new hint text stays centralized and testable.
+**Architecture:** Keep the main CLI behavior unchanged except for stronger regression coverage, because `src/helix/commands/execution.py` already threads `args.output` into the bench runner. Implement the missing behavior in the skill-local script surfaces (`skills/triton-npu-run-eval/scripts/run-command.py` and `skills/triton-npu-analyze-ir/scripts/capture_ir.py`) with small helper functions so the new hint text stays centralized and testable.
 
 **Tech Stack:** Python 3, `argparse`, repository unit tests under `tests/`, strict skill-script `pyright`, `pytest`, `ruff`
 
@@ -17,7 +17,7 @@
 - Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
   - Owns the skill-local IR capture success output.
 - Modify: `tests/test_cli.py`
-  - Regression coverage for top-level `triton-agent run-bench`.
+  - Regression coverage for top-level `helix run-bench`.
 - Modify: `tests/test_skill_command_script.py`
   - Coverage for `skills/triton-npu-run-eval/scripts/run-command.py`.
 - Modify: `tests/test_ascend_operator_ir_analyzer.py`
@@ -53,7 +53,7 @@ Add a top-level CLI regression test in `tests/test_cli.py` near the existing `ru
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+            with patch("helix.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
                 exit_code = main(
                     [
                         "run-bench",
@@ -511,7 +511,7 @@ Apply these documentation edits:
 # README.md snippet
 - `--output ./artifacts/a_perf.txt`: write the perf artifact to an explicit path instead of the default `a_perf.txt`.
 
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
+uv run helix run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
 ```
 
 ```markdown

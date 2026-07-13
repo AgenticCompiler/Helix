@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Refactor the CLI toward a thin entrypoint architecture instead of continuing to grow `src/triton_agent/cli.py`.
+- Refactor the CLI toward a thin entrypoint architecture instead of continuing to grow `src/helix/cli.py`.
 - Use a mixed layering model:
   - a thin CLI layer for parser construction, top-level dispatch, and user-facing exit behavior
   - command-group modules for command-specific orchestration
@@ -13,7 +13,7 @@
 
 ## Motivation
 
-- `src/triton_agent/cli.py` currently combines parser definition, path resolution, optimize request construction, optimize execution lifecycle, batch orchestration, status scanning, and output rendering.
+- `src/helix/cli.py` currently combines parser definition, path resolution, optimize request construction, optimize execution lifecycle, batch orchestration, status scanning, and output rendering.
 - The file has become the default landing zone for new behavior, which makes future changes harder to reason about and easier to regress.
 - The optimize command group already contains multiple independent responsibilities that deserve explicit module boundaries.
 - This refactor should reduce the size and cognitive load of `cli.py` without forcing a risky repository-wide rewrite in one step.
@@ -29,7 +29,7 @@
 
 ## Goals
 
-- Make `src/triton_agent/cli.py` a thin entrypoint.
+- Make `src/helix/cli.py` a thin entrypoint.
 - Create explicit boundaries around optimize workflow behavior.
 - Separate optimize execution, batch orchestration, status inspection, validation, and rendering concerns.
 - Preserve current tests and behavior while improving the shape for future refactors.
@@ -56,7 +56,7 @@
 Recommended long-term structure:
 
 ```text
-src/triton_agent/
+src/helix/
   cli.py
   cli_parser.py
   cli_dispatch.py
@@ -84,8 +84,8 @@ The first iteration only needs to introduce the optimize-related parts plus any 
 
 Files:
 
-- `src/triton_agent/cli.py`
-- optionally `src/triton_agent/cli_dispatch.py`
+- `src/helix/cli.py`
+- optionally `src/helix/cli_dispatch.py`
 
 Responsibilities:
 
@@ -104,7 +104,7 @@ Rules:
 
 Files:
 
-- `src/triton_agent/commands/optimize.py`
+- `src/helix/commands/optimize.py`
 
 Responsibilities:
 
@@ -121,12 +121,12 @@ Rules:
 
 Files:
 
-- `src/triton_agent/optimize/orchestration.py`
-- `src/triton_agent/optimize/batch.py`
-- `src/triton_agent/optimize/status.py`
-- `src/triton_agent/optimize/render.py`
-- `src/triton_agent/optimize/validation.py`
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/orchestration.py`
+- `src/helix/optimize/batch.py`
+- `src/helix/optimize/status.py`
+- `src/helix/optimize/render.py`
+- `src/helix/optimize/validation.py`
+- `src/helix/optimize/models.py`
 
 Responsibilities:
 
@@ -142,7 +142,7 @@ Rules:
 
 ## Optimize Module Boundaries
 
-### `src/triton_agent/optimize/orchestration.py`
+### `src/helix/optimize/orchestration.py`
 
 Owns single-workspace optimize execution:
 
@@ -160,7 +160,7 @@ This module is the home for logic currently represented by:
 - `_run_optimize_request()`
 - optimize-specific setup and teardown surrounding `SkillLinkManager` and `OptimizeGuidanceManager`
 
-### `src/triton_agent/optimize/batch.py`
+### `src/helix/optimize/batch.py`
 
 Owns multi-workspace optimize orchestration:
 
@@ -178,7 +178,7 @@ This module is the home for logic currently represented by:
 - `_summarize_batch_optimize_failure()`
 - `_PrefixedTextStream`
 
-### `src/triton_agent/optimize/status.py`
+### `src/helix/optimize/status.py`
 
 Owns read-only optimize status inspection:
 
@@ -197,7 +197,7 @@ This module is the home for logic currently represented by:
 - `_round_number()`
 - `_mean_value()`
 
-### `src/triton_agent/optimize/render.py`
+### `src/helix/optimize/render.py`
 
 Owns optimize-related CLI output rendering:
 
@@ -212,7 +212,7 @@ This module is the home for logic currently represented by:
 - `_format_optimize_status_percent()`
 - `_render_optimize_status_results()`
 
-### `src/triton_agent/optimize/validation.py`
+### `src/helix/optimize/validation.py`
 
 Owns optimize argument validation:
 
@@ -226,7 +226,7 @@ This module is the home for logic currently represented by:
 
 If continue-mode validation grows further, it should extend this module rather than returning to `cli.py`.
 
-### `src/triton_agent/optimize/models.py`
+### `src/helix/optimize/models.py`
 
 Owns optimize-only data structures:
 
@@ -259,19 +259,19 @@ Avoid:
 
 ### Phase 1: Extract optimize domain models and helpers
 
-- Move optimize-only dataclasses from `cli.py` into `src/triton_agent/optimize/models.py`.
-- Move optimize validation into `src/triton_agent/optimize/validation.py`.
-- Move optimize rendering helpers into `src/triton_agent/optimize/render.py`.
+- Move optimize-only dataclasses from `cli.py` into `src/helix/optimize/models.py`.
+- Move optimize validation into `src/helix/optimize/validation.py`.
+- Move optimize rendering helpers into `src/helix/optimize/render.py`.
 
 ### Phase 2: Extract runtime, batch, and status behavior
 
-- Move single optimize execution lifecycle into `src/triton_agent/optimize/orchestration.py`.
-- Move batch orchestration into `src/triton_agent/optimize/batch.py`.
-- Move optimize status inspection into `src/triton_agent/optimize/status.py`.
+- Move single optimize execution lifecycle into `src/helix/optimize/orchestration.py`.
+- Move batch orchestration into `src/helix/optimize/batch.py`.
+- Move optimize status inspection into `src/helix/optimize/status.py`.
 
 ### Phase 3: Add optimize command handler
 
-- Add `src/triton_agent/commands/optimize.py` as the single command-layer entrypoint for:
+- Add `src/helix/commands/optimize.py` as the single command-layer entrypoint for:
   - `optimize`
   - `optimize-batch`
   - `optimize-status`
@@ -279,7 +279,7 @@ Avoid:
 
 ### Phase 4: Thin the CLI entrypoint
 
-- Update `src/triton_agent/cli.py` to dispatch optimize subcommands through `commands/optimize.py`.
+- Update `src/helix/cli.py` to dispatch optimize subcommands through `commands/optimize.py`.
 - Leave non-optimize commands in place for now.
 - Preserve alias normalization, parser construction, shared path resolution, and existing helper behavior until later migrations.
 

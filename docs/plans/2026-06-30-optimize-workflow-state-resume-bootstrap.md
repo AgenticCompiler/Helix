@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Unify optimize workflow-state startup so runner-managed optimize and Claude plugin optimize sessions both reuse valid runtime state, rebuild awaiting-round-start state from durable optimize artifacts, or bootstrap a fresh baseline state without duplicating durable metadata into `.triton-agent/state.json`.
+**Goal:** Unify optimize workflow-state startup so runner-managed optimize and Claude plugin optimize sessions both reuse valid runtime state, rebuild awaiting-round-start state from durable optimize artifacts, or bootstrap a fresh baseline state without duplicating durable metadata into `.helix/state.json`.
 
-**Architecture:** Keep one shared startup helper under `src/triton_agent/optimize/` as the single source of truth for runtime-state reuse, rebuild, and fresh bootstrap. Remove `source_operator` from runtime workflow state, relax baseline-phase built-in edit gating so it no longer depends on source-operator matching, and let the Claude plugin reuse the same bootstrap helper by packaging the minimal shared Python support it needs.
+**Architecture:** Keep one shared startup helper under `src/helix/optimize/` as the single source of truth for runtime-state reuse, rebuild, and fresh bootstrap. Remove `source_operator` from runtime workflow state, relax baseline-phase built-in edit gating so it no longer depends on source-operator matching, and let the Claude plugin reuse the same bootstrap helper by packaging the minimal shared Python support it needs.
 
 **Tech Stack:** Python, JavaScript, `pytest`
 
@@ -12,16 +12,16 @@
 
 ## File Structure
 
-- `src/triton_agent/optimize/workflow_state.py`: shared runtime-state bootstrap/rebuild entrypoint for runner and Claude plugin callers.
-- `src/triton_agent/optimize/resume.py`: reusable durable-artifact inspection and source-operator resolution helpers.
-- `src/triton_agent/optimize/session_artifacts.py`: runner-managed optimize startup wiring.
+- `src/helix/optimize/workflow_state.py`: shared runtime-state bootstrap/rebuild entrypoint for runner and Claude plugin callers.
+- `src/helix/optimize/resume.py`: reusable durable-artifact inspection and source-operator resolution helpers.
+- `src/helix/optimize/session_artifacts.py`: runner-managed optimize startup wiring.
 - `hooks/claude_plugin/state_bootstrap.py`: thin wrapper around the shared bootstrap helper.
 - `hooks/claude_plugin/session_start.py`: hook entrypoint that emits repair context only when startup cannot produce valid runtime state.
 - `scripts/build-claude-optimize-plugin.py`: package the shared bootstrap support into the plugin output.
 - `skills/common/ascend-npu-optimize-state/scripts/state_manage/state_machine.py`: runtime workflow-state schema and bootstrap logic.
 - `skills/common/ascend-npu-optimize-state/scripts/state_manage/submit_baseline.py`: missing-runtime-state repair bootstrap using durable baseline state.
 - `hooks/shared/tool_use_guard_policy.py`: Codex/Claude shared built-in edit policy.
-- `hooks/opencode/triton-agent-hook-guard.js`: OpenCode built-in edit policy parity.
+- `hooks/opencode/helix-hook-guard.js`: OpenCode built-in edit policy parity.
 - `tests/test_optimize_workflow_state.py`: shared bootstrap and runtime-state schema tests.
 - `tests/test_optimize_guidance.py`: runner-managed startup integration tests.
 - `tests/test_claude_optimize_plugin_hooks.py`: plugin startup and cleanup behavior tests.
@@ -40,15 +40,15 @@
 
 - [ ] Remove `source_operator` from the runtime workflow-state bootstrap payload and validation rules.
 - [ ] Keep `baseline/state.json` as the durable source for source-operator metadata.
-- [ ] Update submit-baseline repair bootstrap so it can recreate missing runtime state without copying `source_operator` into `.triton-agent/state.json`.
+- [ ] Update submit-baseline repair bootstrap so it can recreate missing runtime state without copying `source_operator` into `.helix/state.json`.
 - [ ] Update tests so successful runtime-state payload assertions stop expecting `source_operator`.
 
 ### Task 2: Share bootstrap semantics across runner and Claude plugin
 
 **Files:**
-- Modify: `src/triton_agent/optimize/workflow_state.py`
-- Modify: `src/triton_agent/optimize/resume.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/workflow_state.py`
+- Modify: `src/helix/optimize/resume.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
 - Modify: `hooks/claude_plugin/state_bootstrap.py`
 - Modify: `hooks/claude_plugin/session_start.py`
 - Modify: `scripts/build-claude-optimize-plugin.py`
@@ -58,7 +58,7 @@
 - Test: `tests/test_claude_optimize_plugin.py`
 
 - [ ] Add a shared helper that:
-  - reuses valid `.triton-agent/state.json`
+  - reuses valid `.helix/state.json`
   - rebuilds awaiting-round-start state from durable resumable artifacts
   - bootstraps fresh baseline state otherwise
 - [ ] Support two bootstrap call shapes:
@@ -71,15 +71,15 @@
 
 **Files:**
 - Modify: `hooks/shared/tool_use_guard_policy.py`
-- Modify: `hooks/opencode/triton-agent-hook-guard.js`
+- Modify: `hooks/opencode/helix-hook-guard.js`
 - Test: `tests/test_codex_pretooluse_guard.py`
 - Test: `tests/test_opencode_hook_guard.py`
 
 - [ ] Remove baseline-phase dependence on `state.source_operator`.
 - [ ] Allow ordinary in-workspace built-in edits during `baseline` phase.
 - [ ] Keep hard denials for protected internal paths in every phase:
-  - `.triton-agent/`
-  - `triton-agent-logs/`
+  - `.helix/`
+  - `helix-logs/`
   - backend-managed hook directories
   - staged skill implementation directories
 - [ ] Keep `awaiting_round_start` and `round_active` semantics unchanged apart from the runtime-state schema adjustment.
@@ -95,7 +95,7 @@
 - Modify: `tests/test_opencode_hook_guard.py`
 - Modify: `tests/test_skill_command_script.py`
 
-- [ ] Replace plugin expectations of “create `.triton-agent/` only and return repair guidance” with “create or rebuild `state.json` when possible”.
+- [ ] Replace plugin expectations of “create `.helix/` only and return repair guidance” with “create or rebuild `state.json` when possible”.
 - [ ] Add coverage for plugin rebuild from resumable durable artifacts with no source-operator hook input.
 - [ ] Add coverage that baseline-phase edits no longer require source-operator matching.
 - [ ] Add coverage that protected hidden runtime and log paths are still denied during baseline.

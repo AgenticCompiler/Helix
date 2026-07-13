@@ -4,8 +4,8 @@
 
 - Rename the user-facing command `optimize-status` to `status`.
 - Do not keep compatibility aliases for the old command name or old snake_case spelling.
-- Move status inspection and status rendering code out of `src/triton_agent/optimize/` into a dedicated `src/triton_agent/status/` package.
-- Give status its own command entrypoint module, `src/triton_agent/commands/status.py`, instead of keeping the handler under optimize commands.
+- Move status inspection and status rendering code out of `src/helix/optimize/` into a dedicated `src/helix/status/` package.
+- Give status its own command entrypoint module, `src/helix/commands/status.py`, instead of keeping the handler under optimize commands.
 
 ## Goals
 
@@ -22,9 +22,9 @@
 
 ## User-Facing Behavior
 
-- `uv run triton-agent status -i operators_root`
-- `uv run triton-agent status -i .`
-- `uv run triton-agent status -i operators_root --format markdown`
+- `uv run helix status -i operators_root`
+- `uv run helix status -i .`
+- `uv run helix status -i operators_root --format markdown`
 
 The old command:
 
@@ -52,9 +52,9 @@ The command remains read-only:
 
 Create a dedicated package:
 
-- `src/triton_agent/status/__init__.py`
-- `src/triton_agent/status/core.py`
-- `src/triton_agent/status/render.py`
+- `src/helix/status/__init__.py`
+- `src/helix/status/core.py`
+- `src/helix/status/render.py`
 
 Move status-specific helpers into that package:
 
@@ -63,16 +63,16 @@ Move status-specific helpers into that package:
 
 Keep optimize-owned rendering separate:
 
-- `render_batch_optimize_results()` stays under `src/triton_agent/optimize/` because it belongs to batch optimize execution, not status reporting
+- `render_batch_optimize_results()` stays under `src/helix/optimize/` because it belongs to batch optimize execution, not status reporting
 
 Create a dedicated command entrypoint module:
 
-- `src/triton_agent/commands/status.py`
+- `src/helix/commands/status.py`
 
 After the move:
 
-- `src/triton_agent/commands/optimize.py` should no longer own the status handler
-- `src/triton_agent/verification/core.py` should depend on `triton_agent.status.core` for best-round selection instead of `triton_agent.optimize.status`
+- `src/helix/commands/optimize.py` should no longer own the status handler
+- `src/helix/verification/core.py` should depend on `helix.status.core` for best-round selection instead of `helix.optimize.status`
 
 ## Behavior Preservation
 
@@ -90,8 +90,8 @@ Update tests to assert:
 
 - `status` parses and dispatches to `CommandKind.STATUS`
 - `optimize-status` is absent from help output and no longer parses
-- status helpers import from `triton_agent.status.core`
-- status rendering imports from `triton_agent.status.render`
+- status helpers import from `helix.status.core`
+- status rendering imports from `helix.status.render`
 - verification imports the renamed status module path
 
 Update user-facing docs and design docs so they use `status` terminology consistently when referring to the command.

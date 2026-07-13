@@ -7,8 +7,8 @@ from pathlib import Path
 
 from bench_contract import resolve_bench_kernel_resolution
 from env_registry import (
-    TRITON_AGENT_BENCH_TIMEOUT_SECONDS,
-    TRITON_AGENT_SIMULATOR_SOC_VERSION,
+    HELIX_BENCH_TIMEOUT_SECONDS,
+    HELIX_SIMULATOR_SOC_VERSION,
     TRITON_ALWAYS_COMPILE,
 )
 from result_payload import ResultPayload
@@ -16,11 +16,11 @@ from run_runtime import env_int, local_python_executable, run_streaming_process
 
 
 def _simulator_timeout() -> int:
-    return env_int(TRITON_AGENT_BENCH_TIMEOUT_SECONDS, 900)
+    return env_int(HELIX_BENCH_TIMEOUT_SECONDS, 900)
 
 
 def _simulator_soc_version() -> str:
-    return os.environ.get(TRITON_AGENT_SIMULATOR_SOC_VERSION, "Ascend950PR_9599")
+    return os.environ.get(HELIX_SIMULATOR_SOC_VERSION, "Ascend950PR_9599")
 
 
 def _bench_runtime_script_path() -> Path:
@@ -29,7 +29,7 @@ def _bench_runtime_script_path() -> Path:
 
 def _load_bench_runtime_module():
     script_path = _bench_runtime_script_path()
-    module_name = f"triton_agent_simulator_runtime_{script_path.stem}"
+    module_name = f"helix_simulator_runtime_{script_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load bench runtime helper: {script_path}")

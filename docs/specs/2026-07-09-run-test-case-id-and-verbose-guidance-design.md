@@ -12,7 +12,7 @@ Add optional `--case-id` support to `run-test` so agents can rerun one different
 
 ## Goals
 
-- Let both the top-level `triton-agent run-test` command and the staged `ascend-npu-run-eval` helper commands accept `--case-id <id>`.
+- Let both the top-level `helix run-test` command and the staged `ascend-npu-run-eval` helper commands accept `--case-id <id>`.
 - Keep default `run-test` behavior unchanged when `--case-id` is omitted.
 - Make `--ref-operator-file` auto-runs honor the same selected case so one-case repair loops stay comparable.
 - Reuse an existing reference payload case when `--case-id` is paired with `--ref-result` or `--ref-operator-file` and the referenced payload already contains that case.
@@ -30,7 +30,7 @@ Add optional `--case-id` support to `run-test` so agents can rerun one different
 ### CLI surface
 
 - Add optional `--case-id` to:
-  - `triton-agent run-test`
+  - `helix run-test`
   - `skills/common/ascend-npu-run-eval/scripts/cli.py` run-test subcommands
 - Accept the flag for all run-test entrypoints so the public CLI and staged helper stay aligned.
 - Reject `--case-id` in standalone mode because standalone tests do not expose a stable selectable case list.

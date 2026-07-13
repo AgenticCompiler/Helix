@@ -66,11 +66,11 @@ Expected: PASS for all commands.
 ### Task 3: Remove Legacy Compare-Level Wiring From CLI And Command Surfaces
 
 **Files:**
-- Modify: `src/triton_agent/commands/comparison.py`
-- Modify: `src/triton_agent/commands/execution.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/commands/comparison.py`
+- Modify: `src/helix/commands/execution.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/run_eval_mcp_server.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run-command.py`
 - Modify: `tests/test_comparison_commands.py`
 - Modify: `tests/test_execution_commands.py`

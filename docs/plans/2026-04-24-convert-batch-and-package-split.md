@@ -4,7 +4,7 @@
 
 **Goal:** Rename `gen-convert` to `convert`, add `convert-batch`, and move convert runtime ownership into a dedicated `convert/` package.
 
-**Architecture:** Treat this as one coherent rename-plus-boundary correction. The CLI surface moves to `convert` and `convert-batch`, convert-specific orchestration and batch runtime move into `src/triton_agent/convert/`, and `generation/` stays focused on test, benchmark, and eval flows. Batch convert should reuse the existing batch workspace-discovery primitives and mirror the existing prefixed streaming summary style.
+**Architecture:** Treat this as one coherent rename-plus-boundary correction. The CLI surface moves to `convert` and `convert-batch`, convert-specific orchestration and batch runtime move into `src/helix/convert/`, and `generation/` stays focused on test, benchmark, and eval flows. Batch convert should reuse the existing batch workspace-discovery primitives and mirror the existing prefixed streaming summary style.
 
 **Tech Stack:** Python 3, `argparse`, `unittest`, existing batch workspace helpers, Markdown docs and skills
 
@@ -12,20 +12,20 @@
 
 ## File Map
 
-- Create: `src/triton_agent/commands/convert.py`
-- Create: `src/triton_agent/convert/__init__.py`
-- Create: `src/triton_agent/convert/batch.py`
-- Create: `src/triton_agent/convert/orchestration.py`
-- Create: `src/triton_agent/convert/outputs.py`
+- Create: `src/helix/commands/convert.py`
+- Create: `src/helix/convert/__init__.py`
+- Create: `src/helix/convert/batch.py`
+- Create: `src/helix/convert/orchestration.py`
+- Create: `src/helix/convert/outputs.py`
 - Create: `tests/test_convert_commands.py`
 - Modify: `README.md`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/generation/outputs.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/paths.py`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/generation/outputs.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/paths.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_commands.py`
 - Modify: `tests/test_generation_contracts.py`
@@ -78,15 +78,15 @@ def test_help_keeps_only_canonical_convert_commands(self) -> None:
     self.assertNotIn("gen_convert", help_text)
 ```
 
-- [ ] **Step 3: Add convert-command tests that expect a dedicated `triton_agent.commands.convert` module**
+- [ ] **Step 3: Add convert-command tests that expect a dedicated `helix.commands.convert` module**
 
 ```python
 def test_convert_command_module_exists(self) -> None:
-    self.assertIsNotNone(importlib.util.find_spec("triton_agent.commands.convert"))
+    self.assertIsNotNone(importlib.util.find_spec("helix.commands.convert"))
 
 
 def test_generation_command_module_no_longer_exports_convert_handlers(self) -> None:
-    import triton_agent.commands.generation as generation_commands
+    import helix.commands.generation as generation_commands
 
     self.assertFalse(hasattr(generation_commands, "handle_gen_convert"))
 ```
@@ -106,18 +106,18 @@ uv run python -m unittest \
 Expected:
 - parser tests fail because `convert` and `convert-batch` do not exist yet
 - `gen-convert` still parses
-- `triton_agent.commands.convert` does not exist yet
+- `helix.commands.convert` does not exist yet
 
 ## Task 2: Rename The Command Surface And Routing
 
 **Files:**
-- Create: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/models.py`
+- Create: `src/helix/commands/convert.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/models.py`
 - Modify: `tests/test_cli.py`
 
-- [ ] **Step 1: Replace convert command kinds in `src/triton_agent/models.py`**
+- [ ] **Step 1: Replace convert command kinds in `src/helix/models.py`**
 
 ```python
 class CommandKind(str, Enum):
@@ -136,12 +136,12 @@ COMMAND_TO_SKILL = {
     CommandKind.CONVERT_BATCH: "",
 ```
 
-- [ ] **Step 2: Create `src/triton_agent/commands/convert.py` with dedicated single and batch handlers**
+- [ ] **Step 2: Create `src/helix/commands/convert.py` with dedicated single and batch handlers**
 
 ```python
-from triton_agent.convert.batch import run_convert_batch
-from triton_agent.convert.orchestration import build_convert_request, run_convert_request
-from triton_agent.generation.models import GenerationOptions
+from helix.convert.batch import run_convert_batch
+from helix.convert.orchestration import build_convert_request, run_convert_request
+from helix.generation.models import GenerationOptions
 
 
 def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -159,11 +159,11 @@ def handle_convert_batch(parser: argparse.ArgumentParser, args: argparse.Namespa
     return run_convert_batch(root, convert_options_from_args(args), max_concurrency=args.max_concurrency)
 ```
 
-- [ ] **Step 3: Update `src/triton_agent/cli.py` to register `convert` and `convert-batch` and drop `gen-convert`**
+- [ ] **Step 3: Update `src/helix/cli.py` to register `convert` and `convert-batch` and drop `gen-convert`**
 
 ```python
-from triton_agent.commands.convert import handle_convert, handle_convert_batch
-from triton_agent.commands.generation import handle_gen_bench, handle_gen_eval, handle_gen_eval_batch, handle_gen_test
+from helix.commands.convert import handle_convert, handle_convert_batch
+from helix.commands.generation import handle_gen_bench, handle_gen_eval, handle_gen_eval_batch, handle_gen_test
 ```
 
 ```python
@@ -197,7 +197,7 @@ CommandKind.CONVERT_BATCH: _CommandSpec(
 ),
 ```
 
-- [ ] **Step 4: Remove convert routing from `src/triton_agent/commands/generation.py`**
+- [ ] **Step 4: Remove convert routing from `src/helix/commands/generation.py`**
 
 ```python
 def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -227,10 +227,10 @@ Expected:
 
 ```bash
 git add \
-  src/triton_agent/models.py \
-  src/triton_agent/cli.py \
-  src/triton_agent/commands/convert.py \
-  src/triton_agent/commands/generation.py \
+  src/helix/models.py \
+  src/helix/cli.py \
+  src/helix/commands/convert.py \
+  src/helix/commands/generation.py \
   tests/test_cli.py \
   tests/test_convert_commands.py
 git commit -m "feat: rename convert commands"
@@ -239,13 +239,13 @@ git commit -m "feat: rename convert commands"
 ## Task 3: Move Single-Workspace Convert Runtime Into `convert/`
 
 **Files:**
-- Create: `src/triton_agent/convert/__init__.py`
-- Create: `src/triton_agent/convert/orchestration.py`
-- Create: `src/triton_agent/convert/outputs.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/generation/outputs.py`
-- Modify: `src/triton_agent/paths.py`
-- Modify: `src/triton_agent/prompts.py`
+- Create: `src/helix/convert/__init__.py`
+- Create: `src/helix/convert/orchestration.py`
+- Create: `src/helix/convert/outputs.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/generation/outputs.py`
+- Modify: `src/helix/paths.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_generation_commands.py`
 - Modify: `tests/test_convert_commands.py`
 
@@ -253,11 +253,11 @@ git commit -m "feat: rename convert commands"
 
 ```python
 def test_convert_orchestration_module_exists(self) -> None:
-    self.assertIsNotNone(importlib.util.find_spec("triton_agent.convert.orchestration"))
+    self.assertIsNotNone(importlib.util.find_spec("helix.convert.orchestration"))
 
 
 def test_convert_outputs_module_exists(self) -> None:
-    self.assertIsNotNone(importlib.util.find_spec("triton_agent.convert.outputs"))
+    self.assertIsNotNone(importlib.util.find_spec("helix.convert.outputs"))
 ```
 
 ```python
@@ -293,7 +293,7 @@ def test_build_convert_request_uses_convert_only_skills(self) -> None:
     )
 ```
 
-- [ ] **Step 2: Create `src/triton_agent/convert/outputs.py` and move convert output resolution there**
+- [ ] **Step 2: Create `src/helix/convert/outputs.py` and move convert output resolution there**
 
 ```python
 def resolve_convert_output_path(input_path: Path, *, explicit_output: str | None) -> Path:
@@ -313,7 +313,7 @@ def prepare_convert_target(output_path: Path, *, force_overwrite: bool) -> list[
     return [f"removed existing output file {output_path}"]
 ```
 
-- [ ] **Step 3: Create `src/triton_agent/convert/orchestration.py` and move convert request building there**
+- [ ] **Step 3: Create `src/helix/convert/orchestration.py` and move convert request building there**
 
 ```python
 CONVERT_STAGED_SKILLS = (
@@ -405,13 +405,13 @@ Expected:
 
 ```bash
 git add \
-  src/triton_agent/convert/__init__.py \
-  src/triton_agent/convert/orchestration.py \
-  src/triton_agent/convert/outputs.py \
-  src/triton_agent/paths.py \
-  src/triton_agent/prompts.py \
-  src/triton_agent/generation/orchestration.py \
-  src/triton_agent/generation/outputs.py \
+  src/helix/convert/__init__.py \
+  src/helix/convert/orchestration.py \
+  src/helix/convert/outputs.py \
+  src/helix/paths.py \
+  src/helix/prompts.py \
+  src/helix/generation/orchestration.py \
+  src/helix/generation/outputs.py \
   tests/test_generation_commands.py \
   tests/test_convert_commands.py
 git commit -m "refactor: move convert runtime into convert package"
@@ -420,8 +420,8 @@ git commit -m "refactor: move convert runtime into convert package"
 ## Task 4: Add `convert-batch`
 
 **Files:**
-- Create: `src/triton_agent/convert/batch.py`
-- Modify: `src/triton_agent/commands/convert.py`
+- Create: `src/helix/convert/batch.py`
+- Modify: `src/helix/commands/convert.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_convert_commands.py`
 - Modify: `README.md`
@@ -455,7 +455,7 @@ def test_convert_batch_renders_summary(self) -> None:
     self.assertIn("Summary: 1 succeeded, 1 failed", output)
 ```
 
-- [ ] **Step 2: Implement `src/triton_agent/convert/batch.py` using existing batch helpers**
+- [ ] **Step 2: Implement `src/helix/convert/batch.py` using existing batch helpers**
 
 ```python
 _BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_")
@@ -502,7 +502,7 @@ return run_convert_batch(
 ```
 
 ```md
-uv run triton-agent convert-batch --input operators_root
+uv run helix convert-batch --input operators_root
 ```
 
 - [ ] **Step 5: Run focused batch tests**
@@ -520,8 +520,8 @@ Expected:
 
 ```bash
 git add \
-  src/triton_agent/convert/batch.py \
-  src/triton_agent/commands/convert.py \
+  src/helix/convert/batch.py \
+  src/helix/commands/convert.py \
   tests/test_convert_commands.py \
   tests/test_cli.py \
   README.md
@@ -553,17 +553,17 @@ def test_readme_uses_convert_command_names(self) -> None:
 ```
 
 ```md
-uv run triton-agent convert --input a.py
-uv run triton-agent convert-batch --input operators_root
+uv run helix convert --input a.py
+uv run helix convert-batch --input operators_root
 ```
 
 - [ ] **Step 3: Update top-level CLI examples to remove `gen-convert`**
 
 ```python
 _TOP_LEVEL_EXAMPLES = (
-    "triton-agent gen-test -i kernel.py",
-    "triton-agent convert -i kernel.py",
-    "triton-agent convert-batch -i kernels",
+    "helix gen-test -i kernel.py",
+    "helix convert -i kernel.py",
+    "helix convert-batch -i kernels",
 ```
 
 - [ ] **Step 4: Run contract and help-text verification**
@@ -631,6 +631,6 @@ Expected:
 - [ ] **Step 4: Create the final integration commit**
 
 ```bash
-git add README.md src/triton_agent tests
+git add README.md src/helix tests
 git commit -m "feat: split convert workflow and add batch support"
 ```

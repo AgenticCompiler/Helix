@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the flat generation modules with a focused `triton_agent/generation/` package without changing CLI behavior.
+**Goal:** Replace the flat generation modules with a focused `helix/generation/` package without changing CLI behavior.
 
 **Architecture:** Create a small `generation/` package that separates domain options, output-path handling, single-workspace runtime, and batch orchestration. Update repository imports to use the new package layout, then remove the old top-level generation modules after the tests prove behavior is unchanged.
 
@@ -20,10 +20,10 @@
 - [ ] **Step 1: Write failing tests that import generation helpers from the planned package layout**
 
 Add focused coverage for:
-- `triton_agent.generation.models.GenerationOptions`
-- `triton_agent.generation.outputs.resolve_generation_output_path`
-- `triton_agent.generation.runtime.build_generation_request`
-- `triton_agent.generation.batch.run_gen_eval_batch`
+- `helix.generation.models.GenerationOptions`
+- `helix.generation.outputs.resolve_generation_output_path`
+- `helix.generation.runtime.build_generation_request`
+- `helix.generation.batch.run_gen_eval_batch`
 
 - [ ] **Step 2: Run the focused tests to verify the package imports fail before implementation**
 
@@ -33,34 +33,34 @@ Run:
 uv run python -m unittest tests.test_generation_commands tests.test_generation_batch -v
 ```
 
-Expected: FAIL with import errors for the new `triton_agent.generation.*` modules.
+Expected: FAIL with import errors for the new `helix.generation.*` modules.
 
 ### Task 2: Create the generation package and move single-workspace helpers
 
 **Files:**
-- Create: `src/triton_agent/generation/__init__.py`
-- Create: `src/triton_agent/generation/models.py`
-- Create: `src/triton_agent/generation/outputs.py`
-- Create: `src/triton_agent/generation/orchestration.py`
+- Create: `src/helix/generation/__init__.py`
+- Create: `src/helix/generation/models.py`
+- Create: `src/helix/generation/outputs.py`
+- Create: `src/helix/generation/orchestration.py`
 - Modify: `tests/test_generation_commands.py`
 
-- [ ] **Step 1: Add `GenerationOptions` to `src/triton_agent/generation/models.py`**
+- [ ] **Step 1: Add `GenerationOptions` to `src/helix/generation/models.py`**
 
-- [ ] **Step 2: Move output-path and overwrite helpers into `src/triton_agent/generation/outputs.py`**
+- [ ] **Step 2: Move output-path and overwrite helpers into `src/helix/generation/outputs.py`**
 
 Move:
 - `resolve_generation_output_path`
 - `prepare_generation_target`
 - `prepare_generation_targets`
 
-- [ ] **Step 3: Move request-building and runner invocation into `src/triton_agent/generation/orchestration.py`**
+- [ ] **Step 3: Move request-building and runner invocation into `src/helix/generation/orchestration.py`**
 
 Move:
 - `GEN_EVAL_STAGED_SKILLS`
 - `build_generation_request`
 - `run_generation_request`
 
-- [ ] **Step 4: Re-export the repository-facing generation symbols from `src/triton_agent/generation/__init__.py`**
+- [ ] **Step 4: Re-export the repository-facing generation symbols from `src/helix/generation/__init__.py`**
 
 - [ ] **Step 5: Run focused generation command tests**
 
@@ -75,13 +75,13 @@ Expected: PASS
 ### Task 3: Move batch orchestration under the generation package
 
 **Files:**
-- Create: `src/triton_agent/generation/batch.py`
+- Create: `src/helix/generation/batch.py`
 - Modify: `tests/test_generation_batch.py`
 - Modify: `tests/test_cli.py`
 
-- [ ] **Step 1: Write the imports in tests against `triton_agent.generation.batch`**
+- [ ] **Step 1: Write the imports in tests against `helix.generation.batch`**
 
-- [ ] **Step 2: Move `gen-eval-batch` orchestration from the top-level module into `src/triton_agent/generation/batch.py`**
+- [ ] **Step 2: Move `gen-eval-batch` orchestration from the top-level module into `src/helix/generation/batch.py`**
 
 Keep:
 - workspace discovery behavior
@@ -102,14 +102,14 @@ Expected: PASS
 ### Task 4: Update command handlers and delete the old top-level generation modules
 
 **Files:**
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/cli.py`
-- Delete: `src/triton_agent/generation.py`
-- Delete: `src/triton_agent/generation_batch.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/cli.py`
+- Delete: `src/helix/generation.py`
+- Delete: `src/helix/generation_batch.py`
 
 - [ ] **Step 1: Update generation command handlers to import from the new package modules**
 
-- [ ] **Step 2: Update any remaining repository imports from `triton_agent.generation` or `triton_agent.generation_batch`**
+- [ ] **Step 2: Update any remaining repository imports from `helix.generation` or `helix.generation_batch`**
 
 - [ ] **Step 3: Remove the old top-level generation files once all imports are updated**
 

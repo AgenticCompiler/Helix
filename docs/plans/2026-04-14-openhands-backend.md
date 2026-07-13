@@ -29,7 +29,7 @@ Expected: FAIL because `openhands` is not accepted and the factory does not know
 
 - [ ] **Step 3: Write minimal implementation**
 
-Update `src/triton_agent/cli.py` and `src/triton_agent/backends/factory.py` so `openhands` is accepted and maps to the new backend class.
+Update `src/helix/cli.py` and `src/helix/backends/factory.py` so `openhands` is accepted and maps to the new backend class.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -40,7 +40,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_skills.py`
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/skills.py`
 - Test: `tests/test_skills.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -64,10 +64,10 @@ Expected: PASS
 ### Task 3: Build The OpenHands Runner With TDD
 
 **Files:**
-- Create: `src/triton_agent/backends/openhands.py`
+- Create: `src/helix/backends/openhands.py`
 - Create: `tests/test_openhands_runner.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/commands/optimize.py`
 - Modify: `pyproject.toml`
 
 - [ ] **Step 1: Write the failing tests**

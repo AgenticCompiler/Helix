@@ -1,4 +1,0 @@
-interface:
-  display_name: "Triton Agent PyInstaller Packager"
-  short_description: "Package triton-agent into OS-specific PyInstaller onefile executables."
-  default_prompt: "Package triton-agent for the current operating system as a PyInstaller onefile executable, embed the skills tree, validate the executable, and summarize produced artifacts."

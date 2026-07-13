@@ -23,8 +23,8 @@ At the same time, the helper CLI still permits option combinations that are only
 
 ## Non-Goals
 
-- Do not add a top-level repository command such as `triton-agent run-test-convert`.
-- Do not redesign `src/triton_agent/commands/convert.py` to shell out through the skill-local helper CLI.
+- Do not add a top-level repository command such as `helix run-test-convert`.
+- Do not redesign `src/helix/commands/convert.py` to shell out through the skill-local helper CLI.
 - Do not remove the existing `--baseline-operator-file` alias; keep it as a compatibility synonym for `--ref-operator-file`.
 - Do not change benchmark, profiling, `compare-result`, or non-run-test execution flows.
 
@@ -196,7 +196,7 @@ In particular, the `SKILL.md` command index line that currently lists ``run-test
 | `skills/common/ascend-npu-run-eval/references/run-test.md` | Add convert guidance and strict mode/reference rules |
 | `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md` | Switch convert validation guidance to `run-test-convert` |
 | `skills/tilelang/tilelang-npu-convert-pytorch-operator/SKILL.md` | Switch convert validation guidance to `run-test-convert` |
-| `src/triton_agent/eval/mcp_server.py` | Expose the new MCP tool and route it to the staged helper |
+| `src/helix/eval/mcp_server.py` | Expose the new MCP tool and route it to the staged helper |
 | `tests/test_skill_command_script.py` | Cover parser, validation, and dispatch behavior for `run-test-convert` |
 | `tests/test_run_eval_mcp_server.py` | Cover tool registration and argument forwarding |
 | `tests/test_run_eval_mcp_server_tool_metadata.py` | Lock the new MCP tool schema, baseline-vs-convert/optimize parameter differences, and hidden-parameter behavior |

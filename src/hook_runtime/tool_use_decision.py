@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shared tool-use guard policy for triton-agent optimize runs.
+Shared tool-use guard policy for helix optimize runs.
 
 This module contains the backend-agnostic decision logic used by Codex and
 Claude `PreToolUse` wrappers. It decides whether a tool invocation should be
@@ -40,10 +40,10 @@ EDIT_TOOL_PATH_KEYS = ("file_path", "path", "filePath", "notebook_path", "notebo
 SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
 SHELL_WRAPPERS = {"bash", "sh", "zsh"}
 PROTECTED_RELATIVE_PATH_PREFIXES = (
-    ".triton-agent/",
-    "triton-agent-logs/",
+    ".helix/",
+    "helix-logs/",
 )
-WORKFLOW_STATE_RELATIVE_PATH = Path(".triton-agent") / "state.json"
+WORKFLOW_STATE_RELATIVE_PATH = Path(".helix") / "state.json"
 ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = frozenset(
     {
         "opt-note.md",
@@ -235,9 +235,9 @@ def _active_round_dir(state: dict[str, Any]) -> str | None:
 
 
 def _is_protected_runtime_edit_path(workspace_relative_path: str) -> bool:
-    if workspace_relative_path == ".triton-agent" or workspace_relative_path.startswith(".triton-agent/"):
+    if workspace_relative_path == ".helix" or workspace_relative_path.startswith(".helix/"):
         return True
-    if workspace_relative_path == "triton-agent-logs" or workspace_relative_path.startswith("triton-agent-logs/"):
+    if workspace_relative_path == "helix-logs" or workspace_relative_path.startswith("helix-logs/"):
         return True
     if workspace_relative_path.startswith(".codex/skills/") and "/scripts/" in workspace_relative_path:
         return True
@@ -245,11 +245,11 @@ def _is_protected_runtime_edit_path(workspace_relative_path: str) -> bool:
         return True
     if workspace_relative_path.startswith(".opencode/skills/") and "/scripts/" in workspace_relative_path:
         return True
-    if workspace_relative_path.startswith(".codex/triton-agent-hooks/"):
+    if workspace_relative_path.startswith(".codex/helix-hooks/"):
         return True
-    if workspace_relative_path.startswith(".claude/triton-agent-hooks/"):
+    if workspace_relative_path.startswith(".claude/helix-hooks/"):
         return True
-    if workspace_relative_path.startswith(".opencode/triton-agent-hooks/"):
+    if workspace_relative_path.startswith(".opencode/helix-hooks/"):
         return True
     return False
 
@@ -281,7 +281,7 @@ def _protected_runtime_edit_denial(workspace_relative_path: str) -> str:
     return (
         "Built-in edit tool blocked by optimize workflow policy. "
         f"`{workspace_relative_path}` is a protected internal runtime path. "
-        "Do not edit `.triton-agent/`, `triton-agent-logs/`, or backend-managed staged hook/skill implementation files."
+        "Do not edit `.helix/`, `helix-logs/`, or backend-managed staged hook/skill implementation files."
     )
 
 
@@ -466,8 +466,8 @@ def _looks_like_path(token: str) -> bool:
     if token.startswith("-"):
         return False
     return (
-        token == ".triton-agent"
-        or token == "triton-agent-logs"
+        token == ".helix"
+        or token == "helix-logs"
         or token == "~"
         or token.startswith("~/")
         or token.startswith("/")

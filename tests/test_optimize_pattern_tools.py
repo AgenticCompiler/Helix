@@ -9,8 +9,8 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from triton_agent.optimize.pattern_reminders import build_high_priority_pattern_reminder_lines
-from triton_agent.optimize_knowledge import pattern_index
+from helix.optimize.pattern_reminders import build_high_priority_pattern_reminder_lines
+from helix.optimize_knowledge import pattern_index
 
 
 class _PatternIndexModule:
@@ -231,10 +231,10 @@ Short summary.
             patterns_dir.mkdir(parents=True)
 
             with patch(
-                "triton_agent.optimize.pattern_reminders.resolve_skill_source_dir",
+                "helix.optimize.pattern_reminders.resolve_skill_source_dir",
                 return_value=skill_root,
             ), patch(
-                "triton_agent.optimize.pattern_reminders.build_high_priority_reminder_lines",
+                "helix.optimize.pattern_reminders.build_high_priority_reminder_lines",
                 return_value=["loaded from patterns"],
             ) as build_lines:
                 lines = build_high_priority_pattern_reminder_lines("demo-skill")

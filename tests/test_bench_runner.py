@@ -116,7 +116,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
     def test_load_bench_runtime_module_concurrent_calls_share_one_initialized_module(self) -> None:
         module = load_bench_runner_module()
-        module_name = "triton_agent_bench_runtime_fake_runtime"
+        module_name = "helix_bench_runtime_fake_runtime"
         cached_runtime = getattr(module, "_bench_runtime_module_cache", None)
         if hasattr(module, "_bench_runtime_module_cache"):
             setattr(module, "_bench_runtime_module_cache", None)
@@ -260,7 +260,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             with patch.dict(
                 module.os.environ,
                 {
-                    "TRITON_AGENT_DEBUG": "true",
+                    "HELIX_DEBUG": "true",
                     "ASCEND_RT_VISIBLE_DEVICES": "5",
                 },
                 clear=False,
@@ -279,7 +279,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
         self.assertEqual(result["return_code"], 0)
         self.assertEqual(resolved_perf, perf_file)
-        self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
+        self.assertIn("[HELIX_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
 
     def test_run_local_bench_torch_npu_profiler_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
@@ -368,7 +368,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 workspace_root, cleanup = module._create_local_case_workspace(
-                    prefix="triton-agent-case-test-",
+                    prefix="helix-case-test-",
                     input_paths=[bench_file, json_file, operator_file],
                     flat_input_paths=[support_file],
                     source_root=source_root,
@@ -511,7 +511,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                         None if extra_env is None else extra_env.get("ASCEND_RT_VISIBLE_DEVICES"),
                         None
                         if extra_env is None
-                        else extra_env.get("TRITON_AGENT_BENCH_OUTPUT_DIR"),
+                        else extra_env.get("HELIX_BENCH_OUTPUT_DIR"),
                         case_id,
                         command,
                     )
@@ -574,7 +574,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     side_effect=_fake_buffered_process,
                 ), patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./kept-profile"},
+                    {"HELIX_BENCH_OUTPUT_DIR": "./kept-profile"},
                     clear=False,
                 ):
                     original_cwd = Path.cwd()
@@ -719,7 +719,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 side_effect=_fake_buffered_process,
             ), patch.dict(
                 os.environ,
-                {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./kept-profile"},
+                {"HELIX_BENCH_OUTPUT_DIR": "./kept-profile"},
                 clear=False,
             ):
                 original_cwd = Path.cwd()
@@ -1481,7 +1481,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 )
                 return make_skill_result(0, "", "")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
+            with patch.dict(os.environ, {"HELIX_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1597,7 +1597,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             original_umask = os.umask(0o002)
             try:
-                with patch.dict(os.environ, {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
+                with patch.dict(os.environ, {"HELIX_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
                     module,
                     "run_streaming_process",
                     side_effect=_fake_streaming,

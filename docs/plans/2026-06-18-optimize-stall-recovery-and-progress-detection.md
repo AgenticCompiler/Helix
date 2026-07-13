@@ -13,13 +13,13 @@
 ### Task 1: Lock Shared Retry Opt-Out And Process-Runner Progress Hooks With Tests
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_process_runner.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/models.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/backends/base.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/process_runner.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_process_runner.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_process_runner.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/models.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/backends/base.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/process_runner.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_process_runner.py`
 
 - [ ] **Step 1: Write a failing backend test for per-request retry opt-out**
 
@@ -90,7 +90,7 @@ Expected: FAIL because `AgentRequest` does not yet accept `disable_backend_retry
 
 - [ ] **Step 4: Add the minimal request-model fields**
 
-Update `src/triton_agent/models.py` to add explicit fields that match the approved design:
+Update `src/helix/models.py` to add explicit fields that match the approved design:
 
 ```python
 @dataclass
@@ -109,7 +109,7 @@ Keep the new config object simple and declarative. Do not store callbacks on the
 
 - [ ] **Step 5: Gate shared retry on the request opt-out**
 
-Change `src/triton_agent/backends/base.py` so the shared retry loop checks the request:
+Change `src/helix/backends/base.py` so the shared retry loop checks the request:
 
 ```python
 while (
@@ -132,7 +132,7 @@ Do not change `_is_transient_agent_failure()` semantics in this task.
 
 - [ ] **Step 6: Thread a generic progress probe through the process runner**
 
-Update `src/triton_agent/process_runner.py` function signatures so they accept an optional probe:
+Update `src/helix/process_runner.py` function signatures so they accept an optional probe:
 
 ```python
 ProgressProbe = Callable[[], float | None]
@@ -171,10 +171,10 @@ Expected: PASS
 ### Task 2: Add Optimize Recovery Helpers And File-Activity Rules With Focused Tests
 
 **Files:**
-- Create: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/recovery.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/execution.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Create: `/Users/cdj/Projects/helix/src/helix/optimize/recovery.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/execution.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write failing tests for optimize recovery classification and progress rules**
 
@@ -198,8 +198,8 @@ and for whitelist behavior:
 ```python
 self.assertTrue(is_optimize_progress_path(workspace / "opt-round-3" / "round-state.json", workspace))
 self.assertTrue(is_optimize_progress_path(workspace / "opt-round-3" / "summary.md", workspace))
-self.assertFalse(is_optimize_progress_path(workspace / "triton-agent-logs" / "optimize.show-output.log", workspace))
-self.assertFalse(is_optimize_progress_path(workspace / ".triton-agent" / "supervisor-report.md", workspace))
+self.assertFalse(is_optimize_progress_path(workspace / "helix-logs" / "optimize.show-output.log", workspace))
+self.assertFalse(is_optimize_progress_path(workspace / ".helix" / "supervisor-report.md", workspace))
 ```
 
 - [ ] **Step 2: Write a failing test for directory mtime-only changes**
@@ -224,11 +224,11 @@ Run:
 uv run python -m unittest tests.test_optimize_runtime -v
 ```
 
-Expected: FAIL because `src/triton_agent/optimize/recovery.py` does not exist yet and the helper behavior is not implemented.
+Expected: FAIL because `src/helix/optimize/recovery.py` does not exist yet and the helper behavior is not implemented.
 
 - [ ] **Step 4: Create the optimize recovery helper module**
 
-Add `src/triton_agent/optimize/recovery.py` with small, focused helpers such as:
+Add `src/helix/optimize/recovery.py` with small, focused helpers such as:
 
 ```python
 from __future__ import annotations
@@ -237,8 +237,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from triton_agent.models import AgentResult
-from triton_agent.transient_failures import contains_transient_agent_failure_text
+from helix.models import AgentResult
+from helix.transient_failures import contains_transient_agent_failure_text
 
 
 WorkerFailureKind = Literal["stall", "transient", "fatal"]
@@ -257,7 +257,7 @@ Keep the precedence exactly as approved in the spec.
 
 - [ ] **Step 5: Implement explicit optimize progress path filtering**
 
-In `src/triton_agent/optimize/recovery.py`, add a narrow allow-list rooted at the workspace:
+In `src/helix/optimize/recovery.py`, add a narrow allow-list rooted at the workspace:
 
 ```python
 def is_optimize_progress_path(path: Path, workspace: Path) -> bool:
@@ -276,7 +276,7 @@ Do not special-case extensions. Use the allow-list roots and `path.is_file()` so
 
 - [ ] **Step 6: Implement snapshot-based file progress scanning**
 
-Still in `src/triton_agent/optimize/recovery.py`, add a lightweight snapshot helper:
+Still in `src/helix/optimize/recovery.py`, add a lightweight snapshot helper:
 
 ```python
 @dataclass(frozen=True)
@@ -314,10 +314,10 @@ Expected: PASS for the new helper-focused recovery and progress-rule tests.
 ### Task 3: Teach The Backend Runner To Build Progress Probes From Request Config
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/backends/base.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/recovery.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/backends/base.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/recovery.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
 
 - [ ] **Step 1: Write a failing backend test for request-config-driven progress probes**
 
@@ -350,7 +350,7 @@ Expected: FAIL because the backend runner does not yet translate request config 
 
 - [ ] **Step 3: Add a probe-construction helper**
 
-In `src/triton_agent/optimize/recovery.py`, add a probe builder that closes over workspace snapshot state:
+In `src/helix/optimize/recovery.py`, add a probe builder that closes over workspace snapshot state:
 
 ```python
 def build_optimize_progress_probe(workspace: Path) -> Callable[[], float | None]:
@@ -370,12 +370,12 @@ Keep it stateless from the caller's perspective and safe for repeated inline pol
 
 - [ ] **Step 4: Wire request config to a concrete probe in the backend runner**
 
-Update `src/triton_agent/backends/base.py` so `_run_once()` resolves a probe from request config before calling `run_process()`:
+Update `src/helix/backends/base.py` so `_run_once()` resolves a probe from request config before calling `run_process()`:
 
 ```python
 progress_probe = None
 if request.progress_source is not None and request.progress_source.kind == "optimize_artifacts":
-    from triton_agent.optimize.recovery import build_optimize_progress_probe
+    from helix.optimize.recovery import build_optimize_progress_probe
 
     progress_probe = build_optimize_progress_probe(request.workdir)
 
@@ -410,9 +410,9 @@ Expected: PASS
 ### Task 4: Add Longest-Passing-Prefix And Per-Round Recovery Budget Helpers
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/recovery.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/recovery.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write failing tests for range-local accepted-progress scanning**
 
@@ -467,7 +467,7 @@ Expected: FAIL because range-local accepted-progress helpers and recovery-budget
 
 - [ ] **Step 4: Implement the range-progress helper**
 
-In `src/triton_agent/optimize/recovery.py`, add a small result model and helper:
+In `src/helix/optimize/recovery.py`, add a small result model and helper:
 
 ```python
 @dataclass(frozen=True)
@@ -510,7 +510,7 @@ def compute_range_progress(
 
 - [ ] **Step 5: Implement the per-round recovery budget helper**
 
-Still in `src/triton_agent/optimize/recovery.py`, add a tiny in-memory tracker:
+Still in `src/helix/optimize/recovery.py`, add a tiny in-memory tracker:
 
 ```python
 class RecoveryBudget:
@@ -543,10 +543,10 @@ Expected: PASS
 ### Task 5: Add Recovery Prompt Notes And Wrap Optimize Worker Launches In A Recovery Loop
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/recovery.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/execution.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/recovery.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/execution.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write failing runtime tests for transient recovery and stall recovery**
 
@@ -605,7 +605,7 @@ Expected: FAIL because the optimize controller still returns immediately on any 
 
 - [ ] **Step 5: Add recovery-note helpers**
 
-In `src/triton_agent/optimize/recovery.py`, add small helpers:
+In `src/helix/optimize/recovery.py`, add small helpers:
 
 ```python
 def build_transient_recovery_note(*, batch_start: int, batch_end: int) -> str:
@@ -632,7 +632,7 @@ def build_stall_recovery_note(
 
 - [ ] **Step 6: Wrap worker launches in a recovery loop inside the optimize controller**
 
-Refactor `MultiInvocationOptimizeController.run_round_loop()` and supporting helpers in `src/triton_agent/optimize/execution.py` so worker launching goes through a dedicated method such as:
+Refactor `MultiInvocationOptimizeController.run_round_loop()` and supporting helpers in `src/helix/optimize/execution.py` so worker launching goes through a dedicated method such as:
 
 ```python
 def _run_worker_with_recovery(
@@ -697,9 +697,9 @@ Expected: PASS
 ### Task 6: Wire Optimize Worker Requests To The New Request Fields
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/execution.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/execution.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write a failing runtime test that optimize worker requests disable backend retry**
 
@@ -724,7 +724,7 @@ Expected: FAIL because optimize execution does not yet populate `disable_backend
 
 - [ ] **Step 3: Mark worker requests with the new recovery-only request fields**
 
-In `src/triton_agent/optimize/execution.py`, update worker-request construction so round worker invocations use:
+In `src/helix/optimize/execution.py`, update worker-request construction so round worker invocations use:
 
 ```python
 return replace(
@@ -752,11 +752,11 @@ Expected: PASS
 ### Task 7: Run Focused Verification, Then Full Repository Verification
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md`
-- Modify: `/Users/cdj/Projects/triton-agent/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_process_runner.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md`
+- Modify: `/Users/cdj/Projects/helix/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md`
+- Test: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_process_runner.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Run focused unit tests for the changed runtime areas**
 
@@ -803,8 +803,8 @@ Expected: PASS
 If implementation uses slightly different finalized helper names than the examples in this plan or the approved spec, update:
 
 ```text
-/Users/cdj/Projects/triton-agent/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md
-/Users/cdj/Projects/triton-agent/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md
+/Users/cdj/Projects/helix/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md
+/Users/cdj/Projects/helix/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md
 ```
 
 so the written docs reflect the shipped code precisely.
@@ -814,16 +814,16 @@ so the written docs reflect the shipped code precisely.
 Run:
 
 ```bash
-git add /Users/cdj/Projects/triton-agent/src/triton_agent/models.py \
-        /Users/cdj/Projects/triton-agent/src/triton_agent/backends/base.py \
-        /Users/cdj/Projects/triton-agent/src/triton_agent/process_runner.py \
-        /Users/cdj/Projects/triton-agent/src/triton_agent/optimize/recovery.py \
-        /Users/cdj/Projects/triton-agent/src/triton_agent/optimize/execution.py \
-        /Users/cdj/Projects/triton-agent/tests/test_backends_base.py \
-        /Users/cdj/Projects/triton-agent/tests/test_process_runner.py \
-        /Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py \
-        /Users/cdj/Projects/triton-agent/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md \
-        /Users/cdj/Projects/triton-agent/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md
+git add /Users/cdj/Projects/helix/src/helix/models.py \
+        /Users/cdj/Projects/helix/src/helix/backends/base.py \
+        /Users/cdj/Projects/helix/src/helix/process_runner.py \
+        /Users/cdj/Projects/helix/src/helix/optimize/recovery.py \
+        /Users/cdj/Projects/helix/src/helix/optimize/execution.py \
+        /Users/cdj/Projects/helix/tests/test_backends_base.py \
+        /Users/cdj/Projects/helix/tests/test_process_runner.py \
+        /Users/cdj/Projects/helix/tests/test_optimize_runtime.py \
+        /Users/cdj/Projects/helix/docs/specs/2026-06-18-optimize-stall-recovery-and-progress-detection-design.md \
+        /Users/cdj/Projects/helix/docs/plans/2026-06-18-optimize-stall-recovery-and-progress-detection.md
 git commit -m "feat: recover optimize workers from stalls"
 ```
 

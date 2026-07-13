@@ -1,12 +1,12 @@
 # Optimize Supervisor Round Gate Implementation Plan
 
-> **Historical note:** This plan predates the removal of `skills/optimize-supervisor/` and `.triton-agent/roles/*`. Keep it as an implementation record rather than a source of current runtime contracts.
+> **Historical note:** This plan predates the removal of `skills/optimize-supervisor/` and `.helix/roles/*`. Keep it as an implementation record rather than a source of current runtime contracts.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn `optimize` into an explicit worker-round plus supervisor-gate loop that enforces the optimize workflow, blocks missing evidence, and produces deterministic next-round handoff artifacts.
 
-**Architecture:** Keep orchestration in the CLI/runtime layer and keep optimization behavior in skills. Add a small structured round contract and gate result model under `src/triton_agent/optimize/`, render shared guidance plus role-specific briefs in the workspace, and upgrade the optimize supervisor from stall recovery into a round-aware controller that launches fresh worker and supervisor invocations.
+**Architecture:** Keep orchestration in the CLI/runtime layer and keep optimization behavior in skills. Add a small structured round contract and gate result model under `src/helix/optimize/`, render shared guidance plus role-specific briefs in the workspace, and upgrade the optimize supervisor from stall recovery into a round-aware controller that launches fresh worker and supervisor invocations.
 
 **Tech Stack:** Python `dataclasses`, `pathlib`, JSON, existing optimize runtime/backends, Python `unittest`
 
@@ -16,9 +16,9 @@
 
 **New files**
 
-- `src/triton_agent/optimize/round_contract.py`
+- `src/helix/optimize/round_contract.py`
   Round artifact discovery, `round-state.json` parsing, and comparable validation helpers.
-- `src/triton_agent/optimize/gate.py`
+- `src/helix/optimize/gate.py`
   Gate decision enums/models plus supervisor-facing round inspection results.
 - `tests/test_optimize_round_contract.py`
   Focused unit tests for round artifact and `round-state.json` handling.
@@ -29,23 +29,23 @@
 
 **Existing files to modify**
 
-- `src/triton_agent/models.py`
+- `src/helix/models.py`
   Extend `AgentRequest` with explicit optimize role/session-loop fields.
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   Add round/gate/guidance-related dataclasses.
-- `src/triton_agent/prompts.py`
+- `src/helix/prompts.py`
   Split optimize worker and supervisor prompt builders.
-- `src/triton_agent/optimize/guidance.py`
+- `src/helix/optimize/guidance.py`
   Render role-neutral shared guidance plus role briefs instead of one worker-only guidance file.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/orchestration.py`
   Prepare shared skills/guidance and run the worker-supervisor loop.
-- `src/triton_agent/optimize/run_loop.py`
+- `src/helix/optimize/run_loop.py`
   Replace the current stall/min-round-only logic with round gate orchestration.
-- `src/triton_agent/backends/codex.py`
+- `src/helix/backends/codex.py`
   Preserve fresh invocation behavior and explicit prompt routing for worker versus supervisor runs.
-- `src/triton_agent/backends/opencode.py`
-- `src/triton_agent/backends/claude.py`
-- `src/triton_agent/backends/pi.py`
+- `src/helix/backends/opencode.py`
+- `src/helix/backends/claude.py`
+- `src/helix/backends/pi.py`
   Mirror any `AgentRequest` field additions that affect optimize launch behavior.
 - `tests/test_supervisor.py`
   Update supervisor tests to the new loop behavior.
@@ -61,9 +61,9 @@
 ### Task 1: Add The Round Contract And Gate Models
 
 **Files:**
-- Create: `src/triton_agent/optimize/round_contract.py`
-- Create: `src/triton_agent/optimize/gate.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Create: `src/helix/optimize/round_contract.py`
+- Create: `src/helix/optimize/gate.py`
+- Modify: `src/helix/optimize/models.py`
 - Create: `tests/test_optimize_round_contract.py`
 - Create: `tests/test_optimize_gate.py`
 
@@ -127,19 +127,19 @@ Expected: PASS
 - [ ] **Step 5: Commit the contract layer**
 
 ```bash
-git add src/triton_agent/optimize/round_contract.py src/triton_agent/optimize/gate.py src/triton_agent/optimize/models.py tests/test_optimize_round_contract.py tests/test_optimize_gate.py
+git add src/helix/optimize/round_contract.py src/helix/optimize/gate.py src/helix/optimize/models.py tests/test_optimize_round_contract.py tests/test_optimize_gate.py
 git commit -m "feat: add optimize round gate contract models"
 ```
 
 ### Task 2: Split Optimize Prompts And Request Metadata By Role
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/opencode.py`
-- Modify: `src/triton_agent/backends/claude.py`
-- Modify: `src/triton_agent/backends/pi.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/opencode.py`
+- Modify: `src/helix/backends/claude.py`
+- Modify: `src/helix/backends/pi.py`
 - Modify: `tests/test_supervisor.py`
 
 - [ ] **Step 1: Write the failing prompt and request-shape tests**
@@ -193,15 +193,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the prompt split**
 
 ```bash
-git add src/triton_agent/models.py src/triton_agent/prompts.py src/triton_agent/backends/codex.py src/triton_agent/backends/opencode.py src/triton_agent/backends/claude.py src/triton_agent/backends/pi.py tests/test_supervisor.py
+git add src/helix/models.py src/helix/prompts.py src/helix/backends/codex.py src/helix/backends/opencode.py src/helix/backends/claude.py src/helix/backends/pi.py tests/test_supervisor.py
 git commit -m "feat: add optimize worker and supervisor prompts"
 ```
 
 ### Task 3: Render Shared Guidance And Role Briefs
 
 **Files:**
-- Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/guidance.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing guidance tests**
@@ -211,12 +211,12 @@ Add tests that pin the new guidance layout:
 ```python
 def test_prepare_writes_shared_guidance_and_role_briefs(self) -> None:
     state = manager.prepare(...)
-    self.assertTrue((workdir / ".triton-agent/roles/optimize-worker.md").exists())
-    self.assertTrue((workdir / ".triton-agent/roles/optimize-supervisor.md").exists())
+    self.assertTrue((workdir / ".helix/roles/optimize-worker.md").exists())
+    self.assertTrue((workdir / ".helix/roles/optimize-supervisor.md").exists())
 
 def test_cleanup_removes_role_briefs_and_restores_original_guidance(self) -> None:
     warnings = manager.cleanup(state)
-    self.assertFalse((workdir / ".triton-agent/roles/optimize-worker.md").exists())
+    self.assertFalse((workdir / ".helix/roles/optimize-worker.md").exists())
 ```
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
@@ -229,10 +229,10 @@ Expected: FAIL because the guidance manager still writes a single worker-oriente
 Refactor `OptimizeGuidanceManager` so `prepare()` writes:
 
 - one shared top-level `AGENTS.md` or `CLAUDE.md`
-- `.triton-agent/roles/optimize-worker.md`
-- `.triton-agent/roles/optimize-supervisor.md`
-- a writable location for `.triton-agent/round-brief.md`
-- a writable location for `.triton-agent/supervisor-report.md`
+- `.helix/roles/optimize-worker.md`
+- `.helix/roles/optimize-supervisor.md`
+- a writable location for `.helix/round-brief.md`
+- a writable location for `.helix/supervisor-report.md`
 
 Keep the shared top-level guidance strictly role-neutral because some backends may treat workspace guidance as memory-file context with higher priority than ordinary file reads. Put role assignment in the launch prompt, not only in the role brief files.
 
@@ -246,15 +246,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance layer**
 
 ```bash
-git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/orchestration.py tests/test_optimize/guidance.py
+git add src/helix/optimize/guidance.py src/helix/optimize/orchestration.py tests/test_optimize/guidance.py
 git commit -m "feat: add optimize role guidance briefs"
 ```
 
 ### Task 4: Upgrade The Supervisor Into A Round Gate Controller
 
 **Files:**
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_supervisor.py`
 - Modify: `tests/test_optimize_gate.py`
 
@@ -310,7 +310,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the orchestration layer**
 
 ```bash
-git add src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_gate.py
+git add src/helix/optimize/run_loop.py src/helix/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_gate.py
 git commit -m "feat: add optimize supervisor round gate loop"
 ```
 
@@ -318,8 +318,8 @@ git commit -m "feat: add optimize supervisor round gate loop"
 
 **Files:**
 - Create: `skills/optimize-supervisor/SKILL.md`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_skills.py`
 
 - [ ] **Step 1: Write the failing skill-staging tests**
@@ -356,7 +356,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the skill layer**
 
 ```bash
-git add skills/optimize-supervisor/SKILL.md src/triton_agent/models.py src/triton_agent/optimize/orchestration.py tests/test_skills.py
+git add skills/optimize-supervisor/SKILL.md src/helix/models.py src/helix/optimize/orchestration.py tests/test_skills.py
 git commit -m "feat: add optimize supervisor skill"
 ```
 

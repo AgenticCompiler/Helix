@@ -55,7 +55,7 @@ Expected: FAIL because resume auto currently rejects explicit `--bench-mode` for
 
 - [ ] **Step 3: Write minimal implementation**
 
-Update `src/triton_agent/optimize/resume.py` so the `resume_mode == "auto"` resumable-session path no longer raises on `requested_bench_mode`, and instead returns:
+Update `src/helix/optimize/resume.py` so the `resume_mode == "auto"` resumable-session path no longer raises on `requested_bench_mode`, and instead returns:
 
 ```python
 return ResumeResolution(

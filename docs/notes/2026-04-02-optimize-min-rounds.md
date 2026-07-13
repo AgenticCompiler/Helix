@@ -8,7 +8,7 @@
 
 ## User-Visible Behavior
 
-- `uv run triton-agent optimize ... --min-rounds N` requires the optimize workflow to produce at least `N` `opt-round-*` directories in the operator workspace before the command may finish successfully.
+- `uv run helix optimize ... --min-rounds N` requires the optimize workflow to produce at least `N` `opt-round-*` directories in the operator workspace before the command may finish successfully.
 - The default behavior remains unchanged when `--min-rounds` is not provided.
 - If the agent stalls, the existing recovery behavior still applies.
 - If the agent exits successfully but the workspace still contains fewer than `N` round directories, the supervisor launches another optimize pass automatically.

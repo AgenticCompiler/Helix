@@ -2,7 +2,7 @@
 
 ## Goal
 
-Rename the generated Claude Code plugin from `triton-agent-optimize` to `triton-optimizer` and package both supported Triton Agent workflows needed by this plugin:
+Rename the generated Claude Code plugin from `helix-optimize` to `triton-optimizer` and package both supported Helix workflows needed by this plugin:
 
 - optimize, through the existing optimize agent and optimize skill set
 - convert, through a new Triton-only convert agent and the Triton convert skill set
@@ -13,8 +13,8 @@ The plugin remains focused on Triton workflows. It must not package TileLang con
 
 Building the Claude plugin should produce a `triton-optimizer` plugin. The generated plugin should expose two Claude agents:
 
-- `triton-agent-optimize` for optimize sessions
-- `triton-agent-convert` for convert sessions
+- `helix-optimize` for optimize sessions
+- `helix-convert` for convert sessions
 
 The optimize agent keeps its current workflow contract, including fixed optimize modes and plugin-managed optimize state hooks. The convert agent is a separate workflow agent. It converts one PyTorch operator into a Triton Ascend NPU-backed operator, keeps the original input immutable, writes to the requested output path, and validates through the convert skill's standalone or differential test flow.
 
@@ -41,7 +41,7 @@ The new convert agent renderer should mirror the optimize agent structure where 
 - a primary workflow skill declaration using `triton-npu-convert-pytorch-operator`
 - convert-specific rules that the original input file is immutable, the output path is the converted artifact, and validation must use the bundled test and run-eval skills
 
-The convert agent must not mention optimize baseline submission, round lifecycle, or `.triton-agent` workflow state as required convert behavior.
+The convert agent must not mention optimize baseline submission, round lifecycle, or `.helix` workflow state as required convert behavior.
 
 ## Tests
 

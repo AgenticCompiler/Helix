@@ -9,13 +9,13 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import main
-from triton_agent.cli import build_parser
-from triton_agent.commands.verify import handle_verify_batch
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
-from triton_agent.verify.batch import run_verify_batch
-from triton_agent.verify.core import VerifyOptions
-from triton_agent.verify.core import VerifyResult
+from helix.cli import main
+from helix.cli import build_parser
+from helix.commands.verify import handle_verify_batch
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.verify.batch import run_verify_batch
+from helix.verify.core import VerifyOptions
+from helix.verify.core import VerifyResult
 
 
 class VerifyBatchTests(unittest.TestCase):
@@ -56,8 +56,8 @@ class VerifyBatchTests(unittest.TestCase):
             latest_state = self._write_verify_state(workspace, "verify-20260421-120000")
             stream = StringIO()
 
-            with patch("triton_agent.verify.batch.prepare_verify_target") as prepare_target:
-                with patch("triton_agent.verify.batch.run_verify") as run_verify:
+            with patch("helix.verify.batch.prepare_verify_target") as prepare_target:
+                with patch("helix.verify.batch.run_verify") as run_verify:
                     exit_code = run_verify_batch(root, stdout=stream)
 
             self.assertEqual(exit_code, 0)
@@ -78,11 +78,11 @@ class VerifyBatchTests(unittest.TestCase):
             state_path = verify_dir / "verify-state.json"
 
             with patch(
-                "triton_agent.verify.batch.prepare_verify_target",
+                "helix.verify.batch.prepare_verify_target",
                 return_value=object(),
             ) as prepare_target:
                 with patch(
-                    "triton_agent.verify.batch.run_verify",
+                    "helix.verify.batch.run_verify",
                     return_value=VerifyResult(
                         return_code=0,
                         verify_dir=verify_dir,
@@ -108,17 +108,17 @@ class VerifyBatchTests(unittest.TestCase):
             state_path = verify_dir / "verify-state.json"
             options = VerifyOptions(
                 remote="alice@example.com",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 keep_remote_workdir=True,
                 verbose=True,
             )
 
             with patch(
-                "triton_agent.verify.batch.prepare_verify_target",
+                "helix.verify.batch.prepare_verify_target",
                 return_value=object(),
             ):
                 with patch(
-                    "triton_agent.verify.batch.run_verify",
+                    "helix.verify.batch.run_verify",
                     return_value=VerifyResult(
                         return_code=0,
                         verify_dir=verify_dir,
@@ -135,7 +135,7 @@ class VerifyBatchTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             _target, passed_options = run_verify.call_args.args
             self.assertEqual(passed_options.remote, "alice@example.com")
-            self.assertEqual(passed_options.remote_workdir, "/tmp/triton-agent")
+            self.assertEqual(passed_options.remote_workdir, "/tmp/helix")
             self.assertTrue(passed_options.keep_remote_workdir)
             self.assertTrue(passed_options.verbose)
 
@@ -147,7 +147,7 @@ class VerifyBatchTests(unittest.TestCase):
             stream = StringIO()
 
             with patch(
-                "triton_agent.verify.batch.prepare_verify_target",
+                "helix.verify.batch.prepare_verify_target",
                 side_effect=ValueError("missing baseline"),
             ) as prepare_target:
                 exit_code = run_verify_batch(root, stdout=stream)
@@ -182,8 +182,8 @@ class VerifyBatchTests(unittest.TestCase):
                     state_path=workspace / "opt-verify" / "verify-20260421-120000" / "verify-state.json",
                 )
 
-            with patch("triton_agent.verify.batch.prepare_verify_target", side_effect=prepare_side_effect):
-                with patch("triton_agent.verify.batch.run_verify", side_effect=run_side_effect):
+            with patch("helix.verify.batch.prepare_verify_target", side_effect=prepare_side_effect):
+                with patch("helix.verify.batch.run_verify", side_effect=run_side_effect):
                     exit_code = run_verify_batch(root, force_verify=True, stdout=stream)
 
             self.assertEqual(exit_code, 1)
@@ -197,7 +197,7 @@ class VerifyBatchTests(unittest.TestCase):
             (root / "matmul").mkdir()
 
             with patch(
-                "triton_agent.commands.verify.run_verify_batch",
+                "helix.commands.verify.run_verify_batch",
                 return_value=0,
             ) as run_batch:
                 exit_code = main(["verify-batch", "-i", str(root), "--force-verify"])
@@ -213,13 +213,13 @@ class VerifyBatchTests(unittest.TestCase):
                 input=str(root),
                 force_verify=True,
                 remote="alice@example.com",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 keep_remote_workdir=True,
                 verbose=True,
             )
 
             with patch(
-                "triton_agent.commands.verify.run_verify_batch",
+                "helix.commands.verify.run_verify_batch",
                 return_value=0,
             ) as run_batch:
                 exit_code = handle_verify_batch(parser, args)
@@ -229,7 +229,7 @@ class VerifyBatchTests(unittest.TestCase):
             self.assertTrue(run_batch.call_args.kwargs["force_verify"])
             options = run_batch.call_args.kwargs["options"]
             self.assertEqual(options.remote, "alice@example.com")
-            self.assertEqual(options.remote_workdir, "/tmp/triton-agent")
+            self.assertEqual(options.remote_workdir, "/tmp/helix")
             self.assertTrue(options.keep_remote_workdir)
             self.assertTrue(options.verbose)
 
@@ -250,12 +250,12 @@ class VerifyBatchTests(unittest.TestCase):
                 "os.environ",
                 {
                     remote_target_env_name(): "alice@example.com",
-                    remote_workdir_env_name(): "/tmp/triton-agent",
+                    remote_workdir_env_name(): "/tmp/helix",
                 },
                 clear=False,
             ):
                 with patch(
-                    "triton_agent.commands.verify.run_verify_batch",
+                    "helix.commands.verify.run_verify_batch",
                     return_value=0,
                 ) as run_batch:
                     exit_code = handle_verify_batch(parser, args)
@@ -263,7 +263,7 @@ class VerifyBatchTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             options = run_batch.call_args.kwargs["options"]
             self.assertEqual(options.remote, "alice@example.com")
-            self.assertEqual(options.remote_workdir, "/tmp/triton-agent")
+            self.assertEqual(options.remote_workdir, "/tmp/helix")
 
 
 if __name__ == "__main__":

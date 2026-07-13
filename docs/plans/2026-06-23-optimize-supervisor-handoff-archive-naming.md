@@ -14,9 +14,9 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/optimize/archive.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/archive.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/execution.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `docs/specs/2026-06-23-optimize-supervisor-handoff-archive-naming-design.md`
@@ -34,9 +34,9 @@
 ### Task 2: Implement the rename and conditional directory creation
 
 **Files:**
-- Modify: `src/triton_agent/optimize/archive.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/archive.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] Rename supervisor snapshot fields, parameters, and hidden runtime paths from `history` to `handoff` where they describe supervisor snapshots.
 - [ ] Copy snapshot files into `supervisor-handoffs/` only when at least one file exists.

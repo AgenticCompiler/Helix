@@ -2,15 +2,15 @@
 
 ## Goal
 
-Make the generated `triton-agent-optimize` Claude plugin agent self-contained enough for optimize sessions by embedding the stable workflow guidance that was previously carried by workspace memory files or launch prompts.
+Make the generated `helix-optimize` Claude plugin agent self-contained enough for optimize sessions by embedding the stable workflow guidance that was previously carried by workspace memory files or launch prompts.
 
 This change applies only to the optimize agent. The convert agent remains convert-specific and must not inherit optimize round, baseline, or performance-analysis rules.
 
 ## User-Visible Semantics
 
-The generated `triton-optimizer` plugin should still expose `triton-agent-optimize` and `triton-agent-convert`.
+The generated `triton-optimizer` plugin should still expose `helix-optimize` and `helix-convert`.
 
-When users choose `triton-agent-optimize`, the agent definition should directly remind Claude to:
+When users choose `helix-optimize`, the agent definition should directly remind Claude to:
 
 - read files cautiously and avoid speculative context gathering
 - use staged workspace skills as the workflow source of truth
@@ -39,7 +39,7 @@ Use static high-priority reminders for the plugin agent. They should match curre
 
 ## Tests
 
-Update plugin builder tests to verify that `agents/triton-agent-optimize.md` includes representative workflow guidance:
+Update plugin builder tests to verify that `agents/helix-optimize.md` includes representative workflow guidance:
 
 - cautious file reading
 - staged workspace skills as source of truth

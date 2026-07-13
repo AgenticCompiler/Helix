@@ -12,18 +12,18 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/skills.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_models.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_skills.py`
 
-No prompt text changes are planned in `src/triton_agent/optimize/prompts.py`, because the staged skill name stays stable.
+No prompt text changes are planned in `src/helix/optimize/prompts.py`, because the staged skill name stays stable.
 
 ### Task 1: Add Failing CLI And Request Coverage
 
@@ -209,16 +209,16 @@ Expected: `FAIL` because `SkillLinkManager.prepare_skills()` does not yet accept
 ### Task 3: Implement Optimize Knowledge Selection With Minimal Plumbing
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/skills.py`
 
 - [ ] **Step 1: Add the CLI enum and plumb it into optimize options**
 
-Update `src/triton_agent/cli.py`:
+Update `src/helix/cli.py`:
 
 ```python
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2")
@@ -234,13 +234,13 @@ Extend the optimize option block:
             )
 ```
 
-Update `src/triton_agent/optimize/models.py`:
+Update `src/helix/optimize/models.py`:
 
 ```python
     optimize_knowledge: Literal["v1", "v2"] = "v1"
 ```
 
-Update `src/triton_agent/commands/optimize.py`:
+Update `src/helix/commands/optimize.py`:
 
 ```python
         optimize_knowledge=cast(Literal["v1", "v2"], getattr(args, "optimize_knowledge", "v1")),
@@ -248,7 +248,7 @@ Update `src/triton_agent/commands/optimize.py`:
 
 - [ ] **Step 2: Add one request field for staged skill source overrides**
 
-Update `src/triton_agent/models.py`:
+Update `src/helix/models.py`:
 
 ```python
     staged_skill_sources: dict[str, str] | None = None
@@ -258,7 +258,7 @@ Keep `with_prompt()` untouched so `dataclasses.replace()` preserves the new fiel
 
 - [ ] **Step 3: Teach optimize orchestration to derive the knowledge override**
 
-In `src/triton_agent/optimize/orchestration.py`, add a helper:
+In `src/helix/optimize/orchestration.py`, add a helper:
 
 ```python
 _OPTIMIZE_KNOWLEDGE_TARGET = "triton-npu-optimize-knowledge"
@@ -290,7 +290,7 @@ Leave `_BASE_OPTIMIZE_STAGED_SKILLS` and prompt strings unchanged so the staged 
 
 - [ ] **Step 4: Teach `SkillLinkManager` to honor source overrides while preserving target names**
 
-In `src/triton_agent/skills.py`, update the selected-skill iteration and copy logic:
+In `src/helix/skills.py`, update the selected-skill iteration and copy logic:
 
 ```python
     def _iter_selected_skill_dirs(

@@ -29,11 +29,11 @@ Expected: FAIL because the process runner does not yet support optimize interrup
 ### Task 2: Implement interrupt escalation
 
 **Files:**
-- Modify: `src/triton_agent/process_runner.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/opencode.py`
-- Modify: `src/triton_agent/backends/pi.py`
-- Modify: `src/triton_agent/backends/claude.py`
+- Modify: `src/helix/process_runner.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/opencode.py`
+- Modify: `src/helix/backends/pi.py`
+- Modify: `src/helix/backends/claude.py`
 
 - [ ] **Step 1: Add an opt-in interrupt policy to the shared process runner**
 

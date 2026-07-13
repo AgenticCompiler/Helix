@@ -23,4 +23,4 @@ Argument examples:
 - `run-bench(bench_file="bench_<operator>.py", operator_file="<operator>.py")`
 - `run-bench(bench_file="bench_<operator>.py", operator_file="opt_<operator>.py", bench_mode="msprof")`
 - `run-bench(bench_file="bench_<operator>.py", operator_file="<operator>.py", remote="user@host:2222")`
-- `run-bench(bench_file="bench_<operator>.py", operator_file="opt_<operator>.py", bench_mode="msprof", remote="user@host:2222", remote_workdir="/tmp/triton-agent")`
+- `run-bench(bench_file="bench_<operator>.py", operator_file="opt_<operator>.py", bench_mode="msprof", remote="user@host:2222", remote_workdir="/tmp/helix")`

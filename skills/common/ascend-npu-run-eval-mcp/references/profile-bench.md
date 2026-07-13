@@ -11,6 +11,6 @@ Argument examples:
 
 - `profile-bench(bench_file="bench_<operator>.py", operator_file="<operator>.py")`
 - `profile-bench(bench_file="bench_<operator>.py", operator_file="<operator>.py", case_id="<id>", remote="user@host:2222")`
-- `profile-bench(bench_file="bench_<operator>.py", operator_file="opt_<operator>.py", case_id="<id>", remote="user@host:2222", remote_workdir="/tmp/triton-agent", keep_remote_workdir=True)`
+- `profile-bench(bench_file="bench_<operator>.py", operator_file="opt_<operator>.py", case_id="<id>", remote="user@host:2222", remote_workdir="/tmp/helix", keep_remote_workdir=True)`
 
 Use the `profile-report` MCP tool to re-summarize an existing `PROF_*` directory without re-running the benchmark.

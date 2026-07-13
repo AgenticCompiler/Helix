@@ -31,7 +31,7 @@
   - the task is to implement the converted computation as a Triton Ascend NPU kernel path
   - keeping a PyTorch-facing wrapper or module API is fine when that is the intended public entrypoint
   - a pure PyTorch rewrite does not satisfy the convert contract, even if differential tests pass
-- Update the `CommandKind.CONVERT` branch in `src/triton_agent/prompts.py` with matching wording so every backend receives the same stronger policy.
+- Update the `CommandKind.CONVERT` branch in `src/helix/prompts.py` with matching wording so every backend receives the same stronger policy.
 - Add focused prompt and contract tests to prevent later wording regressions.
 
 ## Why Prompt-Only First

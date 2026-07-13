@@ -16,7 +16,7 @@ The shared PTY streaming runner currently treats `OSError(errno.EIO)` as clean E
 
 ## Design
 
-Keep the fix inside `src/triton_agent/process_runner.py`.
+Keep the fix inside `src/helix/process_runner.py`.
 
 - When `os.read()` on the PTY master raises `OSError(errno.EIO)`, first keep the existing fast path for already-exited children.
 - If `poll()` still returns `None`, give the child a short exit-confirmation grace window with `wait(timeout=...)`.

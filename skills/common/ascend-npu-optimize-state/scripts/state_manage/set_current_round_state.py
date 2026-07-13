@@ -33,7 +33,7 @@ def _build_failure_payload(issue: str, guideline: str) -> dict[str, object]:
 def _workflow_failure_guideline(message: str) -> str:
     if (
         "workflow state is not available" in message
-        or ".triton-agent/state.json" in message
+        or ".helix/state.json" in message
     ):
         return (
             "Optimize workflow state is unavailable. Use the staged "
@@ -71,7 +71,7 @@ def _workflow_failure_guideline(message: str) -> str:
 
 def _find_state_path_from_cwd(cwd: Path) -> Path | None:
     for candidate_dir in (cwd, *cwd.parents):
-        state_path = candidate_dir / ".triton-agent" / "state.json"
+        state_path = candidate_dir / ".helix" / "state.json"
         if state_path.exists():
             return state_path
     return None

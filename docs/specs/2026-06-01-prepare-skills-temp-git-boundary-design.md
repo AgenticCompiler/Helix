@@ -45,7 +45,7 @@ This behavior applies to every current caller of `prepare_skills()`, including g
 ## Implementation Notes
 
 - Extend `SkillLinkSet` to carry both staged skill copy paths and an optional temporary git path.
-- Add a helper in `src/triton_agent/skills.py` that:
+- Add a helper in `src/helix/skills.py` that:
   - checks `workdir / ".git"`
   - runs `git init` when missing
   - raises a `RuntimeError` if initialization fails

@@ -4,7 +4,7 @@
 
 **Goal:** Let optimize resume reuse harness paths declared in `baseline/state.json` when they belong to the current operator input.
 
-**Architecture:** Keep the change local to `src/triton_agent/optimize/resume.py` by teaching resume-time harness discovery to prefer declared baseline state paths, then fall back to the existing stem-based compatibility logic. Cover the new behavior with direct unit tests against the resume helper module and preserve CLI-level resume behavior.
+**Architecture:** Keep the change local to `src/helix/optimize/resume.py` by teaching resume-time harness discovery to prefer declared baseline state paths, then fall back to the existing stem-based compatibility logic. Cover the new behavior with direct unit tests against the resume helper module and preserve CLI-level resume behavior.
 
 **Tech Stack:** Python 3.11, `pathlib`, existing optimize baseline loaders, Python `unittest`
 
@@ -14,7 +14,7 @@
 
 **Files:**
 - Create: `tests/test_optimize_resume.py`
-- Reference: `src/triton_agent/optimize/resume.py`
+- Reference: `src/helix/optimize/resume.py`
 
 - [ ] **Step 1: Write a failing test for declared test and bench paths**
 
@@ -49,8 +49,8 @@ Expected: FAIL with at least one assertion showing the declared-path resume beha
 ### Task 2: Implement State-Aware Resume Discovery
 
 **Files:**
-- Modify: `src/triton_agent/optimize/resume.py`
-- Reference: `src/triton_agent/optimize/baseline.py`
+- Modify: `src/helix/optimize/resume.py`
+- Reference: `src/helix/optimize/baseline.py`
 
 - [ ] **Step 1: Add helpers that resolve declared baseline state paths only when the source operator matches**
 

@@ -13,14 +13,14 @@
 ### Task 1: Remove The `--require-analysis` CLI And Model Surface
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/backends/base.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/backends/base.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_models.py`
 
@@ -82,7 +82,7 @@ Expected: FAIL because the parser still accepts `--require-analysis`, and the ru
 Apply the minimal code changes:
 
 ```python
-# src/triton_agent/cli.py
+# src/helix/cli.py
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", type=int)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
@@ -91,14 +91,14 @@ Apply the minimal code changes:
 ```
 
 ```python
-# src/triton_agent/models.py
+# src/helix/models.py
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
 ```
 
 ```python
-# src/triton_agent/optimize/models.py
+# src/helix/optimize/models.py
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
@@ -125,8 +125,8 @@ Expected: PASS.
 ### Task 2: Make Layered Analysis The Default Prompt And Guidance Contract
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/guidance.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_backends_base.py`
@@ -177,7 +177,7 @@ Expected: FAIL because optimize prompts and guidance still gate the stronger wor
 
 - [ ] **Step 3: Rewrite optimize prompts around the layered default**
 
-In `src/triton_agent/prompts.py`, add a shared optimize prompt block instead of the old conditional branch. Use wording shaped like:
+In `src/helix/prompts.py`, add a shared optimize prompt block instead of the old conditional branch. Use wording shaped like:
 
 ```python
 def layered_analysis_lines() -> list[str]:
@@ -204,7 +204,7 @@ without any `require_analysis` parameter.
 
 - [ ] **Step 4: Rewrite optimize guidance to match the same default**
 
-In `src/triton_agent/optimize/guidance.py`, remove the conditional `analysis_block` and replace it with a default block such as:
+In `src/helix/optimize/guidance.py`, remove the conditional `analysis_block` and replace it with a default block such as:
 
 ```python
         analysis_block = (
@@ -320,7 +320,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git diff -- docs/specs/2026-04-22-optimize-layered-analysis-default-design.md docs/plans/2026-04-22-optimize-layered-analysis-default.md README.md src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/models.py src/triton_agent/prompts.py src/triton_agent/optimize/models.py src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/execution.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/guidance.py src/triton_agent/backends/base.py skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/workflow.md skills/triton/triton-npu-optimize/references/artifacts.md tests/test_cli.py tests/test_models.py tests/test_optimize_guidance.py tests/test_backends_base.py tests/test_supervisor.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_claude_runner.py tests/test_traecli_runner.py tests/test_generation_contracts.py
+git diff -- docs/specs/2026-04-22-optimize-layered-analysis-default-design.md docs/plans/2026-04-22-optimize-layered-analysis-default.md README.md src/helix/cli.py src/helix/commands/optimize.py src/helix/models.py src/helix/prompts.py src/helix/optimize/models.py src/helix/optimize/orchestration.py src/helix/optimize/execution.py src/helix/optimize/run_loop.py src/helix/optimize/guidance.py src/helix/backends/base.py skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/workflow.md skills/triton/triton-npu-optimize/references/artifacts.md tests/test_cli.py tests/test_models.py tests/test_optimize_guidance.py tests/test_backends_base.py tests/test_supervisor.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_claude_runner.py tests/test_traecli_runner.py tests/test_generation_contracts.py
 ```
 
 Expected: only the approved layered-analysis workflow, `--require-analysis` removal, matching docs, and aligned tests changed.

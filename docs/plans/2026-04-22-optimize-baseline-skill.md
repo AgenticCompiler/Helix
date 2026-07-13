@@ -16,12 +16,12 @@
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `README.md`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_skills.py`
 
-No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize already stages the whole repo skill set with `staged_skill_names=None`, so the new baseline skill will be available without adding a new runtime branch.
+No change is planned for `src/helix/optimize/orchestration.py`: optimize already stages the whole repo skill set with `staged_skill_names=None`, so the new baseline skill will be available without adding a new runtime branch.
 
 ### Task 1: Add The Baseline Skill Contract And Rewrite Optimize Baseline Docs
 
@@ -167,7 +167,7 @@ git commit -m "docs: add optimize baseline preparation skill"
 ### Task 2: Align Optimize Prompts With The New Baseline Skill
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write failing prompt tests for the new baseline handoff**
@@ -203,7 +203,7 @@ Run: `uv run python -m unittest tests.test_cli.PromptTests.test_build_optimize_w
 
 Expected: `FAIL` because the current prompts still route baseline repair through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 
-- [ ] **Step 3: Update prompt strings in `src/triton_agent/prompts.py`**
+- [ ] **Step 3: Update prompt strings in `src/helix/prompts.py`**
 
 Replace the worker and unsupervised baseline lines with wording that points baseline work at the new skill and keeps `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` for round gating:
 
@@ -240,7 +240,7 @@ Expected: the full CLI prompt suite passes with the new baseline skill wording.
 - [ ] **Step 5: Commit the prompt-boundary update**
 
 ```bash
-git add src/triton_agent/prompts.py tests/test_cli.py
+git add src/helix/prompts.py tests/test_cli.py
 git commit -m "prompts: route optimize baseline through dedicated skill"
 ```
 

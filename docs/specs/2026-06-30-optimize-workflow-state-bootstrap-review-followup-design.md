@@ -12,7 +12,7 @@ which are non-bugs, and which still require a real code fix.
   current plugin build copies `src/hook_runtime/` into the built payload.
 - The earlier "`source_operator` removal forgot skill-side changes" concern is
   now outdated. The optimize state skill no longer stores `source_operator` in
-  `.triton-agent/state.json`.
+  `.helix/state.json`.
 - The "baseline-phase edit policy is out of scope" concern is valid as a review
   of the older resume-bootstrap design document, but it is not a runtime bug.
   Baseline-phase edit relaxation was intentionally implemented and later split

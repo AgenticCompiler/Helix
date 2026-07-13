@@ -14,8 +14,8 @@
 
 **Files:**
 - Modify: `tests/test_optimize_status.py`
-- Modify: `src/triton_agent/optimize/status.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/status.py`
+- Modify: `src/helix/optimize/models.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -42,7 +42,7 @@ Expected: PASS
 **Files:**
 - Modify: `tests/test_optimize_render.py`
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/optimize/render.py`
+- Modify: `src/helix/optimize/render.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -69,7 +69,7 @@ Expected: PASS
 **Files:**
 - Modify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
 - Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/guidance.py`
 - Modify: `docs/notes/2026-04-07-optimize-status-subcommand.md`
 
 - [ ] **Step 1: Update `opt-note.md` format guidance**

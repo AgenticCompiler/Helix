@@ -12,9 +12,9 @@
 
 ## File Map
 
-- Create: `hooks/opencode/triton-agent-hook-guard.js`
-- Modify: `src/triton_agent/agent_hooks.py`
-- Modify: `src/triton_agent/backends/opencode.py`
+- Create: `hooks/opencode/helix-hook-guard.js`
+- Modify: `src/helix/agent_hooks.py`
+- Modify: `src/helix/backends/opencode.py`
 - Modify: `tests/test_agent_hooks.py`
 - Create: `tests/test_opencode_hook_guard.py`
 - Modify: `tests/test_opencode_runner.py`
@@ -24,15 +24,15 @@
 
 - [ ] Add failing tests in `tests/test_agent_hooks.py` for OpenCode staging, generated policy values, cleanup, existing plugin rejection, and existing owned hook directory rejection.
 - [ ] Run `uv run python -m unittest tests.test_agent_hooks -v` and confirm the new OpenCode tests fail.
-- [ ] Add OpenCode constants and `_prepare_opencode_hooks()` to `src/triton_agent/agent_hooks.py`.
-- [ ] Render `.opencode/triton-agent-hooks/policy.json` with `.opencode/skills/*/scripts/**` in the deny glob.
+- [ ] Add OpenCode constants and `_prepare_opencode_hooks()` to `src/helix/agent_hooks.py`.
+- [ ] Render `.opencode/helix-hooks/policy.json` with `.opencode/skills/*/scripts/**` in the deny glob.
 - [ ] Run `uv run python -m unittest tests.test_agent_hooks -v` and confirm the hook manager tests pass.
 
 ## Task 2: OpenCode Plugin Guard
 
 - [ ] Add failing Node-backed plugin tests in `tests/test_opencode_hook_guard.py`.
 - [ ] Run `uv run python -m unittest tests.test_opencode_hook_guard -v` and confirm the tests fail because the plugin template does not exist.
-- [ ] Create `hooks/opencode/triton-agent-hook-guard.js`.
+- [ ] Create `hooks/opencode/helix-hook-guard.js`.
 - [ ] Implement `tool.execute.before` handling for `bash` commands, read-command detection, path extraction, path resolution, glob matching, and policy denial.
 - [ ] Run `uv run python -m unittest tests.test_opencode_hook_guard -v` and confirm the plugin tests pass.
 

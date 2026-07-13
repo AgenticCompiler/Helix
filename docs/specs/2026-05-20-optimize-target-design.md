@@ -98,8 +98,8 @@ One explicit `--optimize-target` option is enough to express the semantic change
 
 Add `--optimize-target kernel|operator` anywhere optimize options are available today:
 
-- `triton-agent optimize`
-- `triton-agent optimize-batch`
+- `helix optimize`
+- `helix optimize-batch`
 
 Default the option to `kernel`.
 

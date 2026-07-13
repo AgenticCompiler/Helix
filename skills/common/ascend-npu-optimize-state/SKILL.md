@@ -32,9 +32,9 @@ python3 scripts/cli.py submit-round --round-dir opt-round-2 --current-round 2 --
 
 ### `start-round`
 
-- Enforces the runner-managed `.triton-agent/state.json` workflow gate before a round begins.
+- Enforces the runner-managed `.helix/state.json` workflow gate before a round begins.
 - Requires `--round-strategy`, `--analysis-policy`, and `--reason`.
-- Writes the active round's latest strategy state into `.triton-agent/state.json`.
+- Writes the active round's latest strategy state into `.helix/state.json`.
 - Appends a structured `State Update` block to `opt-round-N/attempts.md`.
 - Prints JSON only; read the `guideline` field and keep the returned `hard_rules` in force for the active round.
 - Use this to bridge temporary runner-managed workflow state with the durable `opt-round-N/` you are about to work in.
@@ -128,7 +128,7 @@ Use the same enum values listed above for `--round-strategy` and `--analysis-pol
 - Validates one completed `opt-round-N/` directory against the baseline contract and round-state contract.
 - Prints JSON only; read the `guideline` field for the pass/fix instruction, and read `next_option` when it is present.
 - In optimize worker-batch flows, always pass both `--current-round` and `--final-round` so submission is evaluated relative to the current invocation's owned round range.
-- When the session has a speedup target, the optimize runner injects `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` automatically and `submit-round` uses that value as the authority.
+- When the session has a speedup target, the optimize runner injects `HELIX_OPTIMIZE_MIN_SPEEDUP` automatically and `submit-round` uses that value as the authority.
 - Do not use a bare `submit-round --round-dir opt-round-N` call as the primary optimize worker pattern; that shorter form is reserved for manual checks outside the standard optimize worker-batch flow.
 
 ## State Ownership

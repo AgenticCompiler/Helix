@@ -25,7 +25,7 @@ class FastMcpOptionalImportTests(unittest.TestCase):
             builtins.__import__ = blocked_import
             sys.path.insert(0, {str(_SRC)!r})
 
-            import triton_agent.cli as cli
+            import helix.cli as cli
 
             try:
                 cli.main(["--help"])

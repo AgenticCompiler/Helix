@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.models import AgentRequest, CommandKind
+from helix.models import AgentRequest, CommandKind
 
 
 class AgentRequestTests(unittest.TestCase):
@@ -48,10 +48,10 @@ class AgentRequestTests(unittest.TestCase):
             skill_name="ascend-npu-gen-test",
             prompt="original",
             workdir=Path("/tmp"),
-            mcp_servers=("triton-agent-run-eval",),
+            mcp_servers=("helix-run-eval",),
         )
 
-        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
+        self.assertEqual(request.mcp_servers, ("helix-run-eval",))
 
     def test_with_prompt_preserves_all_other_fields(self) -> None:
         request = AgentRequest(
@@ -84,8 +84,8 @@ class AgentRequestTests(unittest.TestCase):
             staged_skill_sources={
                 "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2",
             },
-            mcp_servers=("triton-agent-run-eval",),
-            supervisor_report_path=Path("/tmp/.triton-agent/supervisor-report.md"),
+            mcp_servers=("helix-run-eval",),
+            supervisor_report_path=Path("/tmp/.helix/supervisor-report.md"),
             target_chip="A3",
             optimize_target="operator",
         )

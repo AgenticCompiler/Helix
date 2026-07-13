@@ -4,8 +4,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.models import CommandKind
-from triton_agent.skills.selection import _apply_stage_directives, resolve_staged_skills
+from helix.models import CommandKind
+from helix.skills.selection import _apply_stage_directives, resolve_staged_skills
 
 
 class SkillStagingTests(unittest.TestCase):

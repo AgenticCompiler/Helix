@@ -7,8 +7,8 @@ from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.optimize.workflow_state as workflow_state_module
-from triton_agent.skills.loader import load_skill_script_module
+import helix.optimize.workflow_state as workflow_state_module
+from helix.skills.loader import load_skill_script_module
 
 
 def load_state_machine_module():
@@ -65,7 +65,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -92,7 +92,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
             _write_resumable_optimize_workspace(workspace, operator)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
 
             result = workflow_state_module.prepare_or_restore_optimize_workflow_state(
@@ -115,7 +115,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
 
             result = workflow_state_module.prepare_or_restore_optimize_workflow_state(
@@ -137,7 +137,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
             state_path.write_text("{", encoding="utf-8")
 
@@ -157,7 +157,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             (baseline_dir / "state.json").write_text("{", encoding="utf-8")
             (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
             (workspace / "opt-round-1").mkdir()
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
 
             with self.assertRaisesRegex(
@@ -209,7 +209,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            state_path = root / ".triton-agent" / "state.json"
+            state_path = root / ".helix" / "state.json"
             state_path.parent.mkdir()
 
             module.bootstrap_state(
@@ -236,7 +236,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            state_path = root / ".triton-agent" / "state.json"
+            state_path = root / ".helix" / "state.json"
             state_path.parent.mkdir()
 
             module.bootstrap_state(
@@ -253,7 +253,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
     def test_start_round_is_idempotent_for_same_active_round(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path = Path(tmp) / ".helix" / "state.json"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -284,10 +284,10 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             round_dir = workspace / "opt-round-1"
             attempts_path = round_dir / "attempts.md"
-            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-1.jsonl"
+            timing_path = workspace / ".helix" / "round-timings" / "opt-round-1.jsonl"
             state_path.parent.mkdir()
             round_dir.mkdir()
             module.bootstrap_state(
@@ -322,7 +322,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             round_dir = workspace / "opt-round-1"
             state_path.parent.mkdir()
             round_dir.mkdir()
@@ -358,7 +358,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             round_dir = workspace / "opt-round-2"
             state_path.parent.mkdir()
             round_dir.mkdir()
@@ -395,7 +395,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             round_dir = workspace / "opt-round-4"
             state_path.parent.mkdir()
             round_dir.mkdir()
@@ -434,7 +434,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             round_dir = workspace / "opt-round-3"
             attempts_path = round_dir / "attempts.md"
             state_path.parent.mkdir()
@@ -469,8 +469,8 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
-            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-1.jsonl"
+            state_path = workspace / ".helix" / "state.json"
+            timing_path = workspace / ".helix" / "round-timings" / "opt-round-1.jsonl"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -504,7 +504,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -534,7 +534,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
     def test_load_state_accepts_legacy_round_timestamps(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path = Path(tmp) / ".helix" / "state.json"
             state_path.parent.mkdir()
             state_path.write_text(
                 json.dumps(
@@ -565,7 +565,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
     def test_load_state_rejects_unknown_schema_version(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path = Path(tmp) / ".helix" / "state.json"
             state_path.parent.mkdir()
             state_path.write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "unsupported workflow state schema_version"):
@@ -574,7 +574,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
     def test_render_phase_summary_omits_workflow_state_path(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path = Path(tmp) / ".helix" / "state.json"
             state_path.parent.mkdir()
             module.bootstrap_state(
                 state_path,
@@ -598,12 +598,12 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
         self.assertIn("Required analysis depth: profile_required", summary)
         self.assertIn("Current round reason: Round 1 narrowed the next tuning target.", summary)
         self.assertNotIn("Workflow state path:", summary)
-        self.assertNotIn(".triton-agent/state.json", summary)
+        self.assertNotIn(".helix/state.json", summary)
 
     def test_load_state_malformed_json_does_not_leak_workflow_state_path(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:
-            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path = Path(tmp) / ".helix" / "state.json"
             state_path.parent.mkdir()
             state_path.write_text("{", encoding="utf-8")
 
@@ -611,7 +611,7 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
                 module.load_state(state_path)
 
         self.assertIn("malformed workflow state JSON", str(raised.exception))
-        self.assertNotIn(".triton-agent/state.json", str(raised.exception))
+        self.assertNotIn(".helix/state.json", str(raised.exception))
 
 
 if __name__ == "__main__":

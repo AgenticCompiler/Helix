@@ -18,7 +18,7 @@
 
 - `docs/plans/2026-04-14-triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round-loop.md`
   This implementation plan.
-- `src/triton_agent/optimize/checks.py`
+- `src/helix/optimize/checks.py`
   Shared baseline and round check API that returns structured results for scripts, runtime helpers, and tests.
 - `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
   Workflow contract for baseline and round checking.
@@ -29,21 +29,21 @@
 
 **Existing files to modify**
 
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   Add structured triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round result models if they do not fit cleanly in `checks.py`.
-- `src/triton_agent/prompts.py`
+- `src/helix/prompts.py`
   Update worker and supervisor prompts to require triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round usage and clarify per-mode ownership.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/orchestration.py`
   Simplify orchestration around worker-owned checks and optional supervisor passes.
-- `src/triton_agent/optimize/run_loop.py`
+- `src/helix/optimize/run_loop.py`
   Narrow supervised loop behavior to worker launch, supervisor audit, and continue-or-stop handling.
-- `src/triton_agent/optimize/guidance.py`
+- `src/helix/optimize/guidance.py`
   Keep only the guidance files needed for the simplified supervised handoff model.
 - `skills/triton/triton-npu-optimize/SKILL.md`
   Require baseline and round checks in both optimize modes.
 - `skills/optimize-supervisor/SKILL.md`
   Limit supervisor to metadata-only repair and explicit continuation decisions.
-- `src/triton_agent/skills.py`
+- `src/helix/skills.py`
   Ensure `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` stages alongside optimize-related skills where needed.
 - `tests/test_cli.py`
   Extend prompt and request-construction assertions for the new worker and supervisor contracts.
@@ -61,10 +61,10 @@
 ## Task 1: Add The Shared Optimize-Check Contract And Script
 
 **Files:**
-- Create: `src/triton_agent/optimize/checks.py`
+- Create: `src/helix/optimize/checks.py`
 - Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/models.py`
 - Create: `tests/test_optimize_checks.py`
 - Modify: `tests/test_skill_command_script.py`
 - Modify: `tests/test_skills.py`
@@ -119,11 +119,11 @@ class OptimizeCheckResult:
 
 Guidelines:
 
-- Reuse existing baseline helpers from `src/triton_agent/optimize/baseline.py`.
-- Reuse existing round helpers from `src/triton_agent/optimize/round_contract.py`.
-- Reuse or adapt existing round validation from `src/triton_agent/optimize/gate.py` instead of re-encoding rules in the script.
+- Reuse existing baseline helpers from `src/helix/optimize/baseline.py`.
+- Reuse existing round helpers from `src/helix/optimize/round_contract.py`.
+- Reuse or adapt existing round validation from `src/helix/optimize/gate.py` instead of re-encoding rules in the script.
 - Make `optimize_check.py` a thin CLI wrapper that prints machine-readable JSON plus a concise human-readable summary.
-- Ensure the script works when run directly with `python`, without assuming the `triton-agent` console entrypoint is installed.
+- Ensure the script works when run directly with `python`, without assuming the `helix` console entrypoint is installed.
 
 - [ ] **Step 4: Run the focused check and script tests to verify they pass**
 
@@ -133,7 +133,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round foundation**
 
 ```bash
-git add src/triton_agent/optimize/checks.py src/triton_agent/optimize/models.py skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py tests/test_optimize_checks.py tests/test_skill_command_script.py tests/test_skills.py
+git add src/helix/optimize/checks.py src/helix/optimize/models.py skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py tests/test_optimize_checks.py tests/test_skill_command_script.py tests/test_skills.py
 git commit -m "feat: add optimize check skill and script"
 ```
 
@@ -142,7 +142,7 @@ git commit -m "feat: add optimize check skill and script"
 **Files:**
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/optimize-supervisor/SKILL.md`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing prompt and skill-contract tests**
@@ -185,7 +185,7 @@ In `skills/optimize-supervisor/SKILL.md`, narrow the contract to:
 - repair only metadata, briefs, summaries, and session notes derived from existing facts
 - decide `continue` or `stop`
 
-In `src/triton_agent/prompts.py`, align the public prompt text with those contracts and avoid mixing worker self-check rules with runtime gate wording.
+In `src/helix/prompts.py`, align the public prompt text with those contracts and avoid mixing worker self-check rules with runtime gate wording.
 
 - [ ] **Step 4: Run the focused prompt tests to verify they pass**
 
@@ -195,16 +195,16 @@ Expected: PASS for the updated prompt semantics and any existing optimize prompt
 - [ ] **Step 5: Commit the prompt and skill contract changes**
 
 ```bash
-git add skills/triton/triton-npu-optimize/SKILL.md skills/optimize-supervisor/SKILL.md src/triton_agent/prompts.py tests/test_cli.py
+git add skills/triton/triton-npu-optimize/SKILL.md skills/optimize-supervisor/SKILL.md src/helix/prompts.py tests/test_cli.py
 git commit -m "feat: require optimize self-checks in worker prompts"
 ```
 
 ## Task 3: Simplify Runtime And Supervisor Around Worker-Owned Checks
 
 **Files:**
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_supervisor.py`
 
@@ -247,10 +247,10 @@ Implementation guidelines:
   2. one supervisor invocation
   3. continue-or-stop decision
 - Remove runtime-owned technical gate decisions that duplicate `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
-- Keep `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` only for supervised handoff.
+- Keep `.helix/round-brief.md` and `.helix/supervisor-report.md` only for supervised handoff.
 - Let supervisor parse and emit a small decision artifact instead of requiring runtime to infer the decision from workspace state.
 
-When adjusting `src/triton_agent/optimize/run_loop.py`, preserve useful retry and stall-recovery behavior, but scope it to orchestration concerns rather than round artifact policy.
+When adjusting `src/helix/optimize/run_loop.py`, preserve useful retry and stall-recovery behavior, but scope it to orchestration concerns rather than round artifact policy.
 
 - [ ] **Step 4: Run the focused orchestration tests to verify they pass**
 
@@ -260,7 +260,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the loop simplification**
 
 ```bash
-git add src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_supervisor.py
+git add src/helix/optimize/orchestration.py src/helix/optimize/run_loop.py src/helix/optimize/guidance.py tests/test_optimize_runtime.py tests/test_supervisor.py
 git commit -m "refactor: simplify optimize supervisor loop"
 ```
 

@@ -4,7 +4,7 @@
 
 ## Motivation
 
-During `triton-agent optimize`, every correctness test run in differential mode produces a `*_result.pt` file — a binary archive containing serialized tensors from all test cases. These files can be large (hundreds of MB) and accumulate at multiple locations:
+During `helix optimize`, every correctness test run in differential mode produces a `*_result.pt` file — a binary archive containing serialized tensors from all test cases. These files can be large (hundreds of MB) and accumulate at multiple locations:
 
 - Workspace root: from testing the original or intermediate operator files
 - `baseline/`: from baseline correctness validation
@@ -17,7 +17,7 @@ Once correctness is confirmed and recorded in `round-state.json` / `baseline/sta
 
 ### Shared Cleanup Module
 
-A single shared module `src/triton_agent/optimize/pt_cleanup.py` provides two functions:
+A single shared module `src/helix/optimize/pt_cleanup.py` provides two functions:
 
 - `cleanup_dir_pt_files(directory: Path) -> list[str]` — cleans `*_result.pt` and `test_result.pt` (case-insensitive) from a single directory
 - `cleanup_workspace_pt_files(workdir: Path) -> list[str]` — cleans root-level pt files plus all `opt-round-*/` subdirectories
@@ -60,8 +60,8 @@ The state JSON files (`baseline/state.json`, `round-state.json`, `verify-state.j
 
 | File | Change |
 |------|--------|
-| `src/triton_agent/optimize/pt_cleanup.py` | **New** — shared cleanup functions |
+| `src/helix/optimize/pt_cleanup.py` | **New** — shared cleanup functions |
 | `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py` | Import `cleanup_dir_pt_files`; call in `check_baseline()` and `check_round()` |
-| `src/triton_agent/optimize/execution.py` | Import `cleanup_workspace_pt_files`; call in both finally blocks |
-| `src/triton_agent/optimize/resume.py` | Add `*_result.pt` to `reset_optimize_workspace()` deletion list |
-| `src/triton_agent/verification/core.py` | Import `cleanup_dir_pt_files`; call after `_write_verify_state()` |
+| `src/helix/optimize/execution.py` | Import `cleanup_workspace_pt_files`; call in both finally blocks |
+| `src/helix/optimize/resume.py` | Add `*_result.pt` to `reset_optimize_workspace()` deletion list |
+| `src/helix/verification/core.py` | Import `cleanup_dir_pt_files`; call after `_write_verify_state()` |

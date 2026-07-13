@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.models import AgentResult
-from triton_agent.verify.core import VerifyOptions, prepare_verify_target, run_verify
+from helix.models import AgentResult
+from helix.verify.core import VerifyOptions, prepare_verify_target, run_verify
 
 
 class VerifyTests(unittest.TestCase):
@@ -188,18 +188,18 @@ class VerifyTests(unittest.TestCase):
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
-                "triton_agent.verify.core.run_local_test",
+                "helix.verify.core.run_local_test",
                 return_value=(AgentResult(return_code=0, stdout="test ok\n", stderr=""), result_path),
             ) as run_test:
                 with patch(
-                    "triton_agent.verify.core.run_local_bench",
+                    "helix.verify.core.run_local_bench",
                     side_effect=[
                         (AgentResult(return_code=0, stdout="baseline bench ok\n", stderr=""), baseline_perf_path),
                         (AgentResult(return_code=0, stdout="bench ok\n", stderr=""), perf_path),
                     ],
                 ) as run_bench:
                     with patch(
-                        "triton_agent.verify.core.compare_perf_files",
+                        "helix.verify.core.compare_perf_files",
                         return_value=0,
                     ) as compare_perf:
                         result = run_verify(
@@ -341,11 +341,11 @@ class VerifyTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.verify.core.run_local_test",
+                "helix.verify.core.run_local_test",
                 return_value=(AgentResult(return_code=0, stdout="", stderr=""), None),
             ) as run_test:
-                with patch("triton_agent.verify.core.run_local_bench") as run_bench:
-                    with patch("triton_agent.verify.core.compare_perf_files") as compare_perf:
+                with patch("helix.verify.core.run_local_bench") as run_bench:
+                    with patch("helix.verify.core.compare_perf_files") as compare_perf:
                         result = run_verify(
                             target,
                             VerifyOptions(phase="test"),
@@ -368,16 +368,16 @@ class VerifyTests(unittest.TestCase):
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "opt_kernel_perf.txt"
 
-            with patch("triton_agent.verify.core.run_local_test") as run_test:
+            with patch("helix.verify.core.run_local_test") as run_test:
                 with patch(
-                    "triton_agent.verify.core.run_local_bench",
+                    "helix.verify.core.run_local_bench",
                     side_effect=[
                         (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
                         (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
                     ],
                 ) as run_bench:
                     with patch(
-                        "triton_agent.verify.core.compare_perf_files",
+                        "helix.verify.core.compare_perf_files",
                         return_value=0,
                     ) as compare_perf:
                         result = run_verify(
@@ -433,16 +433,16 @@ class VerifyTests(unittest.TestCase):
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "opt_kernel_perf.txt"
 
-            with patch("triton_agent.verify.core.run_local_test") as run_test:
+            with patch("helix.verify.core.run_local_test") as run_test:
                 with patch(
-                    "triton_agent.verify.core.run_local_bench",
+                    "helix.verify.core.run_local_bench",
                     side_effect=[
                         (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
                         (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
                     ],
                 ) as run_bench:
                     with patch(
-                        "triton_agent.verify.core.compare_perf_files",
+                        "helix.verify.core.compare_perf_files",
                         return_value=0,
                     ) as compare_perf:
                         result = run_verify(
@@ -482,14 +482,14 @@ class VerifyTests(unittest.TestCase):
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
-                "triton_agent.verify.core.run_local_bench",
+                "helix.verify.core.run_local_bench",
                 side_effect=[
                     (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
                     (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
                 ],
             ):
                 with patch(
-                    "triton_agent.verify.core.compare_perf_files",
+                    "helix.verify.core.compare_perf_files",
                     return_value=0,
                 ):
                     run_verify(
@@ -515,10 +515,10 @@ class VerifyTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.verify.core.run_local_test",
+                "helix.verify.core.run_local_test",
                 return_value=(AgentResult(return_code=1, stdout="", stderr="failed\n"), None),
             ):
-                with patch("triton_agent.verify.core.run_local_bench") as run_bench:
+                with patch("helix.verify.core.run_local_bench") as run_bench:
                     result = run_verify(
                         target,
                         VerifyOptions(phase="all"),

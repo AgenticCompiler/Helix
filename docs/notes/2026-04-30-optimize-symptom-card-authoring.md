@@ -19,7 +19,7 @@ Each symptom card may additionally include:
 ## Regenerating The Index
 
 ```bash
-uv run python -m triton_agent.optimize_knowledge.symptom_index \
+uv run python -m helix.optimize_knowledge.symptom_index \
   --symptoms-dir skills/triton/triton-npu-optimize-knowledge/references/symptoms \
   --output skills/triton/triton-npu-optimize-knowledge/references/symptom_index.md
 ```

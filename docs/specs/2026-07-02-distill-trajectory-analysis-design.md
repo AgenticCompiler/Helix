@@ -18,7 +18,7 @@ dependencies, and reusable skip rules.
 Two layers:
 
 1. **Per-operator trajectory analysis** — read `opt-note.md` first, optionally
-   deep-read `triton-agent-logs/` for regression/U-turn/abandoned rounds.
+   deep-read `helix-logs/` for regression/U-turn/abandoned rounds.
 2. **Cross-operator merge** — combine multiple `trajectory_analysis.md` reports
    into a playbook and a concise reusable path skill.
 
@@ -85,7 +85,7 @@ Input: directory of operator workspaces each containing `trajectory_analysis.md`
 
 | Option | Pros | Cons |
 |--------|------|------|
-| Separate CLI subcommand `triton-agent distill-trajectory` | Clear boundary | More CLI surface |
+| Separate CLI subcommand `helix distill-trajectory` | Clear boundary | More CLI surface |
 | Optional `--trajectory` phase after distill | Single entrypoint | Long runs, mixed concerns |
 | Standalone scripts only | Fast to iterate | No staging/skill contract |
 

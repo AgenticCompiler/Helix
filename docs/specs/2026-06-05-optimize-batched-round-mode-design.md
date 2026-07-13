@@ -150,7 +150,7 @@ The supervisor still must not perform open-ended optimization or invent missing 
 
 ### Supervisor Outputs
 
-The supervisor should keep using `.triton-agent/supervisor-report.md`, but the prompt and runtime should treat it as the audit report for the last completed batch rather than only for the last completed round.
+The supervisor should keep using `.helix/supervisor-report.md`, but the prompt and runtime should treat it as the audit report for the last completed batch rather than only for the last completed round.
 
 `--round-batch-size 1` naturally degenerates to the existing per-round supervision semantics because each batch contains exactly one round.
 

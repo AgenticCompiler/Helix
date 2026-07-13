@@ -39,8 +39,8 @@ This is a structural refactor only.
 
 Today trace code is split across two ownership locations:
 
-- `src/triton_agent/otel_trace.py`
-- `src/triton_agent/trace_analyze/`
+- `src/helix/otel_trace.py`
+- `src/helix/trace_analyze/`
 
 That split hides the fact that these files are part of the same subsystem.
 
@@ -61,7 +61,7 @@ package that already depends on it.
 Introduce a dedicated trace package:
 
 ```text
-src/triton_agent/trace/
+src/helix/trace/
   __init__.py
   core.py
   summary.py
@@ -70,8 +70,8 @@ src/triton_agent/trace/
 
 Remove:
 
-- `src/triton_agent/otel_trace.py`
-- `src/triton_agent/trace_analyze/`
+- `src/helix/otel_trace.py`
+- `src/helix/trace_analyze/`
 
 ### `trace/core.py`
 
@@ -153,17 +153,17 @@ obvious.
 
 ### Move to `trace.core`
 
-Update these consumers to import from `triton_agent.trace.core`:
+Update these consumers to import from `helix.trace.core`:
 
 - backend trace capture code
 - convert/generation/log-check/report trace setup
 - trace path helpers used by commands
-- tests that currently import from `triton_agent.otel_trace`
+- tests that currently import from `helix.otel_trace`
 
 ### Move to `trace.summary`
 
 Update workflow modules that currently call `write_tool_trace_summary()` to
-import from `triton_agent.trace.summary`.
+import from `helix.trace.summary`.
 
 ### Move to `trace.analyze`
 

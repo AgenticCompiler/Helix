@@ -71,9 +71,9 @@ Expected: PASS
 ### Task 3: Implement Continue Mode In CLI And Request Flow
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/models.py`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 - Test: `tests/test_cli.py`

@@ -425,7 +425,7 @@ Expected: PASS
 **Files:**
 - Create: `skills/triton/triton-npu-optimize/scripts/extract_code_facts.py`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Modify: `tests/test_optimize_pattern_tools.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_cli.py`
@@ -571,7 +571,7 @@ git diff -- \
   skills/triton/triton-npu-optimize/scripts/extract_code_facts.py \
   skills/triton-npu-analyze-round-performance/SKILL.md \
   skills/triton-npu-analyze-round-performance/references/symptoms \
-  src/triton_agent/optimize/prompts.py \
+  src/helix/optimize/prompts.py \
   tests/test_optimize_pattern_tools.py \
   tests/test_generation_contracts.py \
   tests/test_optimize_guidance.py \

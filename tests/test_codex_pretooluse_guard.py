@@ -239,10 +239,10 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_triton_agent_logs_bash_read(self) -> None:
+    def test_blocks_helix_logs_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -254,25 +254,25 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_triton_agent_logs_bare_relative_bash_read(self) -> None:
+    def test_blocks_helix_logs_bare_relative_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
             reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
-                _payload(workspace, "cat triton-agent-logs/gen-test.show-output.log"),
+                _payload(workspace, "cat helix-logs/gen-test.show-output.log"),
             )
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_allows_triton_agent_logs_nested_script_read(self) -> None:
+    def test_allows_helix_logs_nested_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            script = workspace / "triton-agent-logs" / "triton-agent" / "opt_kernel.py"
+            script = workspace / "helix-logs" / "helix" / "opt_kernel.py"
             script.parent.mkdir(parents=True)
             script.write_text("print('opt')\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -284,10 +284,10 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertIsNone(reason)
 
-    def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+    def test_allows_python_one_liner_opening_relative_helix_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file = workspace / "helix-logs" / "gen-test.show-output.log"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
@@ -296,17 +296,17 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _policy(workspace),
                 _payload(
                     workspace,
-                    'python3 -c "print(open(\'triton-agent-logs/gen-test.show-output.log\').read())"',
+                    'python3 -c "print(open(\'helix-logs/gen-test.show-output.log\').read())"',
                 ),
             )
 
             self.assertIsNone(reason)
 
-    def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
+    def test_allows_read_outside_helix_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            readme = workspace / "triton-agent-readme.md"
+            readme = workspace / "helix-readme.md"
             readme.write_text("not a log\n", encoding="utf-8")
             guard = _load_guard_module()
 
@@ -405,7 +405,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            runtime_state = workspace / ".triton-agent" / "state.json"
+            runtime_state = workspace / ".helix" / "state.json"
             runtime_state.parent.mkdir(parents=True)
             _write_workflow_state(
                 workspace,
@@ -418,7 +418,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             assert reason is not None
             self.assertIn("protected", reason)
-            self.assertIn(".triton-agent/", reason)
+            self.assertIn(".helix/", reason)
 
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -541,7 +541,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_runtime_state_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            state_path = workspace / ".triton-agent" / "state.json"
+            state_path = workspace / ".helix" / "state.json"
             state_path.parent.mkdir(parents=True)
             state_path.write_text("{}", encoding="utf-8")
             guard = _load_guard_module()
@@ -553,11 +553,11 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
     def test_blocks_hidden_runtime_directory_listing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            runtime_dir = workspace / ".triton-agent"
+            runtime_dir = workspace / ".helix"
             runtime_dir.mkdir(parents=True)
             guard = _load_guard_module()
 
-            reason = guard.deny_reason_for_tool_use(_policy(workspace), _payload(workspace, "ls .triton-agent"))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _payload(workspace, "ls .helix"))
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -572,19 +572,19 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             self.assertIsNone(reason)
 
 _DENY_MESSAGE = (
-    "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+    "This read is blocked by helix workspace policy. Stay within the current workspace "
     "and do not inspect protected runner-managed files (temporary optimize runtime files, "
-    "staged skill implementation files under .codex/skills/*/scripts/, or triton-agent-logs/ output). "
+    "staged skill implementation files under .codex/skills/*/scripts/, or helix-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
 
 def _deny_message(skill_backend_root: str) -> str:
     return (
-        "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+        "This read is blocked by helix workspace policy. Stay within the current workspace "
         "and do not inspect protected runner-managed files (temporary optimize runtime files, "
         f"staged skill implementation files under {skill_backend_root}/skills/*/scripts/, or "
-        "triton-agent-logs/ output). "
+        "helix-logs/ output). "
         "Use the skill instructions and documented command interface instead."
     )
 
@@ -603,11 +603,11 @@ def _policy(
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
-            str(root / ".triton-agent"),
-            str(root / ".triton-agent" / "**"),
-            str(root / skill_backend_root / "triton-agent-hooks"),
-            str(root / skill_backend_root / "triton-agent-hooks" / "**"),
-            str(root / "triton-agent-logs" / "**"),
+            str(root / ".helix"),
+            str(root / ".helix" / "**"),
+            str(root / skill_backend_root / "helix-hooks"),
+            str(root / skill_backend_root / "helix-hooks" / "**"),
+            str(root / "helix-logs" / "**"),
             str(root / skill_backend_root / "skills" / "*" / "scripts" / "**"),
         ],
         "deny_message": _deny_message(skill_backend_root),
@@ -667,7 +667,7 @@ def _write_workflow_state(
     current_round: Optional[int] = None,
     rounds: Optional[dict[str, object]] = None,
 ) -> None:
-    state_path = workspace / ".triton-agent" / "state.json"
+    state_path = workspace / ".helix" / "state.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": 1,

@@ -17,7 +17,7 @@ Add an opt-in `run-bench --npu-devices ...` mode that schedules benchmark cases 
   - stable case ordering in the final perf file
   - best-effort execution when some cases fail
   - unchanged success and failure semantics outside the new opt-in mode
-- Keep skill-side helper scripts self-contained without introducing imports from `src/triton_agent`.
+- Keep skill-side helper scripts self-contained without introducing imports from `src/helix`.
 
 ## Non-Goals
 
@@ -58,7 +58,7 @@ python3 ./scripts/run-command.py run-bench \
   --operator-file opt_abs.py \
   --bench-mode msprof \
   --remote user@host:2222 \
-  --remote-workdir /tmp/triton-agent \
+  --remote-workdir /tmp/helix \
   --npu-devices 0-3
 ```
 
@@ -104,11 +104,11 @@ The scheduling layer should live inside the run-eval skill scripts because bench
 
 ## Affinity Layering
 
-### Why not import `src/triton_agent/npu_affinity.py`
+### Why not import `src/helix/npu_affinity.py`
 
-The repository rule for `skills/*/scripts/` requires those scripts to remain self-contained and not import `triton_agent`.
+The repository rule for `skills/*/scripts/` requires those scripts to remain self-contained and not import `helix`.
 
-As a result, the new benchmark affinity helper cannot import the existing batch affinity module from `src/triton_agent/npu_affinity.py`.
+As a result, the new benchmark affinity helper cannot import the existing batch affinity module from `src/helix/npu_affinity.py`.
 
 ### Skill-local affinity helper
 
@@ -431,7 +431,7 @@ Add or update tests for:
 
 Mitigation:
 
-- intentionally mirror the same parsing rules and test coverage patterns already used by `src/triton_agent/npu_affinity.py`
+- intentionally mirror the same parsing rules and test coverage patterns already used by `src/helix/npu_affinity.py`
 - keep the helper narrowly scoped and benchmark-specific
 
 ### Risk: isolated case workspaces change benchmark-relative path behavior

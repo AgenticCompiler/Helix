@@ -1,5 +1,5 @@
 [project]
-name = "triton-agent"
+name = "helix"
 version = "0.1.0"
 description = "CLI wrapper for Triton Ascend NPU operator agent workflows"
 readme = "README.md"
@@ -18,7 +18,7 @@ dev = [
 ]
 
 [project.scripts]
-triton-agent = "triton_agent.cli:main"
+helix = "helix.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -31,8 +31,8 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.cmdclass]
-build_py = "triton_agent._setuptools_hooks.BuildPyWithMeta"
-sdist = "triton_agent._setuptools_hooks.SdistWithMeta"
+build_py = "helix._setuptools_hooks.BuildPyWithMeta"
+sdist = "helix._setuptools_hooks.SdistWithMeta"
 
 [tool.ruff]
 target-version = "py39"
@@ -52,7 +52,7 @@ include = ["src", "tests", "skills/*/scripts"]
 exclude = [
     "**/__pycache__",
     "workspace",
-    "src/triton_agent.egg-info",
+    "src/helix.egg-info",
 ]
 extraPaths = ["src", "skills/common/ascend-npu-run-eval/scripts"]
 typeCheckingMode = "basic"

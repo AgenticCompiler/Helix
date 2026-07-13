@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_skills.py`
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/skills.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -41,7 +41,7 @@ Expected: FAIL because `SkillLinkManager` does not create, record, or clean up a
 ### Task 2: Implement temporary git boundary lifecycle in `SkillLinkManager`
 
 **Files:**
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/skills.py`
 - Test: `tests/test_skills.py`
 
 - [ ] **Step 1: Add minimal metadata and helper methods**

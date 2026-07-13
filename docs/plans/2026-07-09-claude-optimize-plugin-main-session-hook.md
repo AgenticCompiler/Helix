@@ -32,7 +32,7 @@
 
             self.assertEqual(result.returncode, 0)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
@@ -40,8 +40,8 @@
     def test_session_end_removes_runtime_dir_without_agent_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text("{}", encoding="utf-8")
             (workspace / "baseline").mkdir()
 
             result = _run_hook(
@@ -52,13 +52,13 @@
             )
 
             self.assertEqual(result.returncode, 0)
-            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
 
     def test_pretooluse_guard_denies_protected_runtime_read_without_agent_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            protected_path = workspace / ".triton-agent" / "state.json"
+            protected_path = workspace / ".helix" / "state.json"
 
             result = _run_hook(
                 "pretooluse_guard.py",
@@ -76,7 +76,7 @@
             payload = json.loads(result.stdout)
             self.assertEqual(payload["hookSpecificOutput"]["permissionDecision"], "deny")
             self.assertIn(
-                "blocked by triton-agent workspace policy",
+                "blocked by helix workspace policy",
                 payload["hookSpecificOutput"]["permissionDecisionReason"],
             )
 ```
@@ -101,7 +101,7 @@
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
@@ -112,8 +112,8 @@
             plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
             workspace = tmpdir / "workspace"
             workspace.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text("{}", encoding="utf-8")
             (workspace / "baseline").mkdir()
 
             completed = subprocess.run(
@@ -125,7 +125,7 @@
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
 ```
 
@@ -167,7 +167,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionStart failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
@@ -177,7 +177,7 @@ def main() -> int:
     try:
         result = bootstrap_runtime_state(workspace)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionStart failed open: {exc}", file=sys.stderr)
         return 0
     if not result.additional_context:
         return 0
@@ -204,7 +204,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
@@ -212,9 +212,9 @@ def main() -> int:
     if workspace is None:
         return 0
     try:
-        cleanup_runtime_tree(workspace / ".triton-agent")
+        cleanup_runtime_tree(workspace / ".helix")
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SessionEnd failed open: {exc}", file=sys.stderr)
     return 0
 ```
 
@@ -227,7 +227,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
@@ -238,7 +238,7 @@ def main() -> int:
     return run_with_policy(
         policy=_policy(workspace),
         payload=payload,
-        failure_prefix="triton-agent claude plugin PreToolUse",
+        failure_prefix="helix claude plugin PreToolUse",
     )
 ```
 

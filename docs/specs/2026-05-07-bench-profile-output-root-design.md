@@ -11,7 +11,7 @@ This change unifies the local benchmark contract so both benchmark modes can pre
 
 ## Goals
 
-- Introduce a shared local benchmark profiler output variable named `TRITON_AGENT_BENCH_OUTPUT_DIR`.
+- Introduce a shared local benchmark profiler output variable named `HELIX_BENCH_OUTPUT_DIR`.
 - Make local `run-bench --bench-mode standalone` preserve profiler output when that variable is set.
 - Keep local `run-bench --bench-mode msprof` artifact retention behavior, but move it to the shared variable name.
 
@@ -25,7 +25,7 @@ This change unifies the local benchmark contract so both benchmark modes can pre
 
 ### Shared environment variable
 
-- Local benchmark runners should first read `TRITON_AGENT_BENCH_OUTPUT_DIR`.
+- Local benchmark runners should first read `HELIX_BENCH_OUTPUT_DIR`.
 - If the selected value points to an existing non-directory path, fail explicitly.
 
 ### Local `msprof` benchmark retention
@@ -48,5 +48,5 @@ This change unifies the local benchmark contract so both benchmark modes can pre
 ## Verification
 
 - Add local standalone benchmark coverage that verifies the shared variable preserves per-case profiler directories under the configured root.
-- Update local `msprof` benchmark coverage so the documented variable name is `TRITON_AGENT_BENCH_OUTPUT_DIR`.
+- Update local `msprof` benchmark coverage so the documented variable name is `HELIX_BENCH_OUTPUT_DIR`.
 - Run targeted unit tests plus strict file-scoped `pyright` on modified skill scripts.

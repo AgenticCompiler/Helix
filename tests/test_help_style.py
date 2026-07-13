@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.terminal.help import style_help_text, supports_color
+from helix.terminal.help import style_help_text, supports_color
 
 
 class _TtyStringIO(StringIO):
@@ -56,7 +56,7 @@ class SupportsColorTests(unittest.TestCase):
 
 class StyleHelpTextTests(unittest.TestCase):
     def test_plain_text_returned_when_color_disabled(self) -> None:
-        text = "usage: triton-agent [-h] [-v] COMMAND ..."
+        text = "usage: helix [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _NonTtyStringIO(),
@@ -69,7 +69,7 @@ class StyleHelpTextTests(unittest.TestCase):
 
     def test_option_token_colored_on_tty(self) -> None:
         text = (
-            "usage: triton-agent [-h] [-v] COMMAND ...\n\n"
+            "usage: helix [-h] [-v] COMMAND ...\n\n"
             "options:\n  -h, --help  show this help\n  -v, --version  show version"
         )
         result = style_help_text(
@@ -86,16 +86,16 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertIn("\033[36m--version\033[0m", result)
 
     def test_env_var_token_colored_on_tty(self) -> None:
-        text = "Environment variables:\n  TRITON_AGENT_BATCH_NPU_DEVICES    device pool"
+        text = "Environment variables:\n  HELIX_BATCH_NPU_DEVICES    device pool"
         result = style_help_text(
             text,
             _TtyStringIO(),
             option_tokens=set(),
-            env_var_tokens={"TRITON_AGENT_BATCH_NPU_DEVICES"},
+            env_var_tokens={"HELIX_BATCH_NPU_DEVICES"},
             command_tokens=set(),
             environ=_EMPTY_ENV,
         )
-        self.assertIn("\033[36mTRITON_AGENT_BATCH_NPU_DEVICES\033[0m", result)
+        self.assertIn("\033[36mHELIX_BATCH_NPU_DEVICES\033[0m", result)
 
     def test_command_token_colored_on_tty_for_command_list_entry(self) -> None:
         text = "  gen-eval            Generate test harnesses."
@@ -190,19 +190,19 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertIn("\033[36m--help\033[0m", result)
 
     def test_env_var_word_boundary_avoids_partial_matches(self) -> None:
-        text = "TRITON_AGENT_BATCH_NPU_DEVICES_EXTRA is not supported."
+        text = "HELIX_BATCH_NPU_DEVICES_EXTRA is not supported."
         result = style_help_text(
             text,
             _TtyStringIO(),
             option_tokens=set(),
-            env_var_tokens={"TRITON_AGENT_BATCH_NPU_DEVICES"},
+            env_var_tokens={"HELIX_BATCH_NPU_DEVICES"},
             command_tokens=set(),
             environ=_EMPTY_ENV,
         )
-        self.assertNotIn("\033[36mTRITON_AGENT_BATCH_NPU_DEVICES\033[0m_EXTRA", result)
+        self.assertNotIn("\033[36mHELIX_BATCH_NPU_DEVICES\033[0m_EXTRA", result)
 
     def test_no_color_environment_disables_styling(self) -> None:
-        text = "usage: triton-agent [-h] [-v] COMMAND ..."
+        text = "usage: helix [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _TtyStringIO(),
@@ -214,7 +214,7 @@ class StyleHelpTextTests(unittest.TestCase):
         self.assertEqual(result, text)
 
     def test_clicolor_force_enables_styling_for_non_tty(self) -> None:
-        text = "usage: triton-agent [-h] [-v] COMMAND ..."
+        text = "usage: helix [-h] [-v] COMMAND ..."
         result = style_help_text(
             text,
             _NonTtyStringIO(),

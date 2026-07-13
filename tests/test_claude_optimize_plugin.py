@@ -9,8 +9,8 @@ from pathlib import Path
 from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from triton_agent.models import CommandKind
-from triton_agent.skills.selection import resolve_staged_skills
+from helix.models import CommandKind
+from helix.skills.selection import resolve_staged_skills
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "build-claude-optimize-plugin.py"
 
@@ -88,14 +88,14 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
     def test_plugin_builder_renders_optimize_and_convert_agents_without_standalone_prompt_files(self) -> None:
         assets = build_claude_optimize_plugin_assets()
 
-        self.assertIn("agents/triton-agent-optimizer.md", assets.text_files)
-        self.assertIn("agents/triton-agent-convert.md", assets.text_files)
+        self.assertIn("agents/helix-optimizer.md", assets.text_files)
+        self.assertIn("agents/helix-convert.md", assets.text_files)
         self.assertNotIn("CLAUDE.md", assets.text_files)
         self.assertNotIn("prompts.md", assets.text_files)
-        agent_text = assets.text_files["agents/triton-agent-optimizer.md"]
-        convert_agent_text = assets.text_files["agents/triton-agent-convert.md"]
+        agent_text = assets.text_files["agents/helix-optimizer.md"]
+        convert_agent_text = assets.text_files["agents/helix-convert.md"]
         readme_text = assets.text_files["README.md"]
-        self.assertIn("name: triton-agent-optimizer", agent_text)
+        self.assertIn("name: helix-optimizer", agent_text)
         self.assertIn("Use `triton-npu-optimize` as the primary workflow skill.", agent_text)
         self.assertIn("## Fixed Optimize Modes", agent_text)
         self.assertIn("test-mode: `differential`", agent_text)
@@ -135,7 +135,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
         self.assertNotIn("## Embedded Optimize Prompt Rules", agent_text)
         self.assertNotIn("Complete optimize rounds strictly one at a time in sequence.", agent_text)
         self.assertNotIn("This workspace is under an optimize round loop.", agent_text)
-        self.assertIn("name: triton-agent-convert", convert_agent_text)
+        self.assertIn("name: helix-convert", convert_agent_text)
         self.assertIn(
             "Use `triton-npu-convert-pytorch-operator` as the primary workflow skill.",
             convert_agent_text,
@@ -158,8 +158,8 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
 
             self.assertEqual(built_dir, output_dir.resolve())
             self.assertTrue((built_dir / ".claude-plugin" / "plugin.json").exists())
-            self.assertTrue((built_dir / "agents" / "triton-agent-optimizer.md").exists())
-            self.assertTrue((built_dir / "agents" / "triton-agent-convert.md").exists())
+            self.assertTrue((built_dir / "agents" / "helix-optimizer.md").exists())
+            self.assertTrue((built_dir / "agents" / "helix-convert.md").exists())
             self.assertTrue((built_dir / "hooks" / "hooks.json").exists())
             self.assertTrue((built_dir / "hooks" / "subagent_start.py").exists())
             self.assertTrue((built_dir / "hooks" / "subagent_stop.py").exists())
@@ -246,7 +246,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
                 [sys.executable, str(plugin_dir / "hooks" / "session_start.py")],
                 input=json.dumps(
                     {
-                        "agent_type": "triton-optimizer:triton-agent-optimizer",
+                        "agent_type": "triton-optimizer:helix-optimizer",
                         "cwd": str(workspace),
                     }
                 ),
@@ -257,7 +257,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
@@ -283,7 +283,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
             self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
@@ -294,8 +294,8 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-optimizer")
             workspace = tmpdir / "workspace"
             workspace.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text("{}", encoding="utf-8")
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text("{}", encoding="utf-8")
             (workspace / "baseline").mkdir()
 
             completed = subprocess.run(
@@ -311,7 +311,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
 
     def test_built_plugin_subagent_start_bootstraps_baseline_state(self) -> None:
@@ -326,7 +326,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
                 input=json.dumps(
                     {
                         "hook_event_name": "SubagentStart",
-                        "subagent_type": "triton-agent-optimizer",
+                        "subagent_type": "helix-optimizer",
                         "agent_id": "agent-opt-1",
                         "cwd": str(workspace),
                     }
@@ -338,13 +338,13 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             owner_payload = json.loads(
-                (workspace / ".triton-agent" / "plugin-owner.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "plugin-owner.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
-            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"})
+            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"})
 
 
 if __name__ == "__main__":

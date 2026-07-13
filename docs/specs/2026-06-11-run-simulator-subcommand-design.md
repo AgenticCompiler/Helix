@@ -87,7 +87,7 @@ For local execution:
 - the working directory is `bench_file.parent`
 - `--bench-file` should be passed as `bench_file.name`
 - `--operator-file` should be passed as the relative path from `bench_file.parent` to `operator_file`
-- `soc-version` should be read from `TRITON_AGENT_SIMULATOR_SOC_VERSION`, defaulting to `Ascend950PR_9599`
+- `soc-version` should be read from `HELIX_SIMULATOR_SOC_VERSION`, defaulting to `Ascend950PR_9599`
 - `TRITON_ALWAYS_COMPILE=1` should be set for the child process
 - output should be streamed live through the existing process runner
 - the benchmark timeout environment path should be reused instead of introducing a simulator-specific timeout
@@ -102,7 +102,7 @@ Add a new command kind:
 
 - `CommandKind.RUN_SIMULATOR = "run-simulator"`
 
-Register a new execution subcommand in `src/triton_agent/cli.py` with:
+Register a new execution subcommand in `src/helix/cli.py` with:
 
 - help group `Execution`
 - dedicated `input_mode="run-simulator"`
@@ -110,7 +110,7 @@ Register a new execution subcommand in `src/triton_agent/cli.py` with:
 
 The command should not reuse the existing `run-bench` input mode because it has a narrower argument surface and intentionally omits bench mode, output, and remote execution options.
 
-Add a new handler in `src/triton_agent/commands/execution.py`:
+Add a new handler in `src/helix/commands/execution.py`:
 
 - validate and resolve the bench and operator paths
 - invoke the simulator runtime wrapper
@@ -120,7 +120,7 @@ Unlike `run-bench`, the handler should not print `Perf file:` hints or post-proc
 
 ### Runtime wrapper in `src/`
 
-Add a dedicated wrapper in `src/triton_agent/execution.py` that loads a simulator helper module through the existing skill loader bridge.
+Add a dedicated wrapper in `src/helix/execution.py` that loads a simulator helper module through the existing skill loader bridge.
 
 This wrapper should follow the existing pattern used by:
 
@@ -196,10 +196,10 @@ Because the new helper lives under `skills/*/scripts/`, completion should also i
 ## Files Expected To Change
 
 - `docs/specs/2026-06-11-run-simulator-subcommand-design.md`
-- `src/triton_agent/models.py`
-- `src/triton_agent/cli.py`
-- `src/triton_agent/commands/execution.py`
-- `src/triton_agent/execution.py`
+- `src/helix/models.py`
+- `src/helix/cli.py`
+- `src/helix/commands/execution.py`
+- `src/helix/execution.py`
 - `skills/triton-npu-run-eval/scripts/simulator_runner.py`
 - `tests/test_cli.py`
 - `tests/test_execution_commands.py`

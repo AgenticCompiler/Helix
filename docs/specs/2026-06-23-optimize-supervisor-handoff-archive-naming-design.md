@@ -12,8 +12,8 @@ Make optimize supervisor handoff archives more explicit and avoid creating empty
 
 ## Design
 
-- Rename the live hidden runtime snapshot directory from `.triton-agent/supervisor-history/` to `.triton-agent/supervisor-handoffs/` so internal names match the artifact semantics.
-- Rename the archive copy destination from `triton-agent-logs/<run-id>/history/` to `triton-agent-logs/<run-id>/supervisor-handoffs/`.
+- Rename the live hidden runtime snapshot directory from `.helix/supervisor-history/` to `.helix/supervisor-handoffs/` so internal names match the artifact semantics.
+- Rename the archive copy destination from `helix-logs/<run-id>/history/` to `helix-logs/<run-id>/supervisor-handoffs/`.
 - Update runtime state, function arguments, and tests to use `handoff` terminology instead of `history` where they specifically describe supervisor snapshot files.
 - Create the archive handoff directory only after confirming at least one snapshot file exists to copy.
 

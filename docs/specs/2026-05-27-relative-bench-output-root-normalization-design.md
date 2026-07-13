@@ -2,7 +2,7 @@
 
 ## Summary
 
-Local benchmark profiling should treat `TRITON_AGENT_BENCH_OUTPUT_DIR` as a
+Local benchmark profiling should treat `HELIX_BENCH_OUTPUT_DIR` as a
 single configured root, even when the user passes a relative path such as
 `./tmp`. Today some local benchmark paths create preserved run directories from
 that relative string and later hand the resulting relative paths to isolated
@@ -11,7 +11,7 @@ workspaces and disappear during cleanup.
 
 ## Goals
 
-- Keep relative `TRITON_AGENT_BENCH_OUTPUT_DIR` values working for local
+- Keep relative `HELIX_BENCH_OUTPUT_DIR` values working for local
   `run-bench`.
 - Make preserved local profiler directories stable across standalone and msprof
   benchmark flows, including parallel case execution.
@@ -36,10 +36,10 @@ workspaces and disappear during cleanup.
 ## Verification
 
 - Add a parallel standalone regression test that uses a relative
-  `TRITON_AGENT_BENCH_OUTPUT_DIR` and asserts the preserved run directory passed
+  `HELIX_BENCH_OUTPUT_DIR` and asserts the preserved run directory passed
   to worker subprocesses is absolute.
 - Add a parallel msprof regression test that uses a relative
-  `TRITON_AGENT_BENCH_OUTPUT_DIR` and asserts the `--output=` directory is
+  `HELIX_BENCH_OUTPUT_DIR` and asserts the `--output=` directory is
   absolute.
 - Run focused unit tests plus strict file-scoped `pyright` for modified skill
   scripts.

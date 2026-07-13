@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add optimize-workspace upload support with a dedicated `upload-optimize` command, automatic post-optimize upload controlled by `--no-upload`, and a same-repo standalone upload server project under `services/triton-agent-upload-server/`.
+**Goal:** Add optimize-workspace upload support with a dedicated `upload-optimize` command, automatic post-optimize upload controlled by `--no-upload`, and a same-repo standalone upload server project under `services/helix-upload-server/`.
 
-**Architecture:** Keep all client logic inside the main repository’s CLI tree through a new `src/triton_agent/optimize_upload/` feature package and reuse that shared workflow from both `upload-optimize` and `optimize` auto-upload. Implement the HTTP receiver as an isolated service project under `services/triton-agent-upload-server/` with its own `pyproject.toml`, dependencies, tests, and runtime entrypoint so deployment stays separate while Git history remains unified.
+**Architecture:** Keep all client logic inside the main repository’s CLI tree through a new `src/helix/optimize_upload/` feature package and reuse that shared workflow from both `upload-optimize` and `optimize` auto-upload. Implement the HTTP receiver as an isolated service project under `services/helix-upload-server/` with its own `pyproject.toml`, dependencies, tests, and runtime entrypoint so deployment stays separate while Git history remains unified.
 
 **Tech Stack:** Python 3, `argparse`, `unittest`, `tarfile`, `urllib`, FastAPI, uvicorn, repository `uv` workflows
 
@@ -12,46 +12,46 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/output.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/output.py`
 - Modify: `README.md`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_commands.py`
 - Modify: `tests/test_optimize_runtime.py`
-- Create: `src/triton_agent/commands/upload_optimize.py`
-- Create: `src/triton_agent/optimize_upload/__init__.py`
-- Create: `src/triton_agent/optimize_upload/models.py`
-- Create: `src/triton_agent/optimize_upload/naming.py`
-- Create: `src/triton_agent/optimize_upload/collector.py`
-- Create: `src/triton_agent/optimize_upload/manifest.py`
-- Create: `src/triton_agent/optimize_upload/packager.py`
-- Create: `src/triton_agent/optimize_upload/client.py`
-- Create: `src/triton_agent/optimize_upload/workflow.py`
+- Create: `src/helix/commands/upload_optimize.py`
+- Create: `src/helix/optimize_upload/__init__.py`
+- Create: `src/helix/optimize_upload/models.py`
+- Create: `src/helix/optimize_upload/naming.py`
+- Create: `src/helix/optimize_upload/collector.py`
+- Create: `src/helix/optimize_upload/manifest.py`
+- Create: `src/helix/optimize_upload/packager.py`
+- Create: `src/helix/optimize_upload/client.py`
+- Create: `src/helix/optimize_upload/workflow.py`
 - Create: `tests/test_optimize_upload.py`
-- Create: `services/triton-agent-upload-server/pyproject.toml`
-- Create: `services/triton-agent-upload-server/README.md`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/__init__.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/app.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/config.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/routes.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/models.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/naming.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/storage.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/responses.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/auth.py`
-- Create: `services/triton-agent-upload-server/tests/test_healthz.py`
-- Create: `services/triton-agent-upload-server/tests/test_upload_route.py`
-- Create: `services/triton-agent-upload-server/tests/test_storage.py`
-- Create: `services/triton-agent-upload-server/tests/test_naming.py`
+- Create: `services/helix-upload-server/pyproject.toml`
+- Create: `services/helix-upload-server/README.md`
+- Create: `services/helix-upload-server/src/helix_upload_server/__init__.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/app.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/config.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/routes.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/models.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/naming.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/storage.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/responses.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/auth.py`
+- Create: `services/helix-upload-server/tests/test_healthz.py`
+- Create: `services/helix-upload-server/tests/test_upload_route.py`
+- Create: `services/helix-upload-server/tests/test_storage.py`
+- Create: `services/helix-upload-server/tests/test_naming.py`
 
 ## Task 1: Lock In CLI Surface And Option Plumbing
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_commands.py`
 
@@ -101,28 +101,28 @@ Expected: `FAIL` because the new subcommand and option are not yet wired.
 
 Make these concrete changes:
 
-- in `src/triton_agent/optimize/models.py`, extend `OptimizeRunOptions` with:
+- in `src/helix/optimize/models.py`, extend `OptimizeRunOptions` with:
 
 ```python
     upload_enabled: bool = True
 ```
 
-- in `src/triton_agent/commands/optimize.py`, map:
+- in `src/helix/commands/optimize.py`, map:
 
 ```python
         upload_enabled=not bool(getattr(args, "no_upload", False)),
 ```
 
-- in `src/triton_agent/cli.py`:
+- in `src/helix/cli.py`:
   - add a new command spec entry for `upload-optimize`
   - expose `--verbose`
   - reuse `-i/--input`
   - add `--no-upload` only on `optimize` and `optimize-batch`
-  - add `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` to help text
+  - add `HELIX_OPTIMIZE_UPLOAD_URL` to help text
 
 - [ ] **Step 4: Add a thin command handler stub for `upload-optimize`**
 
-Create `src/triton_agent/commands/upload_optimize.py` with a temporary handler that validates the input path exists and raises `NotImplementedError` or a temporary `ValueError` with a clear message. This keeps parser wiring compilable before full implementation.
+Create `src/helix/commands/upload_optimize.py` with a temporary handler that validates the input path exists and raises `NotImplementedError` or a temporary `ValueError` with a clear message. This keeps parser wiring compilable before full implementation.
 
 - [ ] **Step 5: Re-run the parser tests and make them pass**
 
@@ -134,18 +134,18 @@ Expected: `PASS`
 - [ ] **Step 6: Commit the CLI surface changes**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/commands/upload_optimize.py src/triton_agent/optimize/models.py tests/test_cli.py tests/test_optimize_commands.py README.md
+git add src/helix/cli.py src/helix/commands/optimize.py src/helix/commands/upload_optimize.py src/helix/optimize/models.py tests/test_cli.py tests/test_optimize_commands.py README.md
 git commit -m "feat: add optimize upload cli surface"
 ```
 
 ## Task 2: Build The Client Naming, Manifest, And Collection Core
 
 **Files:**
-- Create: `src/triton_agent/optimize_upload/__init__.py`
-- Create: `src/triton_agent/optimize_upload/models.py`
-- Create: `src/triton_agent/optimize_upload/naming.py`
-- Create: `src/triton_agent/optimize_upload/collector.py`
-- Create: `src/triton_agent/optimize_upload/manifest.py`
+- Create: `src/helix/optimize_upload/__init__.py`
+- Create: `src/helix/optimize_upload/models.py`
+- Create: `src/helix/optimize_upload/naming.py`
+- Create: `src/helix/optimize_upload/collector.py`
+- Create: `src/helix/optimize_upload/manifest.py`
 - Create: `tests/test_optimize_upload.py`
 
 - [ ] **Step 1: Write failing tests for workspace slugging and upload identity**
@@ -193,7 +193,7 @@ Add focused collection tests that build a temp workspace containing:
 - `opt-round-1/opt_kernel_perf.txt`
 - `opt-round-1/perf-analysis.md`
 - `opt-round-1/compiler-analysis.md`
-- `triton-agent-logs/optimize.show-output.log`
+- `helix-logs/optimize.show-output.log`
 - excluded paths:
   - `opt-round-1/ir/`
   - `opt-verify/verify-1/verify-state.json`
@@ -212,7 +212,7 @@ Expected: `FAIL` because the new upload package does not exist yet.
 
 - [ ] **Step 4: Implement upload models and naming helpers**
 
-In `src/triton_agent/optimize_upload/models.py`, add focused dataclasses such as:
+In `src/helix/optimize_upload/models.py`, add focused dataclasses such as:
 
 ```python
 @dataclass(frozen=True)
@@ -231,7 +231,7 @@ class CollectedUpload:
     excluded_entries: tuple[tuple[str, str], ...]
 ```
 
-In `src/triton_agent/optimize_upload/naming.py`, implement:
+In `src/helix/optimize_upload/naming.py`, implement:
 
 - `slugify_workspace_name(name: str) -> str`
 - `build_upload_identity(workspace: Path) -> UploadIdentity`
@@ -240,7 +240,7 @@ Use `re.sub` for slug normalization and `datetime.now(timezone.utc).strftime("%Y
 
 - [ ] **Step 5: Implement whitelist collection**
 
-In `src/triton_agent/optimize_upload/collector.py`:
+In `src/helix/optimize_upload/collector.py`:
 
 - validate the workspace path
 - find root-level whitelist files
@@ -253,14 +253,14 @@ In `src/triton_agent/optimize_upload/collector.py`:
   - one round perf artifact
   - `perf-analysis.md`
   - `compiler-analysis.md`
-- collect `*.show-output.log` under `triton-agent-logs/`
+- collect `*.show-output.log` under `helix-logs/`
 - record excluded entries only for the explicitly forbidden known paths you discover during traversal
 
 Do not import the upload server code here.
 
 - [ ] **Step 6: Implement manifest generation**
 
-In `src/triton_agent/optimize_upload/manifest.py`, add a function:
+In `src/helix/optimize_upload/manifest.py`, add a function:
 
 ```python
 def build_manifest(
@@ -293,16 +293,16 @@ Expected: `PASS`
 - [ ] **Step 8: Commit the collection and manifest core**
 
 ```bash
-git add src/triton_agent/optimize_upload/__init__.py src/triton_agent/optimize_upload/models.py src/triton_agent/optimize_upload/naming.py src/triton_agent/optimize_upload/collector.py src/triton_agent/optimize_upload/manifest.py tests/test_optimize_upload.py
+git add src/helix/optimize_upload/__init__.py src/helix/optimize_upload/models.py src/helix/optimize_upload/naming.py src/helix/optimize_upload/collector.py src/helix/optimize_upload/manifest.py tests/test_optimize_upload.py
 git commit -m "feat: add optimize upload collection core"
 ```
 
 ## Task 3: Implement Packaging And HTTP Upload Workflow
 
 **Files:**
-- Create: `src/triton_agent/optimize_upload/packager.py`
-- Create: `src/triton_agent/optimize_upload/client.py`
-- Create: `src/triton_agent/optimize_upload/workflow.py`
+- Create: `src/helix/optimize_upload/packager.py`
+- Create: `src/helix/optimize_upload/client.py`
+- Create: `src/helix/optimize_upload/workflow.py`
 - Create: `tests/test_optimize_upload.py`
 
 - [ ] **Step 1: Write failing tests for tarball layout**
@@ -315,7 +315,7 @@ Extend `tests/test_optimize_upload.py` with a packager test that:
 - asserts members include:
   - `baseline/state.json`
   - `opt-round-1/summary.md`
-  - `triton-agent-logs/optimize.show-output.log`
+  - `helix-logs/optimize.show-output.log`
   - `_upload/manifest.json`
 - asserts no extra top-level wrapper directory is present
 
@@ -326,12 +326,12 @@ Add a fake HTTP server or patch `urllib.request.urlopen` to assert:
 - request method is `POST`
 - `Content-Type` is `application/gzip`
 - `Content-Length` is present
-- all `X-Triton-Agent-*` headers are present
+- all `X-Helix-*` headers are present
 - request body bytes match the tarball file
 
 Add failure tests for:
 
-- missing `TRITON_AGENT_OPTIMIZE_UPLOAD_URL`
+- missing `HELIX_OPTIMIZE_UPLOAD_URL`
 - malformed JSON response
 - HTTP error surface
 
@@ -344,7 +344,7 @@ Expected: `FAIL`
 
 - [ ] **Step 4: Implement tarball creation**
 
-In `src/triton_agent/optimize_upload/packager.py`, implement a helper such as:
+In `src/helix/optimize_upload/packager.py`, implement a helper such as:
 
 ```python
 @contextmanager
@@ -364,7 +364,7 @@ Requirements:
 
 - [ ] **Step 5: Implement HTTP upload client**
 
-In `src/triton_agent/optimize_upload/client.py`, implement:
+In `src/helix/optimize_upload/client.py`, implement:
 
 - `load_upload_url() -> str`
 - `upload_tarball(identity: UploadIdentity, tarball: Path, url: str) -> UploadResponse`
@@ -373,7 +373,7 @@ Use `urllib.request.Request` plus `urlopen`. Parse JSON into a small dataclass i
 
 - [ ] **Step 6: Implement shared upload workflow**
 
-In `src/triton_agent/optimize_upload/workflow.py`, add a high-level function such as:
+In `src/helix/optimize_upload/workflow.py`, add a high-level function such as:
 
 ```python
 def upload_optimize_workspace(
@@ -404,15 +404,15 @@ Expected: `PASS`
 - [ ] **Step 8: Commit packaging and client upload**
 
 ```bash
-git add src/triton_agent/optimize_upload/packager.py src/triton_agent/optimize_upload/client.py src/triton_agent/optimize_upload/workflow.py tests/test_optimize_upload.py
+git add src/helix/optimize_upload/packager.py src/helix/optimize_upload/client.py src/helix/optimize_upload/workflow.py tests/test_optimize_upload.py
 git commit -m "feat: add optimize upload workflow"
 ```
 
 ## Task 4: Integrate `upload-optimize` And Auto-Upload Behavior
 
 **Files:**
-- Modify: `src/triton_agent/commands/upload_optimize.py`
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/commands/upload_optimize.py`
+- Modify: `src/helix/commands/optimize.py`
 - Modify: `tests/test_optimize_commands.py`
 - Modify: `tests/test_optimize_runtime.py`
 
@@ -444,7 +444,7 @@ Expected: `FAIL`
 
 - [ ] **Step 4: Implement the `upload-optimize` command handler**
 
-In `src/triton_agent/commands/upload_optimize.py`, replace the stub with real logic:
+In `src/helix/commands/upload_optimize.py`, replace the stub with real logic:
 
 - resolve and validate `--input`
 - call `upload_optimize_workspace`
@@ -454,14 +454,14 @@ In `src/triton_agent/commands/upload_optimize.py`, replace the stub with real lo
 
 - [ ] **Step 5: Integrate auto-upload into optimize flows**
 
-In `src/triton_agent/commands/optimize.py`:
+In `src/helix/commands/optimize.py`:
 
 - after a successful single-workspace `run_optimize_request`, call the upload workflow when `options.upload_enabled`
 - on missing URL, treat the upload as skipped
 - on upload failure, preserve `result.return_code`
 - only print upload success/failure/skipped lines when `request.verbose`
 
-In `src/triton_agent/optimize/batch.py`, integrate the same shared workflow per successful workspace when batch options allow upload.
+In `src/helix/optimize/batch.py`, integrate the same shared workflow per successful workspace when batch options allow upload.
 
 - [ ] **Step 6: Re-run the integration tests and make them pass**
 
@@ -473,32 +473,32 @@ Expected: `PASS`
 - [ ] **Step 7: Commit CLI integration**
 
 ```bash
-git add src/triton_agent/commands/upload_optimize.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/batch.py tests/test_optimize_commands.py tests/test_optimize_runtime.py
+git add src/helix/commands/upload_optimize.py src/helix/commands/optimize.py src/helix/optimize/batch.py tests/test_optimize_commands.py tests/test_optimize_runtime.py
 git commit -m "feat: integrate optimize upload flows"
 ```
 
 ## Task 5: Create The Standalone Upload Server Project Under `services/`
 
 **Files:**
-- Create: `services/triton-agent-upload-server/pyproject.toml`
-- Create: `services/triton-agent-upload-server/README.md`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/__init__.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/app.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/config.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/routes.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/models.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/naming.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/storage.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/responses.py`
-- Create: `services/triton-agent-upload-server/src/triton_agent_upload_server/auth.py`
-- Create: `services/triton-agent-upload-server/tests/test_healthz.py`
-- Create: `services/triton-agent-upload-server/tests/test_upload_route.py`
-- Create: `services/triton-agent-upload-server/tests/test_storage.py`
-- Create: `services/triton-agent-upload-server/tests/test_naming.py`
+- Create: `services/helix-upload-server/pyproject.toml`
+- Create: `services/helix-upload-server/README.md`
+- Create: `services/helix-upload-server/src/helix_upload_server/__init__.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/app.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/config.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/routes.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/models.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/naming.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/storage.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/responses.py`
+- Create: `services/helix-upload-server/src/helix_upload_server/auth.py`
+- Create: `services/helix-upload-server/tests/test_healthz.py`
+- Create: `services/helix-upload-server/tests/test_upload_route.py`
+- Create: `services/helix-upload-server/tests/test_storage.py`
+- Create: `services/helix-upload-server/tests/test_naming.py`
 
 - [ ] **Step 1: Write the failing server naming and storage tests**
 
-Add tests in `services/triton-agent-upload-server/tests/test_naming.py` for:
+Add tests in `services/helix-upload-server/tests/test_naming.py` for:
 
 - safe slug normalization
 - archive filename construction:
@@ -527,13 +527,13 @@ Add FastAPI test-client coverage in `test_upload_route.py` for:
 - [ ] **Step 3: Run the server tests to confirm they fail**
 
 Run:
-`cd services/triton-agent-upload-server && uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`
+`cd services/helix-upload-server && uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`
 
 Expected: `FAIL`
 
 - [ ] **Step 4: Create the standalone service project metadata**
 
-Add `services/triton-agent-upload-server/pyproject.toml` with:
+Add `services/helix-upload-server/pyproject.toml` with:
 
 - Python `>=3.11`
 - dependencies:
@@ -546,7 +546,7 @@ Expose a console script:
 
 ```toml
 [project.scripts]
-triton-agent-upload-server = "triton_agent_upload_server.app:main"
+helix-upload-server = "helix_upload_server.app:main"
 ```
 
 - [ ] **Step 5: Implement naming, config, models, and storage helpers**
@@ -591,14 +591,14 @@ The upload route must:
 - [ ] **Step 7: Re-run the server test suite**
 
 Run:
-`cd services/triton-agent-upload-server && uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`
+`cd services/helix-upload-server && uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`
 
 Expected: `PASS`
 
 - [ ] **Step 8: Commit the server project**
 
 ```bash
-git add services/triton-agent-upload-server
+git add services/helix-upload-server
 git commit -m "feat: add optimize upload server project"
 ```
 
@@ -615,8 +615,8 @@ Add:
 
 - `upload-optimize`
 - `--no-upload`
-- `TRITON_AGENT_OPTIMIZE_UPLOAD_URL`
-- note that the upload server project lives under `services/triton-agent-upload-server/`
+- `HELIX_OPTIMIZE_UPLOAD_URL`
+- note that the upload server project lives under `services/helix-upload-server/`
 
 - [ ] **Step 2: Update README server development notes**
 

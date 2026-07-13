@@ -107,7 +107,7 @@ Summary: 1 succeeded, 0 failed, 1 skipped
 
 ## Implementation Notes
 
-- Keep status-file logic in `src/triton_agent/optimize/batch.py` or an optimize-batch-local helper module.
+- Keep status-file logic in `src/helix/optimize/batch.py` or an optimize-batch-local helper module.
 - Do not route this through skills or prompt logic.
 - Keep the result rendering update narrow to batch optimize output.
 

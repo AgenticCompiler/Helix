@@ -13,10 +13,10 @@
 ### Task 1: Lock The New File Naming Contract With Tests
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_guidance.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_guidance.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_guidance.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_guidance.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write failing tests for per-launch archive paths**
 
@@ -74,11 +74,11 @@ Expected: FAIL with missing new file names and/or unexpected old aggregate files
 ### Task 2: Implement Optimize Archive Helpers For Per-Launch Trace And Session Files
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/archive.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/session_artifacts.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/execution.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_guidance.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/archive.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/session_artifacts.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize/execution.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_guidance.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Replace aggregate archive path fields with per-label helpers**
 
@@ -148,24 +148,24 @@ Expected: PASS
 ### Task 3: Make Optimize Trace Summaries Launch-Local Without Breaking Other Commands
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/otel_trace.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/trace_analyze/analyzer.py`
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/commands/trace_analyze.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_trace_analyze_analyzer.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_trace_analyze_analyzer.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/otel_trace.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/trace_analyze/analyzer.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/commands/trace_analyze.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_trace_analyze_analyzer.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_trace_analyze_analyzer.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
 
 - [ ] **Step 1: Write failing tests for optimize trace summary naming**
 
 Add assertions that optimize-style trace files produce launch-local summary names:
 
 ```python
-trace_path = Path("/tmp/triton-agent-logs/run-001/trace-batch-1-5.jsonl")
+trace_path = Path("/tmp/helix-logs/run-001/trace-batch-1-5.jsonl")
 summary = build_summary([], trace_path=trace_path)
 self.assertEqual(
     summary["paths"]["summary_json"],
-    "/tmp/triton-agent-logs/run-001/trace-batch-1-5.summary.json",
+    "/tmp/helix-logs/run-001/trace-batch-1-5.summary.json",
 )
 ```
 
@@ -212,9 +212,9 @@ Expected: PASS
 ### Task 4: Remove Claude Tool Ids From Show-Output Rendering
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/backends/claude_trace.py`
-- Modify: `/Users/cdj/Projects/triton-agent/tests/test_claude_trace.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_claude_trace.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/backends/claude_trace.py`
+- Modify: `/Users/cdj/Projects/helix/tests/test_claude_trace.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_claude_trace.py`
 
 - [ ] **Step 1: Write failing tests for human-readable Claude tool lines**
 
@@ -279,16 +279,16 @@ Expected: PASS
 ### Task 5: Update Upload Filtering And User-Facing Docs
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/src/triton_agent/optimize_upload/collector.py`
-- Modify: `/Users/cdj/Projects/triton-agent/README.md`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_upload.py`
+- Modify: `/Users/cdj/Projects/helix/src/helix/optimize_upload/collector.py`
+- Modify: `/Users/cdj/Projects/helix/README.md`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_upload.py`
 
 - [ ] **Step 1: Write a failing upload collector test for new session file names**
 
 Add a test that includes:
 
 ```python
-workspace / "triton-agent-logs" / "run-001" / "agent-session-batch-1-5.json"
+workspace / "helix-logs" / "run-001" / "agent-session-batch-1-5.json"
 ```
 
 and asserts it is excluded from upload.
@@ -310,7 +310,7 @@ Exclude any optimize session metadata file matching `agent-session-*.json`, and 
 - `optimize-logs/...`
 - `agent-sessions.jsonl`
 
-Use wording that matches the new per-launch files under `triton-agent-logs/<run-id>/`.
+Use wording that matches the new per-launch files under `helix-logs/<run-id>/`.
 
 - [ ] **Step 4: Run the targeted upload test to verify it passes**
 
@@ -325,14 +325,14 @@ Expected: PASS
 ### Task 6: Final Verification
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/docs/specs/2026-06-17-optimize-per-invocation-trace-session-files-design.md`
-- Modify: `/Users/cdj/Projects/triton-agent/docs/plans/2026-06-17-optimize-per-invocation-trace-session-files.md`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_guidance.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_runtime.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_trace_analyze_analyzer.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_backends_base.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_claude_trace.py`
-- Test: `/Users/cdj/Projects/triton-agent/tests/test_optimize_upload.py`
+- Modify: `/Users/cdj/Projects/helix/docs/specs/2026-06-17-optimize-per-invocation-trace-session-files-design.md`
+- Modify: `/Users/cdj/Projects/helix/docs/plans/2026-06-17-optimize-per-invocation-trace-session-files.md`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_guidance.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_runtime.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_trace_analyze_analyzer.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_backends_base.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_claude_trace.py`
+- Test: `/Users/cdj/Projects/helix/tests/test_optimize_upload.py`
 
 - [ ] **Step 1: Run the complete targeted verification set**
 

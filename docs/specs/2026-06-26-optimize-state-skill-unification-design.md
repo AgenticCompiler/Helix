@@ -10,7 +10,7 @@
 - Move the temporary optimize workflow-state helper out of `triton-npu-optimize` and into the new common skill.
 - Keep the agent-facing subcommand names `submit-baseline`, `start-round`, and `submit-round`.
 - Give the new skill one public CLI entrypoint: `python3 scripts/cli.py <subcommand> ...`.
-- Extend `src/triton_agent/skill_loader.py` so runtime code can load nested skill scripts by skill-relative path such as `state_manage/workflow`.
+- Extend `src/helix/skill_loader.py` so runtime code can load nested skill scripts by skill-relative path such as `state_manage/workflow`.
 
 ## Goals
 
@@ -25,7 +25,7 @@
 - Do not redesign optimize baseline preparation. That remains owned by `ascend-npu-prepare-optimize-baseline`.
 - Do not redesign the `triton-npu-optimize` or `tilelang-npu-optimize` optimization loop itself.
 - Do not redesign the existing optimize workflow actions beyond renaming round completion to `submit-round`.
-- Do not move skill-side state-management logic into `src/triton_agent/`.
+- Do not move skill-side state-management logic into `src/helix/`.
 - Do not preserve compatibility shims for the three deleted skill names.
 
 ## User-Visible Semantics
@@ -132,7 +132,7 @@ This layer is also about durable optimize artifacts, not temporary runner state 
 
 Owns temporary runner-managed optimize workflow state and the CLI-facing workflow entrypoints:
 
-- reading and validating `.triton-agent/state.json`
+- reading and validating `.helix/state.json`
 - enforcing phase transitions
 - recording baseline acceptance and active round transitions
 - rendering phase summaries
@@ -143,7 +143,7 @@ This layer must not be confused with durable files like `baseline/state.json` or
 
 `submit-baseline`, `start-round`, and `submit-round` belong to this layer. These entrypoint modules should read runner-managed workflow state when needed, delegate durable artifact validation to `baseline/check.py` or `round/check.py`, and emit the user-facing JSON payloads for the agent.
 
-`start-round` is the one intentional bridge across the temporary and durable layers: it must read `.triton-agent/state.json` to enforce workflow phase rules, then open the next durable `opt-round-N/` target that the worker is about to edit.
+`start-round` is the one intentional bridge across the temporary and durable layers: it must read `.helix/state.json` to enforce workflow phase rules, then open the next durable `opt-round-N/` target that the worker is about to edit.
 
 ## CLI Design
 
@@ -177,11 +177,11 @@ After this refactor, runtime code should stop loading workflow-state helpers fro
 
 Instead:
 
-- `src/triton_agent/optimize/workflow_state.py` should load `ascend-npu-optimize-state` script `state_manage/workflow`
-- `src/triton_agent/optimize/checks.py` should load:
+- `src/helix/optimize/workflow_state.py` should load `ascend-npu-optimize-state` script `state_manage/workflow`
+- `src/helix/optimize/checks.py` should load:
   - `ascend-npu-optimize-state` script `baseline/check`
   - `ascend-npu-optimize-state` script `round/check`
-- `src/triton_agent/optimize/skill_contract.py` should point to the same new structured modules
+- `src/helix/optimize/skill_contract.py` should point to the same new structured modules
 
 No top-level `scripts/optimize_workflow_state.py` compatibility wrapper should be kept.
 
@@ -238,10 +238,10 @@ The repository should migrate all optimize workflow references to the new common
 
 ### Catalog And Staging
 
-- `src/triton_agent/skill_catalog.py`
+- `src/helix/skill_catalog.py`
   - remove the three old common skill entries
   - add one entry for `ascend-npu-optimize-state`
-- `src/triton_agent/skill_staging.py`
+- `src/helix/skill_staging.py`
   - replace staged references to the three old skills with the new common skill
   - update `LOG_CHECK`, `LOG_CHECK_BATCH`, and `OPTIMIZE`
 
@@ -251,15 +251,15 @@ Update optimize runtime and prompt surfaces so they name only `ascend-npu-optimi
 
 This includes:
 
-- `src/triton_agent/optimize/contract.py`
-- `src/triton_agent/optimize/prompts.py`
-- `src/triton_agent/optimize/memory_file.py`
-- `src/triton_agent/optimize/execution.py`
-- `src/triton_agent/cli.py`
-- `src/triton_agent/log_check/log_check_launcher.py`
+- `src/helix/optimize/contract.py`
+- `src/helix/optimize/prompts.py`
+- `src/helix/optimize/memory_file.py`
+- `src/helix/optimize/execution.py`
+- `src/helix/cli.py`
+- `src/helix/log_check/log_check_launcher.py`
 - guard and trace wording that currently cites the deleted skill names
 
-`src/triton_agent/optimize/contract.py` must stop hardcoding the deleted skill directories and instead read:
+`src/helix/optimize/contract.py` must stop hardcoding the deleted skill directories and instead read:
 
 - `skills/common/ascend-npu-optimize-state/references/baseline-contract.json`
 - `skills/common/ascend-npu-optimize-state/references/round-contract.json`
@@ -316,7 +316,7 @@ Skill-side shared helpers such as JSON loading, path normalization, and CLI resu
 The merged skill must preserve the distinction between:
 
 - durable artifact contract files under `baseline/` and `opt-round-N/`
-- temporary runner-managed phase state under `.triton-agent/state.json`
+- temporary runner-managed phase state under `.helix/state.json`
 
 The merged directory layout should make that distinction easier to see, not blur it.
 

@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.claude import ClaudeRunner
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.prompts import build_prompt
+from helix.backends.claude import ClaudeRunner
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.prompts import build_prompt
 
 
 class ClaudeRunnerTests(unittest.TestCase):
@@ -273,7 +273,7 @@ class ClaudeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
 
             self.assertIn("--settings", command)
-            self.assertIn(str(workspace / ".claude" / "triton-agent-hooks" / "settings.json"), command)
+            self.assertIn(str(workspace / ".claude" / "helix-hooks" / "settings.json"), command)
 
     def test_run_uses_unified_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -295,7 +295,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
             self.assertIsNotNone(mocked.call_args.kwargs["output_filter"])
@@ -319,7 +319,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             def _inspect_run(*args, **kwargs):
@@ -329,7 +329,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 self.assertIn("--mcp-config", command)
                 self.assertIn(str(config_path), command)
                 payload = json.loads(config_path.read_text(encoding="utf-8"))
-                server = payload["mcpServers"]["triton-agent-run-eval"]
+                server = payload["mcpServers"]["helix-run-eval"]
                 self.assertEqual(server["type"], "http")
                 self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
                 self.assertIn("/mcp?workspace=", server["url"])
@@ -339,12 +339,12 @@ class ClaudeRunnerTests(unittest.TestCase):
             with patch.dict(
                 "os.environ",
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
-                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_run):
+                with patch("helix.backends.base.run_process", side_effect=_inspect_run):
                     result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -374,7 +374,7 @@ class ClaudeRunnerTests(unittest.TestCase):
 
             def _inspect_hooks(*args, **kwargs):
                 command = args[0]
-                hook_dir = workspace / ".claude" / "triton-agent-hooks"
+                hook_dir = workspace / ".claude" / "helix-hooks"
                 settings_path = hook_dir / "settings.json"
                 self.assertTrue(settings_path.exists())
                 self.assertTrue((hook_dir / "policy.json").exists())
@@ -383,11 +383,11 @@ class ClaudeRunnerTests(unittest.TestCase):
                 self.assertIn(str(settings_path), command)
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+            with patch("helix.backends.base.run_process", side_effect=_inspect_hooks):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            self.assertFalse((workspace / ".claude" / "triton-agent-hooks").exists())
+            self.assertFalse((workspace / ".claude" / "helix-hooks").exists())
 
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -410,7 +410,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             stderr = StringIO()
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
+            with patch("helix.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
             self.assertIn("[command]", stderr.getvalue())
@@ -450,7 +450,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 min_rounds=3,
                 round_mode="checked",
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]

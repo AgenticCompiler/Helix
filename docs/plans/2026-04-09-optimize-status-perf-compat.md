@@ -41,7 +41,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_optimize_status.py`
-- Modify: `src/triton_agent/optimize/status.py`
+- Modify: `src/helix/optimize/status.py`
 
 - [ ] **Step 1: Write the failing test**
 

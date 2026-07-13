@@ -6,8 +6,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.skills.staging import SkillLinkManager
-from triton_agent.skills.catalog import list_catalog_skill_names
+from helix.skills.staging import SkillLinkManager
+from helix.skills.catalog import list_catalog_skill_names
 
 
 _BACKEND_SKILL_DIRS = {
@@ -257,7 +257,7 @@ class SkillLinkManagerTests(unittest.TestCase):
 
             temporary_git_dir = workspace / ".git"
             self.assertTrue(temporary_git_dir.is_dir())
-            with mock.patch.dict("os.environ", {"TRITON_AGENT_RESET_GIT_REPO": "1"}, clear=False):
+            with mock.patch.dict("os.environ", {"HELIX_RESET_GIT_REPO": "1"}, clear=False):
                 manager.cleanup(links)
             self.assertFalse(temporary_git_dir.exists())
 
@@ -329,7 +329,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             (source / "common" / "ascend-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
-            with mock.patch("triton_agent.skills.staging.shutil.which", return_value=None):
+            with mock.patch("helix.skills.staging.shutil.which", return_value=None):
                 links = manager.prepare_skills("codex", workspace, skill_names=("ascend-npu-gen-test",))
 
             self.assertIsNone(links.temporary_git_dir)

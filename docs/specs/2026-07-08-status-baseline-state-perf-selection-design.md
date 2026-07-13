@@ -2,7 +2,7 @@
 
 ## Summary
 
-Change `triton-agent status` so baseline perf selection treats
+Change `helix status` so baseline perf selection treats
 `baseline/state.json` `perf_artifact` as the authoritative baseline artifact
 whenever that state entry is available.
 
@@ -49,7 +49,7 @@ guessing from directory contents.
 
 ## Proposed Implementation
 
-- Update `src/triton_agent/status/core.py` baseline selection to check
+- Update `src/helix/status/core.py` baseline selection to check
   `baseline/state.json` before scanning `baseline/*_perf.txt`.
 - Reuse the existing baseline-state loader so `status` stays aligned with the
   optimize baseline contract.

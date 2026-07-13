@@ -3,23 +3,23 @@
 ## Goal
 
 Keep the recent staged-helper entrypoint fix while restoring protection for
-normal bare relative paths under `triton-agent-logs/`.
+normal bare relative paths under `helix-logs/`.
 
 ## Problem
 
 The current guards only recognize explicit path tokens that start with `/`,
 `./`, `../`, or the backend-native staged skill root. After tightening the
 fallback fragment regex, normal agent commands such as
-`cat triton-agent-logs/gen-test.show-output.log` no longer produce any checked
+`cat helix-logs/gen-test.show-output.log` no longer produce any checked
 candidate path, so the deny glob never runs.
 
 ## Design
 
-- Treat `triton-agent-logs/` as a protected relative path prefix during shell
+- Treat `helix-logs/` as a protected relative path prefix during shell
   token scanning.
-- Extend the fallback fragment regex to recognize `triton-agent-logs/` inside
+- Extend the fallback fragment regex to recognize `helix-logs/` inside
   quoted strings, so Python one-liners such as
-  `python3 -c "print(open('triton-agent-logs/...').read())"` stay blocked.
+  `python3 -c "print(open('helix-logs/...').read())"` stay blocked.
 - Keep the existing staged-helper entrypoint exception and nested-fragment
   filtering unchanged.
 

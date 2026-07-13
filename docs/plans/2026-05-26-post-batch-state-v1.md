@@ -42,12 +42,12 @@ isProject: false
 
 ## 可复用代码入口
 
-- [src/triton_agent/optimize/batch.py](../../src/triton_agent/optimize/batch.py)：`optimize-batch-status.json`
-- [src/triton_agent/status/core.py](../../src/triton_agent/status/core.py)：`inspect_optimize_status_workspace`、best round、speedup
-- [src/triton_agent/verification/core.py](../../src/triton_agent/verification/core.py)：`verify-state.json`
-- [src/triton_agent/log_check/batch.py](../../src/triton_agent/log_check/batch.py)：`log_check_result.json` 解析
-- [src/triton_agent/log_check/check_json.py](../../src/triton_agent/log_check/check_json.py)：JSON schema 校验与修复（计划中）
-- [src/triton_agent/log_check/check_markdown.py](../../src/triton_agent/log_check/check_markdown.py)：从 JSON 渲染 markdown（计划中）
+- [src/helix/optimize/batch.py](../../src/helix/optimize/batch.py)：`optimize-batch-status.json`
+- [src/helix/status/core.py](../../src/helix/status/core.py)：`inspect_optimize_status_workspace`、best round、speedup
+- [src/helix/verification/core.py](../../src/helix/verification/core.py)：`verify-state.json`
+- [src/helix/log_check/batch.py](../../src/helix/log_check/batch.py)：`log_check_result.json` 解析
+- [src/helix/log_check/check_json.py](../../src/helix/log_check/check_json.py)：JSON schema 校验与修复（计划中）
+- [src/helix/log_check/check_markdown.py](../../src/helix/log_check/check_markdown.py)：从 JSON 渲染 markdown（计划中）
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Goal:** Refactor optimize-time `AGENTS.md` / `CLAUDE.md` rendering in `guidance.py` from inline string concatenation to code-local multiline templates without changing optimize behavior.
 
-**Architecture:** Keep all rendering logic in `src/triton_agent/optimize/guidance.py`, but separate document structure from block assembly. Introduce small local helpers for bullet and optional line blocks, add two explicit template constants for unsupervised and shared guidance, then rewire the render methods to fill those templates while preserving the current text semantics and test coverage.
+**Architecture:** Keep all rendering logic in `src/helix/optimize/guidance.py`, but separate document structure from block assembly. Introduce small local helpers for bullet and optional line blocks, add two explicit template constants for unsupervised and shared guidance, then rewire the render methods to fill those templates while preserving the current text semantics and test coverage.
 
 **Tech Stack:** Python 3.12, `textwrap.dedent`, existing optimize guidance plumbing, Python `unittest`
 
@@ -14,14 +14,14 @@
 
 **Files:**
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/guidance.py`
 
 - [ ] **Step 1: Write failing helper tests**
 
 Add these tests near the top of `OptimizeGuidanceManagerTests` in `tests/test_optimize_guidance.py`:
 
 ```python
-import triton_agent.optimize.guidance as optimize_guidance
+import helix.optimize.guidance as optimize_guidance
 
 
 def test_render_bullet_block_formats_markdown_list(self) -> None:
@@ -61,7 +61,7 @@ Expected: FAIL with `AttributeError` because `_render_bullet_block` and `_render
 
 - [ ] **Step 3: Add minimal rendering helpers**
 
-In `src/triton_agent/optimize/guidance.py`, add:
+In `src/helix/optimize/guidance.py`, add:
 
 ```python
 def _render_bullet_block(lines: list[str]) -> str:
@@ -83,7 +83,7 @@ Expected: PASS for both helper tests.
 - [ ] **Step 5: Commit helper groundwork**
 
 ```bash
-git add tests/test_optimize_guidance.py src/triton_agent/optimize/guidance.py
+git add tests/test_optimize_guidance.py src/helix/optimize/guidance.py
 git commit -m "refactor: add optimize guidance render helpers"
 ```
 
@@ -91,7 +91,7 @@ git commit -m "refactor: add optimize guidance render helpers"
 
 **Files:**
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/guidance.py`
 
 - [ ] **Step 1: Write failing tests for template constants**
 
@@ -127,7 +127,7 @@ Expected: FAIL with `AttributeError` because the explicit template constants do 
 
 - [ ] **Step 3: Add multiline template constants**
 
-In `src/triton_agent/optimize/guidance.py`, import `dedent` and add:
+In `src/helix/optimize/guidance.py`, import `dedent` and add:
 
 ```python
 from textwrap import dedent
@@ -137,7 +137,7 @@ _UNSUPERVISED_GUIDANCE_TEMPLATE = dedent(
     """\
     # {guidance_filename}
 
-    ## Triton Agent Optimize Session
+    ## Helix Optimize Session
 
     This workspace is under an unsupervised optimize run.
 
@@ -154,13 +154,13 @@ _SHARED_GUIDANCE_TEMPLATE = dedent(
     """\
     # {guidance_filename}
 
-    ## Triton Agent Optimize Orchestration
+    ## Helix Optimize Orchestration
 
     This workspace is under optimize orchestration.
 
     {guidance_rules_block}Use the staged workspace skills as the workflow source of truth.
     Role-specific behavior comes from the launch prompt.
-    Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
+    Use `.helix/round-brief.md` and `.helix/supervisor-report.md` as live handoff files.
     Treat `baseline/` as the canonical optimize baseline.
     Use `compare-perf` as the authoritative source for round performance summaries.
     {analysis_block}{compiler_source_block}"""
@@ -202,7 +202,7 @@ Expected: PASS. Existing guidance-content tests should still pass, proving the t
 - [ ] **Step 6: Commit the template refactor**
 
 ```bash
-git add tests/test_optimize_guidance.py src/triton_agent/optimize/guidance.py
+git add tests/test_optimize_guidance.py src/helix/optimize/guidance.py
 git commit -m "refactor: template optimize guidance rendering"
 ```
 
@@ -210,7 +210,7 @@ git commit -m "refactor: template optimize guidance rendering"
 
 **Files:**
 - Modify: `tests/test_optimize_runtime.py` only if a runtime assertion needs updating
-- Modify: `src/triton_agent/optimize/guidance.py` only if the runtime test reveals spacing or content regressions
+- Modify: `src/helix/optimize/guidance.py` only if the runtime test reveals spacing or content regressions
 
 - [ ] **Step 1: Run runtime regression tests without changing code first**
 
@@ -220,7 +220,7 @@ Expected: PASS. The optimize runtime should still create and clean up `AGENTS.md
 
 - [ ] **Step 2: Fix only genuine runtime regressions if the suite fails**
 
-If the runtime suite fails, make the smallest possible adjustment in `src/triton_agent/optimize/guidance.py`. Keep the template structure and preserve the approved guidance text. Do not change optimize execution flow, archive behavior, or prompt semantics.
+If the runtime suite fails, make the smallest possible adjustment in `src/helix/optimize/guidance.py`. Keep the template structure and preserve the approved guidance text. Do not change optimize execution flow, archive behavior, or prompt semantics.
 
 - [ ] **Step 3: Run the final verification set**
 
@@ -236,7 +236,7 @@ Expected: PASS for both suites with no new failures.
 - [ ] **Step 4: Commit the verified refactor**
 
 ```bash
-git add tests/test_optimize_guidance.py src/triton_agent/optimize/guidance.py
+git add tests/test_optimize_guidance.py src/helix/optimize/guidance.py
 git commit -m "test: verify optimize guidance template refactor"
 ```
 

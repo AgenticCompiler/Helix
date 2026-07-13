@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.eval import mcp as mcp_module
-from triton_agent.eval import mcp_server as module
+from helix.eval import mcp as mcp_module
+from helix.eval import mcp_server as module
 
 
 class RunEvalMCPServerTests(unittest.TestCase):
@@ -32,27 +32,27 @@ class RunEvalMCPServerTests(unittest.TestCase):
         self.assertEqual(seen_devices, ["0"])
 
     def test_configured_slot_pool_rejects_explicit_empty_device_list(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+        with self.assertRaisesRegex(ValueError, "HELIX_BATCH_NPU_DEVICES"):
             module.configured_slot_pool(npu_devices="", workers_per_npu="2")
 
     def test_configured_slot_pool_rejects_empty_device_env(self) -> None:
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             },
             clear=True,
         ):
-            with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+            with self.assertRaisesRegex(ValueError, "HELIX_BATCH_NPU_DEVICES"):
                 module.configured_slot_pool()
 
     def test_configured_slot_pool_ignores_workers_per_npu_when_devices_are_configured(self) -> None:
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "3",
             },
             clear=False,
         ):
@@ -70,8 +70,8 @@ class RunEvalMCPServerTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "4,5",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "9",
+                "HELIX_BATCH_NPU_DEVICES": "4,5",
+                "HELIX_BATCH_WORKERS_PER_NPU": "9",
             },
             clear=False,
         ):
@@ -89,8 +89,8 @@ class RunEvalMCPServerTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+                "HELIX_BATCH_NPU_DEVICES": "0,1",
+                "HELIX_BATCH_WORKERS_PER_NPU": "3",
             },
             clear=False,
         ):
@@ -389,9 +389,9 @@ class RunEvalMCPServerTests(unittest.TestCase):
             observed["arguments"] = arguments
             observed["leased_device"] = leased_device
             observed["workspace"] = workspace
-            observed["accuracy_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_ACCURACY_MODE")
-            observed["atol_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_ATOL")
-            observed["rtol_env"] = os.environ.get("TRITON_AGENT_RUN_TEST_RTOL")
+            observed["accuracy_env"] = os.environ.get("HELIX_RUN_TEST_ACCURACY_MODE")
+            observed["atol_env"] = os.environ.get("HELIX_RUN_TEST_ATOL")
+            observed["rtol_env"] = os.environ.get("HELIX_RUN_TEST_RTOL")
             return {
                 "return_code": 0,
                 "stdout": "Archived result: /tmp/kernel_result.pt\n",
@@ -404,9 +404,9 @@ class RunEvalMCPServerTests(unittest.TestCase):
                 patch.dict(
                     os.environ,
                     {
-                        "TRITON_AGENT_RUN_TEST_ACCURACY_MODE": "dtype-close",
-                        "TRITON_AGENT_RUN_TEST_ATOL": "0.0",
-                        "TRITON_AGENT_RUN_TEST_RTOL": "0.01",
+                        "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
+                        "HELIX_RUN_TEST_ATOL": "0.0",
+                        "HELIX_RUN_TEST_RTOL": "0.01",
                     },
                     clear=False,
                 ),
@@ -616,7 +616,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
                 self.assertEqual(nested_state.workers_per_npu, "2")
 
     def test_managed_mcp_scope_rejects_empty_device_list(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+        with self.assertRaisesRegex(ValueError, "HELIX_BATCH_NPU_DEVICES"):
             with mcp_module.managed_mcp_scope(npu_devices=""):
                 pass
 

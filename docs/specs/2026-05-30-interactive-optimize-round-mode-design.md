@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make `optimize --interact` behave like a single attached interactive session: once the user exits the agent UI, `triton-agent` should stop instead of launching another optimize invocation.
+Make `optimize --interact` behave like a single attached interactive session: once the user exits the agent UI, `helix` should stop instead of launching another optimize invocation.
 
 ## Problem
 
@@ -22,8 +22,8 @@ The other multi-invocation round modes are also a poor fit for `--interact`. `ch
 
 Keep the change narrow:
 
-- Add argument validation in `src/triton_agent/commands/optimize.py` so `--interact` rejects any round mode other than `continuous`.
-- Update `src/triton_agent/optimize/run_loop.py` so the round-satisfaction resume path short-circuits for interactive requests before attempting any automatic `resume()`.
+- Add argument validation in `src/helix/commands/optimize.py` so `--interact` rejects any round mode other than `continuous`.
+- Update `src/helix/optimize/run_loop.py` so the round-satisfaction resume path short-circuits for interactive requests before attempting any automatic `resume()`.
 - Preserve the existing recovery behavior for non-interactive stalled runs.
 
 ## Testing

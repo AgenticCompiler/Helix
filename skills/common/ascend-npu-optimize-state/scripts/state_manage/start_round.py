@@ -48,7 +48,7 @@ def _build_failure_payload(issue: str, guideline: str) -> dict[str, object]:
 def _workflow_failure_guideline(message: str) -> str:
     if (
         "workflow state is not available" in message
-        or ".triton-agent/state.json" in message
+        or ".helix/state.json" in message
     ):
         return (
             "Optimize workflow state is unavailable. Use the staged "
@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     args = build_parser(prog_name=prog_name).parse_args(argv)
     round_dir = Path(args.round_dir).expanduser().resolve()
     try:
-        state_path = round_dir.parent / ".triton-agent" / "state.json"
+        state_path = round_dir.parent / ".helix" / "state.json"
         if not state_path.exists():
             raise RuntimeError("optimize workflow state is not available")
         workflow_result = start_round_in_workflow_state(

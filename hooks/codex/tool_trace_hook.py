@@ -37,9 +37,9 @@ PATH_FRAGMENT_RE = re.compile(
 WINDOWS_PATH_FRAGMENT_RE = re.compile(
     r"(?P<path>[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+)"
 )
-TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
-TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
-TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
+TRACE_PATH_ENV = "HELIX_OTEL_TRACE_PATH"
+TRACE_RUN_ID_ENV = "HELIX_OTEL_RUN_ID"
+TRACE_WORKSPACE_ROOT_ENV = "HELIX_WORKSPACE_ROOT"
 READ_TOOLS = {"Read", "Grep", "Glob"}
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
 
@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         policy = _load_json(Path(args.policy))
         payload = json.load(sys.stdin)
     except Exception as exc:
-        print(f"triton-agent codex hook failed open: {exc}", file=sys.stderr)
+        print(f"helix codex hook failed open: {exc}", file=sys.stderr)
         return 0
 
     tool_input = payload.get("tool_input") or {}
@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.event == "PostToolUse":
             append_posttooluse_trace(policy, payload)
     except Exception as exc:
-        print(f"triton-agent codex hook trace failed open: {exc}", file=sys.stderr)
+        print(f"helix codex hook trace failed open: {exc}", file=sys.stderr)
 
     return 0
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Extend the existing optimize workflow state under `.triton-agent/state.json` with round-level strategy fields:
+- Extend the existing optimize workflow state under `.helix/state.json` with round-level strategy fields:
   - `round_strategy`
   - `analysis_policy`
   - `reason`
@@ -13,7 +13,7 @@
 - Upgrade `ascend-npu-optimize-state` from baseline/start/submit gating only into the single workflow-state write surface for optimize rounds.
 - Extend `start-round` so it initializes the current round strategy state when the round becomes active.
 - Add a new `set-current-round-state` subcommand that updates the active round strategy state without taking `--round-dir`.
-- Keep `.triton-agent/state.json` as the authority for the latest current state only; record state-change history by appending structured entries to `opt-round-N/attempts.md`.
+- Keep `.helix/state.json` as the authority for the latest current state only; record state-change history by appending structured entries to `opt-round-N/attempts.md`.
 - Keep `submit-round` as the round-closing command only; it may emit next-round hints but must not write the next round state.
 
 ## Goals
@@ -31,7 +31,7 @@
 - Do not redesign `baseline/state.json` or `opt-round-N/round-state.json`.
 - Do not make `submit-round` automatically choose and persist the next round state.
 - Do not introduce a new JSON archive for round strategy history.
-- Do not move optimize workflow logic from skills into `src/triton_agent/`.
+- Do not move optimize workflow logic from skills into `src/helix/`.
 
 ## Problem
 
@@ -73,7 +73,7 @@ When a round becomes active, the workflow state should also record:
 - `analysis_policy`
 - `reason`
 
-These fields belong to the active round entry under `.triton-agent/state.json`.
+These fields belong to the active round entry under `.helix/state.json`.
 
 ### New Optimize-State Commands
 
@@ -106,7 +106,7 @@ python3 scripts/cli.py submit-round --round-dir opt-round-1
 - should not duplicate the full state-change history
 - may mention the final effective strategy state once, but it is not the history ledger
 
-`.triton-agent/state.json`
+`.helix/state.json`
 
 - remains the authority for the latest current workflow state
 - does not become a historical event log
@@ -318,7 +318,7 @@ python3 scripts/cli.py set-current-round-state \
 - fail if both fields are unchanged
 - fail if only `reason` changes and both strategy fields stay the same
 - if the active round is a legacy entry with no `strategy_state`, treat the call as initialization instead of a no-op
-- update `.triton-agent/state.json`
+- update `.helix/state.json`
 - append a structured `State Update` block to the active round's `attempts.md`
 
 #### Output
@@ -503,7 +503,7 @@ Do not add a new JSON archive for strategy-state history.
 
 The state history source of truth should be:
 
-- latest current state in `.triton-agent/state.json`
+- latest current state in `.helix/state.json`
 - chronological strategy-state blocks in `opt-round-N/attempts.md`
 
 ## Documentation And Prompt Migration
@@ -555,8 +555,8 @@ Prompt text that currently says "record the current analysis level" should be re
   - updating the active round strategy state
   - validating same-round transitions
   - appending structured state blocks to `attempts.md`
-- Keep `src/triton_agent/optimize/workflow_state.py` as a loader bridge only.
-- Do not move round strategy logic into `src/triton_agent/`.
+- Keep `src/helix/optimize/workflow_state.py` as a loader bridge only.
+- Do not move round strategy logic into `src/helix/`.
 
 ## Acceptance Criteria
 
@@ -567,7 +567,7 @@ Prompt text that currently says "record the current analysis level" should be re
 - `set-current-round-state` fails on no-op updates.
 - `set-current-round-state` rejects `analysis_policy` rollback.
 - `set-current-round-state` may initialize missing `strategy_state` on a legacy active round.
-- `set-current-round-state` updates `.triton-agent/state.json` and appends a structured block to `attempts.md`.
+- `set-current-round-state` updates `.helix/state.json` and appends a structured block to `attempts.md`.
 - warning-worthy `round_strategy` transitions succeed but surface warnings in command output.
 - `submit-round` may emit `next_round_hint`, but it does not persist next-round state.
 - `summary.md` is no longer the place for full strategy-state history.

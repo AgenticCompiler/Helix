@@ -42,7 +42,7 @@ again. Otherwise collect context from the requested base revision:
 ```bash
 python3 ./scripts/collect_commit_context.py \
   --base <base-revision> \
-  --output .triton-agent/git-operator-context.json
+  --output .helix/git-operator-context.json
 ```
 
 If `commit_count` is zero, stop immediately and explain that `<base>..HEAD` is empty.
@@ -52,8 +52,8 @@ Common causes: `HEAD` equals the base revision, or the wrong branch is checked o
 
 ```bash
 python3 ./scripts/group_commit_context_by_file.py \
-  --input .triton-agent/git-operator-context.json \
-  --output .triton-agent/git-operator-file-groups.json
+  --input .helix/git-operator-context.json \
+  --output .helix/git-operator-file-groups.json
 ```
 
 ### Stage 3: Produce Workspace Plan

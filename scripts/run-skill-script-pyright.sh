@@ -21,7 +21,7 @@ if [[ ! -f "${target}" ]]; then
   exit 1
 fi
 
-export UV_CACHE_DIR="${UV_CACHE_DIR:-${TMPDIR:-/tmp}/triton-agent-uv-cache}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${TMPDIR:-/tmp}/helix-uv-cache}"
 mkdir -p "${UV_CACHE_DIR}"
 
 target_dir="$(cd "$(dirname "${target}")" && pwd)"
@@ -31,7 +31,7 @@ case "${target}" in
     scripts_root="${target%%/scripts/*}/scripts"
     ;;
 esac
-tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/triton-agent-pyright.XXXXXX")"
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/helix-pyright.XXXXXX")"
 trap 'rm -rf "${tmpdir}"' EXIT
 
 extra_paths=("\"${repo_root}/src\"" "\"${target_dir}\"")

@@ -6,14 +6,14 @@
 
 **Architecture:** Keep generation and optimize commands on the existing operator-input flow, but split the run-command CLI contract into explicit artifact and operator paths. Normalize those values in the CLI layer, update prompt generation to describe both files, and remove derived run-artifact resolution so the skills receive direct execution context.
 
-**Tech Stack:** Python 3.11, `argparse`, `unittest`, `uv`, existing Triton agent CLI modules
+**Tech Stack:** Python 3.11, `argparse`, `unittest`, `uv`, existing Helix CLI modules
 
 ---
 
 ### Task 1: Update CLI parsing contract for run commands
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
@@ -30,7 +30,7 @@ Expected: FAIL on missing new flags / accepted old flag contract
 
 - [ ] **Step 3: Implement the parser changes**
 
-In `src/triton_agent/cli.py`:
+In `src/helix/cli.py`:
 - keep `--input/-i` only on `gen-test`, `gen-bench`, and `optimize`
 - add required `--test-file` + `--operator-file` to `run-test`
 - add required `--bench-file` + `--operator-file` to `run-bench`
@@ -44,8 +44,8 @@ Expected: PASS
 ### Task 2: Normalize explicit paths into request construction
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing main/path tests**
@@ -77,9 +77,9 @@ Expected: PASS
 ### Task 3: Update prompt and backend request propagation
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/opencode.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_codex_runner.py`
 - Modify: `tests/test_opencode_runner.py`
@@ -116,7 +116,7 @@ Expected: PASS
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/notes/2026-03-31-triton-agent-cli.md`
+- Modify: `docs/notes/2026-03-31-helix-cli.md`
 - Modify: `docs/notes/2026-03-31-run-command-explicit-operator-and-artifact-paths.md`
 
 - [ ] **Step 1: Update user-facing docs**

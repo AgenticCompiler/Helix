@@ -2,7 +2,7 @@
 
 ## Summary
 
-`triton-agent optimize --interact` should run as one long attached worker session instead of a batched multi-invocation flow. The CLI must stop rejecting interactive optimize runs and must prepare the optimize request so the agent can stay attached while it completes baseline setup and the requested optimization rounds in one session.
+`helix optimize --interact` should run as one long attached worker session instead of a batched multi-invocation flow. The CLI must stop rejecting interactive optimize runs and must prepare the optimize request so the agent can stay attached while it completes baseline setup and the requested optimization rounds in one session.
 
 ## User-Visible Semantics
 

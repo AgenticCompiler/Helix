@@ -11,10 +11,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
-from triton_agent.models import AgentResult
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.cli import build_parser
+from helix.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
+from helix.models import AgentResult
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 class ExecutionCommandHandlerTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             fake_result = AgentResult(return_code=7, stdout="sim out\n", stderr="")
 
             with patch(
-                "triton_agent.commands.execution.run_local_simulator",
+                "helix.commands.execution.run_local_simulator",
                 return_value=fake_result,
             ) as mocked:
                 exit_code = handle_run_simulator(parser, args)
@@ -77,7 +77,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stderr = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_simulator",
+                "helix.commands.execution.run_local_simulator",
                 side_effect=ValueError("case selection failed"),
             ):
                 with redirect_stderr(stderr):
@@ -107,7 +107,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.execution.run_local_test",
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, None),
             ) as mocked:
                 exit_code = handle_run_test(parser, args)
@@ -150,11 +150,11 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.execution.run_local_test",
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, archive),
             ) as run_mock:
                 with patch(
-                    "triton_agent.commands.execution.compare_result_files",
+                    "helix.commands.execution.compare_result_files",
                     return_value=0,
                 ) as compare_mock:
                     exit_code = handle_run_test(parser, args)
@@ -199,13 +199,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
 
             with patch.dict(
                 os.environ,
-                {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"},
                 clear=False,
             ), patch(
-                "triton_agent.commands.execution.run_local_test",
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, archive),
             ), patch(
-                "triton_agent.commands.execution.cleanup_run_test_pt_files",
+                "helix.commands.execution.cleanup_run_test_pt_files",
                 return_value=[],
             ) as cleanup:
                 with redirect_stdout(stdout):
@@ -239,22 +239,22 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                     "--remote",
                     "alice@example.com",
                     "--remote-workdir",
-                    "/tmp/triton-agent",
+                    "/tmp/helix",
                 ]
             )
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, archive, "/tmp/triton-agent-123"),
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, archive, "/tmp/helix-123"),
             ) as run_mock:
                 with patch(
-                    "triton_agent.commands.execution.compare_result_files",
+                    "helix.commands.execution.compare_result_files",
                     side_effect=AssertionError("local comparison should not run for remote tests"),
                 ):
                     with patch(
-                        "triton_agent.commands.execution.compare_remote_result_files",
+                        "helix.commands.execution.compare_remote_result_files",
                         return_value=0,
                     ) as compare_remote_mock:
                         with redirect_stdout(stdout):
@@ -266,7 +266,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 case_id=None,
                 accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
@@ -277,7 +277,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 ref_result.resolve(),
                 archive,
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 accuracy_mode="npu-contract",
                 verbose=False,
                 stderr=sys.stderr,
@@ -309,7 +309,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.execution.run_local_test",
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, None),
             ) as mocked:
                 exit_code = handle_run_test(parser, args)
@@ -389,13 +389,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_test_case_payload",
+                "helix.commands.execution.run_local_test_case_payload",
                 return_value=(fake_result, candidate_payload),
             ) as run_case_mock, patch(
-                "triton_agent.commands.execution.load_case_result_payload",
+                "helix.commands.execution.load_case_result_payload",
                 return_value=ref_payload,
             ) as load_case_mock, patch(
-                "triton_agent.commands.execution.compare_result_payload_objects",
+                "helix.commands.execution.compare_result_payload_objects",
                 return_value=0,
             ) as compare_mock:
                 with redirect_stdout(stdout):
@@ -470,13 +470,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 return fake_result, candidate_payload
 
             with patch(
-                "triton_agent.commands.execution.find_case_result_payload",
+                "helix.commands.execution.find_case_result_payload",
                 return_value=None,
             ) as find_case_mock, patch(
-                "triton_agent.commands.execution.run_local_test_case_payload",
+                "helix.commands.execution.run_local_test_case_payload",
                 side_effect=fake_run_local_test_case_payload,
             ), patch(
-                "triton_agent.commands.execution.compare_result_payload_objects",
+                "helix.commands.execution.compare_result_payload_objects",
                 return_value=0,
             ) as compare_mock:
                 with redirect_stdout(stdout):
@@ -522,13 +522,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "os.environ",
                 {
                     remote_target_env_name(): "alice@example.com",
-                    remote_workdir_env_name(): "/tmp/triton-agent",
+                    remote_workdir_env_name(): "/tmp/helix",
                 },
                 clear=False,
             ):
                 with patch(
-                    "triton_agent.commands.execution.run_remote_test",
-                    return_value=(fake_result, None, "/tmp/triton-agent-123"),
+                    "helix.commands.execution.run_remote_test",
+                    return_value=(fake_result, None, "/tmp/helix-123"),
                 ) as mocked:
                     exit_code = handle_run_test(parser, args)
 
@@ -538,7 +538,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 case_id=None,
                 accuracy_mode="npu-contract",
                 keep_remote_workdir=False,
@@ -569,7 +569,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_bench",
+                "helix.commands.execution.run_local_bench",
                 return_value=(fake_result, perf_file),
             ):
                 with redirect_stdout(stdout):
@@ -607,7 +607,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stderr = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_bench",
+                "helix.commands.execution.run_local_bench",
                 return_value=(fake_result, None),
             ):
                 with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -641,13 +641,13 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "os.environ",
                 {
                     remote_target_env_name(): "alice@example.com",
-                    remote_workdir_env_name(): "/tmp/triton-agent",
+                    remote_workdir_env_name(): "/tmp/helix",
                 },
                 clear=False,
             ):
                 with patch(
-                    "triton_agent.commands.execution.run_remote_bench",
-                    return_value=(fake_result, None, "/tmp/triton-agent-123"),
+                    "helix.commands.execution.run_remote_bench",
+                    return_value=(fake_result, None, "/tmp/helix-123"),
                 ) as mocked:
                     exit_code = handle_run_bench(parser, args)
 
@@ -657,7 +657,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "torch-npu-profiler",
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 None,
                 keep_remote_workdir=False,
                 verbose=False,
@@ -694,11 +694,11 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_bench",
+                "helix.commands.execution.run_local_bench",
                 return_value=(fake_result, candidate_perf),
             ) as run_mock:
                 with patch(
-                    "triton_agent.commands.execution.compare_perf_files",
+                    "helix.commands.execution.compare_perf_files",
                     return_value=0,
                 ) as compare_mock:
                     with redirect_stdout(stdout):
@@ -755,11 +755,11 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_local_bench",
+                "helix.commands.execution.run_local_bench",
                 side_effect=[(fake_result, baseline_perf), (fake_result, candidate_perf)],
             ) as run_mock:
                 with patch(
-                    "triton_agent.commands.execution.compare_perf_files",
+                    "helix.commands.execution.compare_perf_files",
                     return_value=0,
                 ) as compare_mock:
                     with redirect_stdout(stdout):
@@ -830,14 +830,14 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_remote_bench",
+                "helix.commands.execution.run_remote_bench",
                 side_effect=[
                     (fake_result, baseline_perf, "/tmp/baseline-ws"),
                     (fake_result, candidate_perf, "/tmp/candidate-ws"),
                 ],
             ):
                 with patch(
-                    "triton_agent.commands.execution.compare_perf_files",
+                    "helix.commands.execution.compare_perf_files",
                     return_value=0,
                 ):
                     with redirect_stdout(stdout):
@@ -884,7 +884,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             stdout = StringIO()
 
             with patch(
-                "triton_agent.commands.execution.run_remote_bench",
+                "helix.commands.execution.run_remote_bench",
                 return_value=(failing_result, baseline_perf, "/tmp/baseline-ws"),
             ):
                 with redirect_stdout(stdout):
@@ -924,11 +924,11 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.execution.run_local_bench",
+                "helix.commands.execution.run_local_bench",
                 return_value=(fake_result, candidate_perf),
             ):
                 with patch(
-                    "triton_agent.commands.execution.compare_perf_files",
+                    "helix.commands.execution.compare_perf_files",
                     return_value=0,
                 ) as compare_mock:
                     exit_code = handle_run_bench(parser, args)
@@ -976,7 +976,7 @@ class ProbeBenchHandlerTests(unittest.TestCase):
             )
             stdout = StringIO()
             with patch(
-                "triton_agent.commands.execution.run_local_probe_bench",
+                "helix.commands.execution.run_local_probe_bench",
                 return_value=fake_result,
             ) as mocked:
                 with redirect_stdout(stdout):
@@ -1035,7 +1035,7 @@ class ProbeBenchHandlerTests(unittest.TestCase):
             )
             stdout = StringIO()
             with patch(
-                "triton_agent.commands.execution.run_local_probe_bench",
+                "helix.commands.execution.run_local_probe_bench",
                 return_value=fake_result,
             ):
                 with redirect_stdout(stdout):
@@ -1068,7 +1068,7 @@ class ProbeBenchHandlerTests(unittest.TestCase):
             )
             stdout = StringIO()
             with patch(
-                "triton_agent.commands.execution.run_local_probe_bench",
+                "helix.commands.execution.run_local_probe_bench",
                 return_value=fake_result,
             ):
                 with redirect_stdout(stdout):
@@ -1103,7 +1103,7 @@ class ProbeBenchHandlerTests(unittest.TestCase):
             )
             stdout = StringIO()
             with patch(
-                "triton_agent.commands.execution.run_remote_probe_bench",
+                "helix.commands.execution.run_remote_probe_bench",
                 return_value=fake_result,
             ) as mocked:
                 with redirect_stdout(stdout):
@@ -1137,7 +1137,7 @@ class ProbeBenchHandlerTests(unittest.TestCase):
                 warnings=[],
             )
             with patch(
-                "triton_agent.commands.execution.run_local_probe_bench",
+                "helix.commands.execution.run_local_probe_bench",
                 return_value=fake_result,
             ) as mocked:
                 handle_probe_bench(parser, args)

@@ -17,13 +17,13 @@
 
 - [x] **Step 1: Write failing tests**
 
-Add assertions that `build_claude_optimize_plugin_assets()` exposes both optimize and convert skill sets, renders `agents/triton-agent-convert.md`, and that the built manifest name is `triton-optimizer`.
+Add assertions that `build_claude_optimize_plugin_assets()` exposes both optimize and convert skill sets, renders `agents/helix-convert.md`, and that the built manifest name is `triton-optimizer`.
 
 - [x] **Step 2: Run focused tests to verify failure**
 
 Run: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_claude_optimize_plugin.py`
 
-Expected: FAIL because the builder still renders only the optimize agent and still names the manifest `triton-agent-optimize`.
+Expected: FAIL because the builder still renders only the optimize agent and still names the manifest `helix-optimize`.
 
 ### Task 2: Builder Implementation
 
@@ -32,7 +32,7 @@ Expected: FAIL because the builder still renders only the optimize agent and sti
 
 - [x] **Step 1: Implement minimal builder changes**
 
-Resolve `CommandKind.CONVERT` with `language="triton"`, render a new `triton-agent-convert` agent, change plugin metadata to `triton-optimizer`, and copy the de-duplicated union of optimize and convert skills.
+Resolve `CommandKind.CONVERT` with `language="triton"`, render a new `helix-convert` agent, change plugin metadata to `triton-optimizer`, and copy the de-duplicated union of optimize and convert skills.
 
 - [x] **Step 2: Run focused tests to verify pass**
 

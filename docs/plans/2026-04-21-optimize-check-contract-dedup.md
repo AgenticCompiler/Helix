@@ -4,7 +4,7 @@
 
 **Goal:** Deduplicate optimize-check models and baseline/round contract parsing while preserving the skill-first validation boundary and direct skill-script execution.
 
-**Architecture:** Move shared contract dataclasses and parsing helpers into a new helper module inside `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`, then add thin runtime bridge modules in `src/triton_agent/optimize/` that re-export the shared API for existing callers. Keep `optimize_check.py` as a thin CLI wrapper that owns argument parsing and process exit behavior.
+**Architecture:** Move shared contract dataclasses and parsing helpers into a new helper module inside `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`, then add thin runtime bridge modules in `src/helix/optimize/` that re-export the shared API for existing callers. Keep `optimize_check.py` as a thin CLI wrapper that owns argument parsing and process exit behavior.
 
 **Tech Stack:** Python `dataclasses`, `pathlib`, `importlib`, `unittest`
 
@@ -34,10 +34,10 @@
 ### Task 3: Replace runtime duplicates with bridge wrappers
 
 **Files:**
-- Create: `src/triton_agent/optimize/skill_contract.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/baseline.py`
-- Modify: `src/triton_agent/optimize/round_contract.py`
+- Create: `src/helix/optimize/skill_contract.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/baseline.py`
+- Modify: `src/helix/optimize/round_contract.py`
 
 - [ ] Add one runtime bridge module that loads the shared optimize-check helper via the existing skill loader.
 - [ ] Re-export shared dataclasses from `models.py`.

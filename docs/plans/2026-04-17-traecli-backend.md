@@ -15,9 +15,9 @@
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_backends_factory.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/backends/factory.py`
-- Modify: `src/triton_agent/backends/__init__.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/backends/factory.py`
+- Modify: `src/helix/backends/__init__.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_backends_factory.py`
 
@@ -33,9 +33,9 @@ Expected: FAIL because `traecli` is not yet in `_AGENT_CHOICES` and the backend 
 - [ ] **Step 3: Write minimal implementation**
 
 Update:
-- `src/triton_agent/cli.py` to include `traecli` in `_AGENT_CHOICES`
-- `src/triton_agent/backends/factory.py` to return `TraeCLIRunner`
-- `src/triton_agent/backends/__init__.py` to export `TraeCLIRunner`
+- `src/helix/cli.py` to include `traecli` in `_AGENT_CHOICES`
+- `src/helix/backends/factory.py` to return `TraeCLIRunner`
+- `src/helix/backends/__init__.py` to export `TraeCLIRunner`
 
 - [ ] **Step 4: Re-run the focused tests**
 
@@ -46,7 +46,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_skills.py`
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/skills.py`
 - Test: `tests/test_skills.py`
 
 - [ ] **Step 1: Write the failing staging tests for the refactor target**
@@ -67,7 +67,7 @@ Expected: FAIL because there is no `traecli` backend mapping and the refactored 
 
 - [ ] **Step 3: Write minimal implementation**
 
-Refactor `src/triton_agent/skills.py` to:
+Refactor `src/helix/skills.py` to:
 - introduce one backend-to-target mapping that includes:
   - `codex -> .codex/skills`
   - `opencode -> .opencode/skills`
@@ -86,10 +86,10 @@ Expected: PASS
 ### Task 3: Build The TraeCLI Runner With TDD
 
 **Files:**
-- Create: `src/triton_agent/backends/traecli.py`
+- Create: `src/helix/backends/traecli.py`
 - Create: `tests/test_traecli_runner.py`
-- Modify: `src/triton_agent/backends/factory.py`
-- Modify: `src/triton_agent/backends/__init__.py`
+- Modify: `src/helix/backends/factory.py`
+- Modify: `src/helix/backends/__init__.py`
 - Test: `tests/test_traecli_runner.py`
 
 - [ ] **Step 1: Write the failing runner tests**
@@ -109,7 +109,7 @@ Expected: FAIL because the backend module does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `src/triton_agent/backends/traecli.py` with a `TraeCLIRunner` that:
+Create `src/helix/backends/traecli.py` with a `TraeCLIRunner` that:
 - subclasses `AgentRunner`
 - uses `traecli` as the executable name by default
 - returns `[self.executable, request.prompt]` for interactive mode

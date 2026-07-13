@@ -44,6 +44,6 @@ Remote examples:
 ```bash
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential --case-id case-0 --verbose
-python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-convert --test-file differential_test_<operator>.py --operator-file triton_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
-python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-convert --test-file differential_test_<operator>.py --operator-file triton_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/helix
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/helix
 ```

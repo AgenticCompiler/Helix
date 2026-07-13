@@ -15,10 +15,10 @@
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_commands.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/models.py`
 
 - [ ] **Step 1: Write failing parser tests for compiler source options**
 
@@ -95,7 +95,7 @@ Expected: FAIL because the parser and option model do not expose compiler-source
 
 - [ ] **Step 5: Add parser arguments**
 
-In `src/triton_agent/cli.py`, inside the `spec.has_optimize_options` block, add:
+In `src/helix/cli.py`, inside the `spec.has_optimize_options` block, add:
 
 ```python
 subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
@@ -104,14 +104,14 @@ subparser.add_argument("--compiler-source-path")
 
 - [ ] **Step 6: Extend optimize option models**
 
-In `src/triton_agent/optimize/models.py`, extend `OptimizeRunOptions`:
+In `src/helix/optimize/models.py`, extend `OptimizeRunOptions`:
 
 ```python
 compiler_source_analysis: Literal["off", "auto"] = "off"
 compiler_source_path: str | None = None
 ```
 
-In `src/triton_agent/models.py`, extend `AgentRequest`:
+In `src/helix/models.py`, extend `AgentRequest`:
 
 ```python
 compiler_source_analysis: Literal["off", "auto"] = "off"
@@ -142,16 +142,16 @@ Expected: PASS for the new CLI/model tests.
 ### Task 2: Implement Compiler Source Provisioning
 
 **Files:**
-- Create: `src/triton_agent/optimize/compiler_source.py`
+- Create: `src/helix/optimize/compiler_source.py`
 - Create: `tests/test_compiler_source.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - [ ] **Step 1: Write failing tests for default path resolution**
 
 Create `tests/test_compiler_source.py` with tests for a fake home directory. Avoid touching the real home directory.
 
 ```python
-def test_default_compiler_source_path_uses_triton_agent_home(self) -> None:
+def test_default_compiler_source_path_uses_helix_home(self) -> None:
     root = Path("/tmp/fake-home")
 
     path = default_compiler_source_path(root)
@@ -166,7 +166,7 @@ Patch the command runner so no network is used:
 ```python
 def test_prepare_clones_missing_default_checkout_depth_one(self) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        home = Path(tmp) / ".triton-agent"
+        home = Path(tmp) / ".helix"
         calls: list[list[str]] = []
 
         def fake_run(args: list[str], cwd: Path | None = None) -> str:
@@ -185,7 +185,7 @@ def test_prepare_clones_missing_default_checkout_depth_one(self) -> None:
         result = prepare_compiler_source(
             mode="auto",
             source_path=None,
-            triton_agent_home=home,
+            helix_home=home,
             run_git=fake_run,
         )
 
@@ -232,7 +232,7 @@ Expected: FAIL because the module does not exist yet.
 
 - [ ] **Step 6: Implement the provisioning module**
 
-Add `src/triton_agent/optimize/compiler_source.py`:
+Add `src/helix/optimize/compiler_source.py`:
 
 ```python
 from __future__ import annotations
@@ -260,7 +260,7 @@ RunGit = Callable[[list[str], Path | None], str]
 
 Implement:
 
-- `triton_agent_home() -> Path`
+- `helix_home() -> Path`
 - `default_compiler_source_path(home: Path | None = None) -> Path`
 - `prepare_compiler_source(...) -> CompilerSourceInfo | None`
 - `_run_git(args: list[str], cwd: Path | None) -> str`
@@ -281,12 +281,12 @@ Expected: PASS.
 **Files:**
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_optimize_batch.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/batch.py` if needed
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/batch.py` if needed
 
 - [ ] **Step 1: Write failing request-building tests**
 
-Add tests that patch `prepare_compiler_source()` inside `triton_agent.optimize.orchestration` and assert:
+Add tests that patch `prepare_compiler_source()` inside `helix.optimize.orchestration` and assert:
 
 - disabled mode does not provision source
 - enabled mode provisions source before building the prompt
@@ -296,7 +296,7 @@ Example:
 
 ```python
 with patch(
-    "triton_agent.optimize.orchestration.prepare_compiler_source",
+    "helix.optimize.orchestration.prepare_compiler_source",
     return_value=CompilerSourceInfo(path=source_path, commit="abc123", dirty=False),
 ) as mocked:
     request = build_optimize_request(operator, workdir, options)
@@ -321,7 +321,7 @@ Expected: FAIL because request construction does not provision or carry compiler
 
 - [ ] **Step 4: Implement request construction plumbing**
 
-In `src/triton_agent/optimize/orchestration.py`:
+In `src/helix/optimize/orchestration.py`:
 
 - import `prepare_compiler_source`
 - call it in `build_optimize_request()` after resume resolution and before `build_prompt()`
@@ -342,10 +342,10 @@ Expected: PASS for the new provisioning plumbing tests.
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/guidance.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/run_loop.py`
 
 - [ ] **Step 1: Write failing prompt tests**
 
@@ -374,7 +374,7 @@ Expected: FAIL because prompt and guidance functions do not accept compiler-sour
 
 - [ ] **Step 5: Add a small prompt formatter**
 
-In `src/triton_agent/prompts.py`, add a helper such as:
+In `src/helix/prompts.py`, add a helper such as:
 
 ```python
 def compiler_source_analysis_lines(
@@ -418,7 +418,7 @@ Append the same read-only local-path instructions when compiler-source metadata 
 
 - [ ] **Step 7: Thread request fields into execution guidance**
 
-Update `src/triton_agent/optimize/execution.py` and `src/triton_agent/optimize/run_loop.py` so supervised and unsupervised session preparation receives request compiler-source metadata.
+Update `src/helix/optimize/execution.py` and `src/helix/optimize/run_loop.py` so supervised and unsupervised session preparation receives request compiler-source metadata.
 
 - [ ] **Step 8: Re-run targeted tests**
 
@@ -497,7 +497,7 @@ Document:
 
 - `--enable-compiler-source-analysis`
 - `--compiler-source-path <path>`
-- the default cache path under `~/.triton-agent/compiler-sources/AscendNPU-IR/`
+- the default cache path under `~/.helix/compiler-sources/AscendNPU-IR/`
 - that the CLI provisions the checkout and agents must treat it as read-only
 - that the option enables escalation, not mandatory compiler-source analysis every round
 
@@ -543,7 +543,7 @@ Run:
 
 ```bash
 git add \
-  src/triton_agent \
+  src/helix \
   tests \
   skills \
   README.md \

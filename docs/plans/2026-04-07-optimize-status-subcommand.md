@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/models.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -74,8 +74,8 @@ Expected: PASS after the implementation in Task 3
 ### Task 3: Implement Local Optimize Status Scanning
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing test**

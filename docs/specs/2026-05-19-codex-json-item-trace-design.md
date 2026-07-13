@@ -2,7 +2,7 @@
 
 ## Background
 
-`triton-agent optimize --agent codex --log-tools` enables `codex exec --json` and consumes stdout through `CodexJsonOutputFilter`. The current parser recognizes hypothetical `tool_start` and `tool_end` events, but Codex CLI 0.130.0 emits `item.started` and `item.completed` events with nested item types such as `command_execution`, `file_change`, and `agent_message`.
+`helix optimize --agent codex --log-tools` enables `codex exec --json` and consumes stdout through `CodexJsonOutputFilter`. The current parser recognizes hypothetical `tool_start` and `tool_end` events, but Codex CLI 0.130.0 emits `item.started` and `item.completed` events with nested item types such as `command_execution`, `file_change`, and `agent_message`.
 
 As a result, the trace can prove that native JSON is active while still recording only wrapper-level `agent_invocation` events. The raw worker events remain visible in `optimize.show-output.log`, but they are not normalized into `tool_call`, `command`, `file_access`, or `edit` trace events.
 
@@ -16,11 +16,11 @@ When `--log-tools` is passed to a non-interactive Codex run:
 - `file_change` items produce `edit` events.
 - native JSON items are rendered back into readable show-output text instead of being concatenated as raw JSON.
 
-The trace source remains `codex_native_json`. Durations for `item.started` / `item.completed` pairs are measured by the triton-agent runner receive clock because Codex item events do not carry timestamps.
+The trace source remains `codex_native_json`. Durations for `item.started` / `item.completed` pairs are measured by the helix runner receive clock because Codex item events do not carry timestamps.
 
 ## Implementation
 
-Extend `src/triton_agent/backends/codex_trace.py` to handle:
+Extend `src/helix/backends/codex_trace.py` to handle:
 
 - `item.started`
 - `item.completed`

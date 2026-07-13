@@ -85,7 +85,7 @@ class PreToolUseGuardWrapperTests(unittest.TestCase):
                 payload=_bash_payload(
                     workspace,
                     "cat > learned_lessons.md << 'ENDOFFILE'\n"
-                    "reference .triton-agent/state.json in prose\n"
+                    "reference .helix/state.json in prose\n"
                     "ENDOFFILE",
                 ),
             )
@@ -152,11 +152,11 @@ def _policy(workspace: Path, *, backend_root: str) -> dict[str, object]:
         "workspace_root": str(root),
         "allow_read_roots": [str(root)],
         "deny_read_globs": [
-            str(root / ".triton-agent"),
-            str(root / ".triton-agent" / "**"),
-            str(root / backend_root / "triton-agent-hooks"),
-            str(root / backend_root / "triton-agent-hooks" / "**"),
-            str(root / "triton-agent-logs" / "**"),
+            str(root / ".helix"),
+            str(root / ".helix" / "**"),
+            str(root / backend_root / "helix-hooks"),
+            str(root / backend_root / "helix-hooks" / "**"),
+            str(root / "helix-logs" / "**"),
             str(root / backend_root / "skills" / "*" / "scripts" / "**"),
         ],
         "deny_message": _deny_message(backend_root),
@@ -165,10 +165,10 @@ def _policy(workspace: Path, *, backend_root: str) -> dict[str, object]:
 
 def _deny_message(backend_root: str) -> str:
     return (
-        "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+        "This read is blocked by helix workspace policy. Stay within the current workspace "
         "and do not inspect protected runner-managed files (temporary optimize runtime files, "
         f"staged skill implementation files under {backend_root}/skills/*/scripts/, or "
-        "triton-agent-logs/ output). "
+        "helix-logs/ output). "
         "Use the skill instructions and documented command interface instead."
     )
 

@@ -4,7 +4,7 @@
 
 **Goal:** Remove redundant comparison forwarding layers while keeping comparison behavior owned by the triton-npu-run-eval skill modules.
 
-**Architecture:** Keep comparison behavior in `src/triton_agent/commands/comparison.py`, where the CLI already validates arguments and reports errors, and load the direct skill implementation modules `test_runner` and `bench_runner` from there. Do not preserve a separate package bridge for comparison-only helpers in this executable app.
+**Architecture:** Keep comparison behavior in `src/helix/commands/comparison.py`, where the CLI already validates arguments and reports errors, and load the direct skill implementation modules `test_runner` and `bench_runner` from there. Do not preserve a separate package bridge for comparison-only helpers in this executable app.
 
 **Tech Stack:** Python, unittest, ruff, pyright, uv
 
@@ -19,14 +19,14 @@
 - Modify: `docs/plans/2026-04-15-comparison-skill-wrapper-flattening.md`
 
 - [ ] **Step 1: Record the durable AGENTS rule that this repo is an executable app first and should not preserve unused internal API layers**
-- [ ] **Step 2: Add a failing test asserting comparison helpers live in `triton_agent.commands.comparison` and load `test_runner` and `bench_runner` directly**
+- [ ] **Step 2: Add a failing test asserting comparison helpers live in `helix.commands.comparison` and load `test_runner` and `bench_runner` directly**
 - [ ] **Step 3: Run `uv run python -m unittest tests.test_comparison_commands -v` and confirm the new assertion fails before implementation**
 
 ### Task 2: Flatten The Wrapper Chain
 
 **Files:**
-- Modify: `src/triton_agent/commands/comparison.py`
-- Delete: `src/triton_agent/comparison.py`
+- Modify: `src/helix/commands/comparison.py`
+- Delete: `src/helix/comparison.py`
 - Delete: `skills/triton-npu-run-eval/scripts/compare_result.py`
 - Delete: `skills/triton-npu-run-eval/scripts/compare_perf.py`
 

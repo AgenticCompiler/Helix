@@ -9,7 +9,7 @@ Always force Triton kernel recompilation via `TRITON_ALWAYS_COMPILE=1` for `run-
 - [x] Add `has_force_recompile` field to `_CommandSpec` and register on `RUN_TEST` / `RUN_BENCH`
 - [x] Register `--force-recompile` argument in `build_parser`
 - [x] Thread `args.force_recompile` through `handle_run_test` / `handle_run_bench`
-- [x] Add `force_recompile` to bridge function signatures in `src/triton_agent/execution.py`
+- [x] Add `force_recompile` to bridge function signatures in `src/helix/execution.py`
 - [x] Update `TestRunnerModule` and `BenchRunnerModule` Protocol signatures
 - [x] Add `force_recompile` arg to `run-command.py` subparsers and dispatch
 - [x] Inject `extra_env` / `os.environ` for local test runner

@@ -2,18 +2,18 @@
 
 ## Summary
 
-Add lightweight ANSI color styling to `triton-agent --help` output so option names and supported environment variable names are easier to scan in a terminal. The styling must apply consistently to the top-level help text and every subcommand help text without changing the underlying help content.
+Add lightweight ANSI color styling to `helix --help` output so option names and supported environment variable names are easier to scan in a terminal. The styling must apply consistently to the top-level help text and every subcommand help text without changing the underlying help content.
 
 ## User-Visible Behavior
 
 - Help output remains plain text by default when redirected or captured.
 - Help output uses ANSI color when written to an interactive terminal.
 - Option names such as `-h`, `--help`, and `--enable-subagent` are rendered in an accent color.
-- Supported environment variable names such as `TRITON_AGENT_REMOTE` are rendered in an accent color.
+- Supported environment variable names such as `HELIX_REMOTE` are rendered in an accent color.
 - Descriptions, prose, default explanations, and ordinary body text remain uncolored in the initial version.
 - The same styling rules apply to:
-  - top-level `triton-agent --help`
-  - subcommand help such as `triton-agent optimize --help`
+  - top-level `helix --help`
+  - subcommand help such as `helix optimize --help`
   - manually assembled help sections such as `Environment variables:`
   - any option tokens that appear in usage lines or wrapped help prose
 
@@ -61,7 +61,7 @@ The same parser subclass should be used for subparsers so all command help text 
 
 ### Styling Module
 
-Add a dedicated helper module for help styling, for example `src/triton_agent/help_style.py`.
+Add a dedicated helper module for help styling, for example `src/helix/help_style.py`.
 
 This module should own:
 

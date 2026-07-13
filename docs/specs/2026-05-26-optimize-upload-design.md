@@ -4,10 +4,10 @@
 
 - Add an `upload-optimize` subcommand that packages one optimize workspace and uploads it to a configured HTTP endpoint.
 - Add `--no-upload` to `optimize` and `optimize-batch`, with automatic upload enabled by default.
-- Add a feature-local client package under `src/triton_agent/optimize_upload/` for workspace collection, manifest generation, tarball creation, and HTTP upload.
+- Add a feature-local client package under `src/helix/optimize_upload/` for workspace collection, manifest generation, tarball creation, and HTTP upload.
 - Upload only an explicit optimize-artifact whitelist needed for later analysis.
-- Configure the upload destination with `TRITON_AGENT_OPTIMIZE_UPLOAD_URL`.
-- Keep the upload server out of the main `triton_agent` Python package. It should live as a separately deployable service project under the repository `services/` tree and save the original uploaded `.tar.gz` package plus a small sidecar receipt.
+- Configure the upload destination with `HELIX_OPTIMIZE_UPLOAD_URL`.
+- Keep the upload server out of the main `helix` Python package. It should live as a separately deployable service project under the repository `services/` tree and save the original uploaded `.tar.gz` package plus a small sidecar receipt.
 
 ## Goals
 
@@ -20,7 +20,7 @@
 
 ## Non-Goals
 
-- Do not add the upload server implementation to `src/triton_agent/` or mix it into the main CLI package.
+- Do not add the upload server implementation to `src/helix/` or mix it into the main CLI package.
 - Do not make the server unpack or validate optimize-specific contents before saving uploads.
 - Do not add authentication in the first version.
 - Do not upload entire workspaces through recursive directory packaging plus a blacklist.
@@ -35,7 +35,7 @@
 Add a dedicated command:
 
 ```bash
-uv run triton-agent upload-optimize --input /path/to/workspace
+uv run helix upload-optimize --input /path/to/workspace
 ```
 
 Behavior:
@@ -71,7 +71,7 @@ Behavior:
 Add one environment variable:
 
 ```text
-TRITON_AGENT_OPTIMIZE_UPLOAD_URL
+HELIX_OPTIMIZE_UPLOAD_URL
 ```
 
 Behavior:
@@ -128,7 +128,7 @@ For each round directory, include:
 
 Round perf artifact resolution should follow the round contract and current optimize artifact rules rather than assume a fixed filename.
 
-### Included `triton-agent-logs/`
+### Included `helix-logs/`
 
 Include only:
 
@@ -178,7 +178,7 @@ The tarball should not wrap the entire workspace in an extra top-level directory
 ```text
 baseline/state.json
 opt-round-1/summary.md
-triton-agent-logs/optimize.show-output.log
+helix-logs/optimize.show-output.log
 _upload/manifest.json
 ```
 
@@ -232,7 +232,7 @@ The client should derive `workspace_slug` from `workspace_name` with the same no
 The client uploads the package through one HTTP request:
 
 - method: `POST`
-- URL: `TRITON_AGENT_OPTIMIZE_UPLOAD_URL`
+- URL: `HELIX_OPTIMIZE_UPLOAD_URL`
 - body: raw `.tar.gz` bytes
 - content type: `application/gzip`
 
@@ -240,11 +240,11 @@ The client should send `Content-Length` based on the tarball size so the server 
 
 Add these request headers:
 
-- `X-Triton-Agent-Upload-Uid`
-- `X-Triton-Agent-Upload-Timestamp`
-- `X-Triton-Agent-Workspace-Name`
-- `X-Triton-Agent-Workspace-Slug`
-- `X-Triton-Agent-Manifest-Version`
+- `X-Helix-Upload-Uid`
+- `X-Helix-Upload-Timestamp`
+- `X-Helix-Workspace-Name`
+- `X-Helix-Workspace-Slug`
+- `X-Helix-Manifest-Version`
 
 These headers let a thin external server name the saved archive without unpacking it.
 
@@ -259,14 +259,14 @@ The upload server is a separate deployable program inside this repository, but o
 Implement the server as its own service project under:
 
 ```text
-services/triton-agent-upload-server/
+services/helix-upload-server/
 ```
 
 Recommended rationale:
 
 - keep Git management unified in one repository
 - keep deployment and runtime boundaries separate from the main CLI package
-- keep server-side auth, storage, and operations concerns out of `src/triton_agent/`
+- keep server-side auth, storage, and operations concerns out of `src/helix/`
 - allow the service to keep its own dependency set and launch commands without complicating the root package
 
 ### Recommended Runtime Stack
@@ -292,11 +292,11 @@ Suggested repository structure:
 
 ```text
 services/
-  triton-agent-upload-server/
+  helix-upload-server/
     pyproject.toml
     README.md
     src/
-      triton_agent_upload_server/
+      helix_upload_server/
         __init__.py
         app.py
         config.py
@@ -349,12 +349,12 @@ Suggested responsibilities:
 The standalone server should expose a console entrypoint such as:
 
 ```bash
-cd /path/to/triton-agent/services/triton-agent-upload-server
-uv run triton-agent-upload-server \
+cd /path/to/helix/services/helix-upload-server
+uv run helix-upload-server \
   --host 0.0.0.0 \
   --port 8080 \
-  --storage-root /data/triton-agent/uploads \
-  --temp-root /data/triton-agent/uploads/.tmp \
+  --storage-root /data/helix/uploads \
+  --temp-root /data/helix/uploads/.tmp \
   --max-upload-bytes 536870912
 ```
 
@@ -455,7 +455,7 @@ Successful responses should return JSON similar to:
   "upload_timestamp": "20260526T141530Z",
   "workspace_name": "matmul_case_01",
   "workspace_slug": "matmul_case_01",
-  "stored_path": "/data/triton-agent/uploads/20260526T141530Z-matmul_case_01-6f7c2f6d9b8c4d8ab2c4f91e7f9b5a12.tar.gz"
+  "stored_path": "/data/helix/uploads/20260526T141530Z-matmul_case_01-6f7c2f6d9b8c4d8ab2c4f91e7f9b5a12.tar.gz"
 }
 ```
 
@@ -552,7 +552,7 @@ Recommended server-side tests in the separate repository:
 Add a new feature-local package:
 
 ```text
-src/triton_agent/optimize_upload/
+src/helix/optimize_upload/
 ```
 
 Suggested module split:
@@ -581,16 +581,16 @@ Suggested responsibilities:
 Add a new command module:
 
 ```text
-src/triton_agent/commands/upload_optimize.py
+src/helix/commands/upload_optimize.py
 ```
 
 ## CLI Wiring
 
 Update:
 
-- `src/triton_agent/cli.py`
-- `src/triton_agent/commands/optimize.py`
-- `src/triton_agent/optimize/models.py`
+- `src/helix/cli.py`
+- `src/helix/commands/optimize.py`
+- `src/helix/optimize/models.py`
 
 Required behavior:
 
@@ -624,7 +624,7 @@ For `optimize` and `optimize-batch`:
 - on `--verbose`, print one short line for:
   - upload success
   - upload failure
-  - skipped because `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` is unset
+  - skipped because `HELIX_OPTIMIZE_UPLOAD_URL` is unset
 
 Automatic upload failures must not create extra local failure-record files in this design.
 
@@ -665,5 +665,5 @@ Update `README.md` to document:
 
 - `upload-optimize`
 - `--no-upload`
-- `TRITON_AGENT_OPTIMIZE_UPLOAD_URL`
-- the high-level contract expected from the upload server under `services/triton-agent-upload-server/`
+- `HELIX_OPTIMIZE_UPLOAD_URL`
+- the high-level contract expected from the upload server under `services/helix-upload-server/`

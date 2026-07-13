@@ -2,7 +2,7 @@
 
 ## Summary
 
-`triton-agent optimize --interact` should attach the user to one agent session and return that session's exit status without running the CLI round checker after the interactive process exits. The round artifact contract remains unchanged for non-interactive optimize runs.
+`helix optimize --interact` should attach the user to one agent session and return that session's exit status without running the CLI round checker after the interactive process exits. The round artifact contract remains unchanged for non-interactive optimize runs.
 
 ## User-Visible Semantics
 
@@ -14,7 +14,7 @@
 
 ## Implementation Notes
 
-- Keep the change in `src/triton_agent/optimize/execution.py` by short-circuiting the round loop for interactive requests after the worker invocation returns.
+- Keep the change in `src/helix/optimize/execution.py` by short-circuiting the round loop for interactive requests after the worker invocation returns.
 - Do not change optimize prompt semantics for round-internal validation.
 - Avoid weakening `ascend-npu-optimize-state` or the round artifact contract; this is only an interactive orchestration behavior change.
 

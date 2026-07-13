@@ -1,6 +1,6 @@
 ## Summary
 
-- Add a bundled helper script under `skills/triton-npu-run-eval/scripts/` so skills can invoke the current project CLI without requiring the `triton-agent` console script to be installed.
+- Add a bundled helper script under `skills/triton-npu-run-eval/scripts/` so skills can invoke the current project CLI without requiring the `helix` console script to be installed.
 
 ## User-Visible Behavior
 

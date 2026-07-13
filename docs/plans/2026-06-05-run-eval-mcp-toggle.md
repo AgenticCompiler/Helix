@@ -14,43 +14,43 @@
 
 ### CLI and option propagation
 
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
   - add `--enable-mcp` only to `gen-eval`, `gen-eval-batch`, `convert`, `convert-batch`, `optimize`, and `optimize-batch`
-- Modify: `src/triton_agent/generation/models.py`
+- Modify: `src/helix/generation/models.py`
   - add `enable_mcp` to `GenerationOptions`
-- Modify: `src/triton_agent/convert/models.py`
+- Modify: `src/helix/convert/models.py`
   - add `enable_mcp` to `ConvertOptions`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/models.py`
   - add `enable_mcp` to `OptimizeRunOptions`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/models.py`
   - add `enable_mcp` to `AgentRequest`
-- Modify: `src/triton_agent/commands/generation.py`
+- Modify: `src/helix/commands/generation.py`
   - populate `GenerationOptions.enable_mcp`
-- Modify: `src/triton_agent/commands/convert.py`
+- Modify: `src/helix/commands/convert.py`
   - populate `ConvertOptions.enable_mcp`
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/commands/optimize.py`
   - populate `OptimizeRunOptions.enable_mcp`
 
 ### Staging and orchestration
 
-- Modify: `src/triton_agent/skill_staging.py`
+- Modify: `src/helix/skill_staging.py`
   - make run-eval staging switch source directory when MCP mode is enabled
-- Modify: `src/triton_agent/mcp.py`
+- Modify: `src/helix/mcp.py`
   - derive managed MCP server names only when both run-eval is staged and `enable_mcp` is true
-- Modify: `src/triton_agent/generation/orchestration.py`
+- Modify: `src/helix/generation/orchestration.py`
   - pass `enable_mcp` into staging/MCP helpers and stage `skill_sources`
-- Modify: `src/triton_agent/convert/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
   - same as generation
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
   - same as optimize path, preserving existing optimize-specific staging overrides
 
 ### Batch behavior
 
-- Modify: `src/triton_agent/generation/batch.py`
+- Modify: `src/helix/generation/batch.py`
   - skip batch affinity capacity validation in MCP mode
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/convert/batch.py`
   - same as generation batch
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/optimize/batch.py`
   - same as optimize batch
 
 ### MCP skill content
@@ -71,7 +71,7 @@
 
 ### MCP server tools
 
-- Modify: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/run_eval_mcp_server.py`
   - add `profile-report` and `compare-perf`
   - ensure only device-bound tools lease NPU slots
 
@@ -99,14 +99,14 @@
 ### Task 1: Add CLI and model support for `--enable-mcp`
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/models.py`
-- Modify: `src/triton_agent/convert/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/models.py`
+- Modify: `src/helix/convert/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/commands/optimize.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write failing CLI parser tests for the new option**
@@ -253,17 +253,17 @@ Expected: PASS for parser coverage, with later orchestration-specific tests stil
 - [ ] **Step 6: Commit the CLI/model groundwork**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/generation/models.py src/triton_agent/convert/models.py src/triton_agent/optimize/models.py src/triton_agent/models.py src/triton_agent/commands/generation.py src/triton_agent/commands/convert.py src/triton_agent/commands/optimize.py tests/test_cli.py
+git add src/helix/cli.py src/helix/generation/models.py src/helix/convert/models.py src/helix/optimize/models.py src/helix/models.py src/helix/commands/generation.py src/helix/commands/convert.py src/helix/commands/optimize.py tests/test_cli.py
 git commit -m "feat: add run-eval mcp toggle option"
 ```
 
 ### Task 2: Switch run-eval skill staging by source while keeping a stable staged name
 
 **Files:**
-- Modify: `src/triton_agent/skill_staging.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/skill_staging.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Test: `tests/test_skill_staging.py`
 - Test: `tests/test_generation_commands.py`
 - Test: `tests/test_convert_commands.py`
@@ -367,17 +367,17 @@ Expected: PASS for staging overrides and request propagation, with MCP server se
 - [ ] **Step 7: Commit the staging-source switch**
 
 ```bash
-git add src/triton_agent/skill_staging.py src/triton_agent/generation/orchestration.py src/triton_agent/convert/orchestration.py src/triton_agent/optimize/orchestration.py tests/test_skill_staging.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
+git add src/helix/skill_staging.py src/helix/generation/orchestration.py src/helix/convert/orchestration.py src/helix/optimize/orchestration.py tests/test_skill_staging.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
 git commit -m "feat: stage run-eval mcp skill behind toggle"
 ```
 
 ### Task 3: Gate managed MCP activation explicitly on `enable_mcp`
 
 **Files:**
-- Modify: `src/triton_agent/mcp.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/mcp.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Test: `tests/test_generation_commands.py`
 - Test: `tests/test_convert_commands.py`
 - Test: `tests/test_optimize_runtime.py`
@@ -473,16 +473,16 @@ Expected: PASS with MCP servers attached only when the toggle is enabled.
 - [ ] **Step 6: Commit the explicit MCP activation gate**
 
 ```bash
-git add src/triton_agent/mcp.py src/triton_agent/generation/orchestration.py src/triton_agent/convert/orchestration.py src/triton_agent/optimize/orchestration.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
+git add src/helix/mcp.py src/helix/generation/orchestration.py src/helix/convert/orchestration.py src/helix/optimize/orchestration.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
 git commit -m "feat: gate managed run-eval mcp on explicit toggle"
 ```
 
 ### Task 4: Preserve legacy batch validation and relax it in MCP mode
 
 **Files:**
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
+- Modify: `src/helix/optimize/batch.py`
 - Test: `tests/test_generation_batch.py`
 - Test: `tests/test_convert_commands.py`
 - Test: `tests/test_optimize_runtime.py`
@@ -497,7 +497,7 @@ def test_run_gen_eval_batch_skips_affinity_capacity_validation_when_mcp_enabled(
         workspace.mkdir()
         (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-        with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+        with patch("helix.generation.batch.validate_batch_affinity_capacity") as mocked:
             exit_code = run_gen_eval_batch(
                 root,
                 GenerationOptions(
@@ -554,7 +554,7 @@ scope = (
 
 ```python
 def test_run_gen_eval_batch_preserves_affinity_capacity_validation_without_mcp(self) -> None:
-    with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+    with patch("helix.generation.batch.validate_batch_affinity_capacity") as mocked:
         run_gen_eval_batch(
             root,
             GenerationOptions(..., enable_mcp=False),
@@ -573,7 +573,7 @@ Expected: PASS with non-MCP validation preserved and MCP mode skipping only the 
 - [ ] **Step 6: Commit the batch behavior split**
 
 ```bash
-git add src/triton_agent/generation/batch.py src/triton_agent/convert/batch.py src/triton_agent/optimize/batch.py tests/test_generation_batch.py tests/test_convert_commands.py tests/test_optimize_runtime.py
+git add src/helix/generation/batch.py src/helix/convert/batch.py src/helix/optimize/batch.py tests/test_generation_batch.py tests/test_convert_commands.py tests/test_optimize_runtime.py
 git commit -m "feat: relax batch affinity checks in run-eval mcp mode"
 ```
 
@@ -650,7 +650,7 @@ git commit -m "docs: make run-eval mcp skill tool-first"
 ### Task 6: Add `profile-report` and `compare-perf` MCP tools without device leasing
 
 **Files:**
-- Modify: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/run_eval_mcp_server.py`
 - Modify: `tests/test_run_eval_mcp_server.py`
 
 - [ ] **Step 1: Write failing MCP server tests for the new tool registrations**
@@ -767,7 +767,7 @@ Expected: PASS with the new tools registered and no device leasing for artifact-
 - [ ] **Step 6: Commit the MCP server expansion**
 
 ```bash
-git add src/triton_agent/run_eval_mcp_server.py tests/test_run_eval_mcp_server.py
+git add src/helix/run_eval_mcp_server.py tests/test_run_eval_mcp_server.py
 git commit -m "feat: add report and perf compare tools to run-eval mcp"
 ```
 

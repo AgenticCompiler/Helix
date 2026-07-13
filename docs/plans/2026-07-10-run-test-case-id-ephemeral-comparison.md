@@ -36,9 +36,9 @@
 
 **Files:**
 - Modify: `skills/common/ascend-npu-run-eval/scripts/cli.py`
-- Modify: `src/triton_agent/eval/runners.py`
-- Modify: `src/triton_agent/commands/comparison.py`
-- Modify: `src/triton_agent/commands/execution.py`
+- Modify: `src/helix/eval/runners.py`
+- Modify: `src/helix/commands/comparison.py`
+- Modify: `src/helix/commands/execution.py`
 
 - [ ] **Step 1: Route `--case-id` through the new ephemeral comparison path**
 - [ ] **Step 2: Reuse existing ref cases, rerun missing ref cases only when `--ref-operator-file` is available, and suppress archived-result output in single-case mode**

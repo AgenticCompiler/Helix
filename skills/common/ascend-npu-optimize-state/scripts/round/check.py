@@ -34,7 +34,7 @@ from shared.results import append_pass_issues_to_summary, build_check_result
 from shared.round_naming import expected_round_operator_name, expected_round_perf_name, resolve_workspace_operator_file
 
 
-_OPTIMIZE_DELETE_PT_FILES_ENV = "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES"
+_OPTIMIZE_DELETE_PT_FILES_ENV = "HELIX_OPTIMIZE_DELETE_PT_FILES"
 OptimizePtCleanupMode = Literal["never", "round", "run-test"]
 _PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
 _LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})

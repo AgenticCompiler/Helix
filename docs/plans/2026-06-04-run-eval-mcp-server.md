@@ -4,7 +4,7 @@
 
 **Goal:** Replace per-agent stdio run-eval MCP wiring with one shared per-execution HTTP MCP server, while keeping `AgentRequest` MCP references name-only and moving NPU slot management into the shared server.
 
-**Architecture:** `src/triton_agent/mcp.py` will own a nested process-local managed MCP scope that lazily starts a FastMCP HTTP server implemented under `src/triton_agent/`. Backends will emit HTTP MCP config pointing at `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`, skills will instruct agents to use MCP tools, and top-level request/batch/optimize entrypoints will wrap execution in a shared MCP scope so multiple agent runs reuse one server.
+**Architecture:** `src/helix/mcp.py` will own a nested process-local managed MCP scope that lazily starts a FastMCP HTTP server implemented under `src/helix/`. Backends will emit HTTP MCP config pointing at `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`, skills will instruct agents to use MCP tools, and top-level request/batch/optimize entrypoints will wrap execution in a shared MCP scope so multiple agent runs reuse one server.
 
 **Tech Stack:** Python 3, `fastmcp`, `uvicorn`, existing run-eval skill scripts, backend-local JSON/TOML config staging, `unittest`, `pytest`, `ruff`, `pyright`
 
@@ -14,29 +14,29 @@
 
 - `docs/specs/2026-06-04-run-eval-mcp-server-design.md`
   - Shared HTTP design and lifecycle contract.
-- `src/triton_agent/mcp.py`
+- `src/helix/mcp.py`
   - Managed MCP scope, shared HTTP server lifecycle, backend resolution helpers.
-- `src/triton_agent/run_eval_mcp_server.py`
+- `src/helix/run_eval_mcp_server.py`
   - FastMCP app and HTTP server runtime for the four run-eval tools.
-- `src/triton_agent/backends/base.py`
+- `src/helix/backends/base.py`
   - Unsupported backend fail-fast behavior remains centralized.
-- `src/triton_agent/backends/codex.py`
+- `src/helix/backends/codex.py`
   - Emit `.codex/config.toml` HTTP MCP entries.
-- `src/triton_agent/backends/claude.py`
+- `src/helix/backends/claude.py`
   - Emit `.claude/mcp.json` HTTP MCP entries and pass `--mcp-config`.
-- `src/triton_agent/backends/opencode.py`
+- `src/helix/backends/opencode.py`
   - Emit `.opencode/opencode.json` HTTP MCP entries using remote transport config.
-- `src/triton_agent/generation/orchestration.py`
+- `src/helix/generation/orchestration.py`
   - Wrap request execution in a managed MCP scope.
-- `src/triton_agent/convert/orchestration.py`
+- `src/helix/convert/orchestration.py`
   - Wrap request execution in a managed MCP scope.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/orchestration.py`
   - Wrap optimize execution in a managed MCP scope.
-- `src/triton_agent/generation/batch.py`
+- `src/helix/generation/batch.py`
   - Use one outer managed MCP scope across all batch workspaces.
-- `src/triton_agent/convert/batch.py`
+- `src/helix/convert/batch.py`
   - Use one outer managed MCP scope across all batch workspaces.
-- `src/triton_agent/optimize/batch.py`
+- `src/helix/optimize/batch.py`
   - Use one outer managed MCP scope across all batch workspaces.
 - `skills/triton-npu-run-eval/SKILL.md`
   - MCP-first run-eval contract.
@@ -74,7 +74,7 @@ Update backend tests so they expect:
 - Codex config contains:
 
 ```toml
-[mcp_servers.triton-agent-run-eval]
+[mcp_servers.helix-run-eval]
 url = "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"
 ```
 
@@ -83,7 +83,7 @@ url = "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"
 ```json
 {
   "mcpServers": {
-    "triton-agent-run-eval": {
+    "helix-run-eval": {
       "type": "http",
       "url": "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"
     }
@@ -96,7 +96,7 @@ url = "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"
 ```json
 {
   "mcp": {
-    "triton-agent-run-eval": {
+    "helix-run-eval": {
       "type": "remote",
       "url": "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"
     }
@@ -128,8 +128,8 @@ git commit -m "test: cover shared http run-eval mcp config"
 ## Task 2: Implement The Shared Managed MCP Scope
 
 **Files:**
-- Modify: `src/triton_agent/mcp.py`
-- Create: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/mcp.py`
+- Create: `src/helix/run_eval_mcp_server.py`
 
 - [ ] **Step 1: Write failing scope tests**
 
@@ -143,11 +143,11 @@ Add tests for a process-local managed scope that:
 
 Run: `uv run python -m unittest tests.test_codex_runner tests.test_claude_runner tests.test_opencode_runner -v`
 
-Expected: FAIL because `src/triton_agent/mcp.py` still returns stdio launch commands.
+Expected: FAIL because `src/helix/mcp.py` still returns stdio launch commands.
 
 - [ ] **Step 3: Implement the scope and HTTP resolver**
 
-Implement in `src/triton_agent/mcp.py`:
+Implement in `src/helix/mcp.py`:
 
 - `managed_mcp_server_names_for_skills(...)`
 - a process-local shared scope context manager
@@ -156,7 +156,7 @@ Implement in `src/triton_agent/mcp.py`:
 
 ```python
 {
-    "triton-agent-run-eval": {
+    "helix-run-eval": {
         "transport": "http",
         "url": "http://127.0.0.1:8765/mcp?workspace=/abs/path"
     }
@@ -165,7 +165,7 @@ Implement in `src/triton_agent/mcp.py`:
 
 - [ ] **Step 4: Implement the FastMCP HTTP server module**
 
-Create `src/triton_agent/run_eval_mcp_server.py` with:
+Create `src/helix/run_eval_mcp_server.py` with:
 
 - FastMCP app creation
 - query-string workspace parsing
@@ -182,16 +182,16 @@ Expected: PASS
 - [ ] **Step 6: Commit the shared scope implementation**
 
 ```bash
-git add src/triton_agent/mcp.py src/triton_agent/run_eval_mcp_server.py tests/test_codex_runner.py tests/test_claude_runner.py tests/test_opencode_runner.py tests/test_run_eval_mcp_server.py
+git add src/helix/mcp.py src/helix/run_eval_mcp_server.py tests/test_codex_runner.py tests/test_claude_runner.py tests/test_opencode_runner.py tests/test_run_eval_mcp_server.py
 git commit -m "feat: add shared http run-eval mcp server"
 ```
 
 ## Task 3: Rewire Backends To Emit HTTP MCP Config
 
 **Files:**
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/claude.py`
-- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/claude.py`
+- Modify: `src/helix/backends/opencode.py`
 
 - [ ] **Step 1: Write failing backend-specific assertions if still missing**
 
@@ -220,19 +220,19 @@ Expected: PASS
 - [ ] **Step 5: Commit backend config changes**
 
 ```bash
-git add src/triton_agent/backends/codex.py src/triton_agent/backends/claude.py src/triton_agent/backends/opencode.py
+git add src/helix/backends/codex.py src/helix/backends/claude.py src/helix/backends/opencode.py
 git commit -m "feat: emit http mcp config for supported backends"
 ```
 
 ## Task 4: Share One MCP Scope Across Request And Batch Lifecycles
 
 **Files:**
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/generation/batch.py`
-- Modify: `src/triton_agent/convert/batch.py`
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/generation/batch.py`
+- Modify: `src/helix/convert/batch.py`
+- Modify: `src/helix/optimize/batch.py`
 - Modify: `tests/test_generation_commands.py`
 - Modify: `tests/test_convert_commands.py`
 - Modify: `tests/test_optimize_runtime.py`
@@ -279,7 +279,7 @@ Expected: PASS
 - [ ] **Step 6: Commit lifecycle wiring**
 
 ```bash
-git add src/triton_agent/generation/orchestration.py src/triton_agent/convert/orchestration.py src/triton_agent/optimize/orchestration.py src/triton_agent/generation/batch.py src/triton_agent/convert/batch.py src/triton_agent/optimize/batch.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
+git add src/helix/generation/orchestration.py src/helix/convert/orchestration.py src/helix/optimize/orchestration.py src/helix/generation/batch.py src/helix/convert/batch.py src/helix/optimize/batch.py tests/test_generation_commands.py tests/test_convert_commands.py tests/test_optimize_runtime.py
 git commit -m "feat: share run-eval mcp scope across command execution"
 ```
 

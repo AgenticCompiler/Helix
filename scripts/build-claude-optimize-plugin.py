@@ -10,16 +10,16 @@ from dataclasses import dataclass
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.models import CommandKind
-from triton_agent.paths import application_root
-from triton_agent.skills.catalog import resolve_skill_source_dir
-from triton_agent.skills.selection import resolve_staged_skills
+from helix.models import CommandKind
+from helix.paths import application_root
+from helix.skills.catalog import resolve_skill_source_dir
+from helix.skills.selection import resolve_staged_skills
 
 
 _PLUGIN_NAME = "triton-optimizer"
 _PLUGIN_VERSION = "0.1.0"
-_OPTIMIZE_AGENT_NAME = "triton-agent-optimizer"
-_CONVERT_AGENT_NAME = "triton-agent-convert"
+_OPTIMIZE_AGENT_NAME = "helix-optimizer"
+_CONVERT_AGENT_NAME = "helix-convert"
 _PLUGIN_TEST_MODE = "differential"
 _PLUGIN_BENCH_MODE = "torch-npu-profiler"
 
@@ -60,8 +60,8 @@ def build_claude_optimize_plugin_assets(
     convert_agent_text = _render_claude_convert_agent(skill_names=convert_skill_names)
     return ClaudeOptimizePluginAssets(
         text_files={
-            "agents/triton-agent-optimizer.md": optimize_agent_text,
-            "agents/triton-agent-convert.md": convert_agent_text,
+            "agents/helix-optimizer.md": optimize_agent_text,
+            "agents/helix-convert.md": convert_agent_text,
             "README.md": _render_plugin_readme(),
         },
         skill_names=skill_names,
@@ -107,7 +107,7 @@ def _render_claude_optimize_agent(*, skill_names: tuple[str, ...]) -> str:
     lines = [
         "---",
         f"name: {_OPTIMIZE_AGENT_NAME}",
-        "description: Use this agent for Triton Agent optimize sessions with bundled optimize skills and plugin-managed workflow state.",
+        "description: Use this agent for Helix optimize sessions with bundled optimize skills and plugin-managed workflow state.",
         "model: inherit",
         "tools:",
         "  - Read",
@@ -128,7 +128,7 @@ def _render_claude_optimize_agent(*, skill_names: tuple[str, ...]) -> str:
             "",
             f"Use `{primary_skill_name}` as the primary workflow skill.",
             "Treat the bundled optimize skills as the workflow source of truth, and let them pull in sibling skills when needed.",
-            "The plugin manages the temporary `.triton-agent/` runtime directory for this agent. Do not create, edit, or depend on it manually.",
+            "The plugin manages the temporary `.helix/` runtime directory for this agent. Do not create, edit, or depend on it manually.",
             "",
             "## Fixed Optimize Modes",
             "",
@@ -194,7 +194,7 @@ def _render_claude_convert_agent(*, skill_names: tuple[str, ...]) -> str:
     lines = [
         "---",
         f"name: {_CONVERT_AGENT_NAME}",
-        "description: Use this agent for Triton Agent convert sessions with bundled Triton convert skills.",
+        "description: Use this agent for Helix convert sessions with bundled Triton convert skills.",
         "model: inherit",
         "tools:",
         "  - Read",
@@ -236,19 +236,19 @@ def _render_claude_convert_agent(*, skill_names: tuple[str, ...]) -> str:
 def _render_plugin_readme() -> str:
     return (
         "# Triton Optimizer Plugin\n\n"
-        "This plugin packages the Claude optimize workflow and Triton convert workflow for Triton Agent.\n\n"
+        "This plugin packages the Claude optimize workflow and Triton convert workflow for Helix.\n\n"
         "It includes one optimize agent with plugin-managed workflow state automation "
         "and first-session compiler source provisioning, plus one Triton convert agent "
         "with the minimum Triton convert skill set.\n\n"
         "## Usage\n\n"
         "### Use as a subagent\n\n"
         "After installing the plugin, start Claude in the target workspace and ask:\n\n"
-        "`Please use the triton-optimizer:triton-agent-optimizer agent to optimize "
+        "`Please use the triton-optimizer:helix-optimizer agent to optimize "
         "@your_triton_operator.py in the current directory. Stop after reaching Xx speedup "
         "over the baseline or after X rounds.`\n\n"
         "### Start Claude with the optimize agent\n\n"
         "Run:\n\n"
-        "`claude --agent triton-optimizer:triton-agent-optimizer`\n\n"
+        "`claude --agent triton-optimizer:helix-optimizer`\n\n"
         "Then ask:\n\n"
         "`Please optimize @your_triton_operator.py in the current directory. Stop after "
         "reaching Xx speedup over the baseline or after X rounds.`\n"
@@ -263,9 +263,9 @@ def _write_plugin_manifest(path: Path) -> None:
                 "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
                 "name": _PLUGIN_NAME,
                 "version": _PLUGIN_VERSION,
-                "description": "Claude Triton optimizer workflow plugin for Triton Agent",
+                "description": "Claude Triton optimizer workflow plugin for Helix",
                 "author": {
-                    "name": "triton-agent",
+                    "name": "helix",
                 },
             },
             indent=2,

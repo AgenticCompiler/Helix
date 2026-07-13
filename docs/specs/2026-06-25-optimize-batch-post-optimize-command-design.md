@@ -6,11 +6,11 @@ Add one `optimize-batch` option that accepts a shell command and runs it inside 
 
 ## User-Facing Behavior
 
-- `triton-agent optimize-batch` accepts `--post-optimize-command "..."`.
+- `helix optimize-batch` accepts `--post-optimize-command "..."`.
 - The option is batch-only in this change. Single-workspace `optimize` is unchanged.
 - The command runs only when the workspace optimize request returns success.
 - The command runs with the operator workspace as its current working directory.
-- The command runs on the local host that launched `triton-agent`, even when the optimize request itself uses remote execution.
+- The command runs on the local host that launched `helix`, even when the optimize request itself uses remote execution.
 - The command is executed through the system shell so callers can use normal shell syntax and variable expansion.
 - No new timeout is introduced for the post command.
 - When `--stream-output` is enabled, the post-command stdout/stderr are surfaced through the same workspace-prefixed stream after the command completes.
@@ -38,7 +38,7 @@ This keeps the post command part of the success path for a workspace.
 - Extend `OptimizeRunOptions` with `post_optimize_command: str | None = None`.
 - Add one CLI flag on `optimize-batch` only.
 - Parse the batch-only flag into the shared options object, but only the batch runtime consumes it.
-- Keep the command execution helper local to `src/triton_agent/optimize/batch.py`.
+- Keep the command execution helper local to `src/helix/optimize/batch.py`.
 - Execute the command through the system shell so callers can pass an ordinary command string.
 - Reuse the existing batch failure-summary pattern: prefer the last non-blank stderr line, then stdout, then a return-code fallback.
 

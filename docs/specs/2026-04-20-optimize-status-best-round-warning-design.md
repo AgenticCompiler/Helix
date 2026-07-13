@@ -38,7 +38,7 @@ If one logged speedup value is absent, print `missing` for that value.
 
 ## Implementation Shape
 
-- Update the warning string in `src/triton_agent/optimize/status.py` at the point where computed and logged source values are known.
+- Update the warning string in `src/helix/optimize/status.py` at the point where computed and logged source values are known.
 - Keep `OptimizeStatusWorkspace.warnings` as plain strings.
 - Update status and CLI tests to assert the detailed warning text.
 

@@ -224,7 +224,7 @@ In those cases, stop immediately with an explicit orchestration error and log th
 
 ### Reuse Existing Trace Files
 
-Do not add a separate optimize-loop log file. Reuse the existing per-launch `trace-*.jsonl` files already archived under `triton-agent-logs/<run-id>/`.
+Do not add a separate optimize-loop log file. Reuse the existing per-launch `trace-*.jsonl` files already archived under `helix-logs/<run-id>/`.
 
 Append optimize controller events to the same trace stream so one file shows both:
 

@@ -212,7 +212,7 @@ Expected: PASS
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 - Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_contracts.py`
 

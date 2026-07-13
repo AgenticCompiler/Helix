@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/models.py`
 
 - [ ] **Step 1: Write the failing parser tests**
 
@@ -68,7 +68,7 @@ Expected: still FAIL because the parser does not register `clean` yet.
 ### Task 2: Implement cleanup discovery and deletion logic
 
 **Files:**
-- Create: `src/triton_agent/cleaning.py`
+- Create: `src/helix/cleaning.py`
 - Test: `tests/test_cleaning.py`
 
 - [ ] **Step 1: Write the failing cleanup-module tests**
@@ -95,7 +95,7 @@ class WorkspaceCleaningTests(unittest.TestCase):
 
 Run: `uv run python -m unittest tests.test_cleaning -v`
 
-Expected: FAIL because `triton_agent.cleaning` does not exist yet.
+Expected: FAIL because `helix.cleaning` does not exist yet.
 
 - [ ] **Step 3: Implement the cleanup module**
 
@@ -127,8 +127,8 @@ Expected: PASS.
 ### Task 3: Wire the `clean` command into the CLI
 
 **Files:**
-- Create: `src/triton_agent/commands/clean.py`
-- Modify: `src/triton_agent/cli.py`
+- Create: `src/helix/commands/clean.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing handler tests**
@@ -166,7 +166,7 @@ def handle_clean(parser: argparse.ArgumentParser, args: argparse.Namespace) -> i
 ```
 
 ```python
-from triton_agent.commands.clean import handle_clean
+from helix.commands.clean import handle_clean
 ...
 CommandKind.CLEAN: _CommandSpec(
     handler=handle_clean,
@@ -205,9 +205,9 @@ Expected: PASS.
 Use `clean` when you want to remove known generated artifacts while keeping the original operator file.
 
 ```bash
-uv run triton-agent clean --input .
-uv run triton-agent clean --input operators_root
-uv run triton-agent clean --input . --deep
+uv run helix clean --input .
+uv run helix clean --input operators_root
+uv run helix clean --input . --deep
 ```
 ```
 

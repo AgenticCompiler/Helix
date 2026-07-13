@@ -2,7 +2,7 @@
 
 ## User-visible behavior
 
-`triton-agent distill -i <operators-root>` supports two explicit
+`helix distill -i <operators-root>` supports two explicit
 input sources selected by `--source`.
 The default code-agent backend is `opencode`.
 The active operator language comes from `--lang` / `--language`, defaulting to
@@ -40,7 +40,7 @@ another skills update and simulate iteration until the pair aligns or
 - Input root: CLI `-i/--input`.
 - Input source: `--source diff|optimize|git`, defaulting to `diff`.
 - Internal skills workspace: transient
-  `<operators-root>/.triton-agent/distill-skills`, removed when the command
+  `<operators-root>/.helix/distill-skills`, removed when the command
   returns.
 - Output directory: `--output-dir`, defaulting to
   `<operators-root>/distill-output`. After the run completes, only pattern cards

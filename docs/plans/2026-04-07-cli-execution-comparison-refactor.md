@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move execution and comparison command handling out of `src/triton_agent/cli.py` while keeping command behavior unchanged.
+**Goal:** Move execution and comparison command handling out of `src/helix/cli.py` while keeping command behavior unchanged.
 
 **Architecture:** Add `commands/execution.py` and `commands/comparison.py` as the CLI-facing entrypoints for the remaining non-generation commands, and add small runtime modules to hold the non-parser execution and comparison helpers. Keep generation commands in `cli.py` for this phase so the migration stays focused.
 
@@ -30,19 +30,19 @@ Expected: FAIL with import errors or missing symbols
 ### Task 2: Extract execution runtime helpers and command handlers
 
 **Files:**
-- Create: `src/triton_agent/execution.py`
-- Create: `src/triton_agent/commands/execution.py`
-- Modify: `src/triton_agent/cli.py`
+- Create: `src/helix/execution.py`
+- Create: `src/helix/commands/execution.py`
+- Modify: `src/helix/cli.py`
 - Modify: `tests/test_cli.py`
 - Test: `tests/test_execution_commands.py`
 
-- [ ] **Step 1: Move run-test and run-bench helper behavior into `src/triton_agent/execution.py`**
+- [ ] **Step 1: Move run-test and run-bench helper behavior into `src/helix/execution.py`**
 
 Include:
 - local and remote wrappers
 - harness metadata fallback helpers
 
-- [ ] **Step 2: Add `src/triton_agent/commands/execution.py` and move CLI-facing command handling there**
+- [ ] **Step 2: Add `src/helix/commands/execution.py` and move CLI-facing command handling there**
 
 Keep:
 - path validation
@@ -57,15 +57,15 @@ Expected: PASS
 ### Task 3: Extract comparison runtime helpers and command handlers
 
 **Files:**
-- Create: `src/triton_agent/comparison.py`
-- Create: `src/triton_agent/commands/comparison.py`
-- Modify: `src/triton_agent/cli.py`
+- Create: `src/helix/comparison.py`
+- Create: `src/helix/commands/comparison.py`
+- Modify: `src/helix/cli.py`
 - Modify: `tests/test_cli.py`
 - Test: `tests/test_comparison_commands.py`
 
-- [ ] **Step 1: Move compare-result and compare-perf helper behavior into `src/triton_agent/comparison.py`**
+- [ ] **Step 1: Move compare-result and compare-perf helper behavior into `src/helix/comparison.py`**
 
-- [ ] **Step 2: Add `src/triton_agent/commands/comparison.py` and move CLI-facing command handling there**
+- [ ] **Step 2: Add `src/helix/commands/comparison.py` and move CLI-facing command handling there**
 
 - [ ] **Step 3: Run focused comparison tests**
 
@@ -75,7 +75,7 @@ Expected: PASS
 ### Task 4: Re-run CLI and repository verification
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 
 - [ ] **Step 1: Run CLI regression tests**
 

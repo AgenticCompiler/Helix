@@ -13,9 +13,9 @@
 ## File Map
 
 - Modify: `README.md`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_generation_commands.py`
@@ -102,9 +102,9 @@ Expected:
 ## Task 2: Shrink The Runtime Surface To Differential-Only
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/prompts.py`
 
 - [ ] Update the `gen-convert` CLI spec so it does not register `--bench-mode`.
 

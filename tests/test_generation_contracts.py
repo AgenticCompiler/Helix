@@ -51,7 +51,7 @@ class GenerationContractTests(unittest.TestCase):
             agents,
         )
         self.assertIn(
-            "uv run python -m triton_agent.optimize_knowledge.update_artifacts",
+            "uv run python -m helix.optimize_knowledge.update_artifacts",
             agents,
         )
 
@@ -779,11 +779,11 @@ class GenerationContractTests(unittest.TestCase):
                 "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
                 "skills/common/ascend-npu-optimize-state/references/round-contract.json",
                 "skills/triton/triton-npu-optimize/references/artifacts.md",
-                "src/triton_agent/__init__.py",
-                "src/triton_agent/models.py",
-                "src/triton_agent/paths.py",
-                "src/triton_agent/optimize_knowledge/__init__.py",
-                "src/triton_agent/optimize_knowledge/update_artifacts.py",
+                "src/helix/__init__.py",
+                "src/helix/models.py",
+                "src/helix/paths.py",
+                "src/helix/optimize_knowledge/__init__.py",
+                "src/helix/optimize_knowledge/update_artifacts.py",
             ):
                 source = REPO_ROOT / relative_path
                 target = root / relative_path
@@ -794,7 +794,7 @@ class GenerationContractTests(unittest.TestCase):
                 [
                     sys.executable,
                     "-m",
-                    "triton_agent.optimize_knowledge.update_artifacts",
+                    "helix.optimize_knowledge.update_artifacts",
                 ],
                 capture_output=True,
                 text=True,
@@ -914,8 +914,8 @@ class GenerationContractTests(unittest.TestCase):
         script = _read("scripts/update-optimize-knowledge-indices.sh")
 
         self.assertIn("bash scripts/update-optimize-knowledge-indices.sh", skill)
-        self.assertIn("triton_agent.optimize_knowledge.pattern_index", script)
-        self.assertIn("triton_agent.optimize_knowledge.symptom_index", script)
+        self.assertIn("helix.optimize_knowledge.pattern_index", script)
+        self.assertIn("helix.optimize_knowledge.symptom_index", script)
         self.assertIn(
             "skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md",
             script,
@@ -942,14 +942,14 @@ class GenerationContractTests(unittest.TestCase):
             pattern_note,
         )
         self.assertIn(
-            "triton_agent.optimize_knowledge.pattern_index",
+            "helix.optimize_knowledge.pattern_index",
             pattern_note,
         )
         self.assertIn(
             "skills/triton/triton-npu-optimize-knowledge/references/symptoms/",
             symptom_note,
         )
-        self.assertIn("triton_agent.optimize_knowledge.symptom_index", symptom_note)
+        self.assertIn("helix.optimize_knowledge.symptom_index", symptom_note)
 
     def test_pattern_authoring_note_describes_priority_contract(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
@@ -1023,7 +1023,7 @@ class GenerationContractTests(unittest.TestCase):
         content = _read("README.md")
 
         self.assertIn("--enable-compiler-source-analysis", content)
-        self.assertIn("~/.triton-agent/compiler-sources/AscendNPU-IR/", content)
+        self.assertIn("~/.helix/compiler-sources/AscendNPU-IR/", content)
         self.assertIn("read-only", content)
         self.assertIn("escalation", content)
 

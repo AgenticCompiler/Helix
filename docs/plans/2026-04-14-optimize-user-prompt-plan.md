@@ -13,9 +13,9 @@
 ### Task 1: Add CLI And Option Plumbing For Optimize User Prompts
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write failing CLI tests for `--prompt`**
@@ -28,7 +28,7 @@ def test_main_optimize_passes_user_prompt_to_request(self) -> None:
         captured["base_prompt_called"] = True
         return "Prompt body"
 
-    with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+    with patch("helix.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
         ...
         exit_code = main(
             ["optimize", "-i", str(operator), "--prompt", "Focus on memory coalescing."]
@@ -56,20 +56,20 @@ Expected: FAIL because optimize parsers and `OptimizeRunOptions` do not yet expo
 - [ ] **Step 3: Add the minimal parser and option-model support**
 
 ```python
-# src/triton_agent/optimize/models.py
+# src/helix/optimize/models.py
 @dataclass(frozen=True)
 class OptimizeRunOptions:
     ...
     prompt: str | None
 
 
-# src/triton_agent/cli.py
+# src/helix/cli.py
 if spec.has_optimize_options:
     ...
     subparser.add_argument("--prompt")
 
 
-# src/triton_agent/commands/optimize.py
+# src/helix/commands/optimize.py
 return OptimizeRunOptions(
     ...
     prompt=getattr(args, "prompt", None),
@@ -84,15 +84,15 @@ Expected: PASS for the new `--prompt` coverage and existing optimize CLI regress
 - [ ] **Step 5: Commit the CLI plumbing**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py tests/test_cli.py
+git add src/helix/cli.py src/helix/commands/optimize.py src/helix/optimize/models.py tests/test_cli.py
 git commit -m "feat: add optimize prompt option plumbing"
 ```
 
 ### Task 2: Append User Instructions To Worker Prompts And Keep Resume Behavior
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_supervisor.py`
 
@@ -131,14 +131,14 @@ Expected: FAIL because there is no helper for additive optimize user instruction
 - [ ] **Step 3: Implement shared prompt-appending logic and use it in optimize request building**
 
 ```python
-# src/triton_agent/prompts.py
+# src/helix/prompts.py
 def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
     if user_prompt is None or not user_prompt.strip():
         return prompt
     return f"{prompt}\n\nAdditional user instructions:\n{user_prompt.strip()}"
 
 
-# src/triton_agent/optimize/orchestration.py
+# src/helix/optimize/orchestration.py
 prompt = append_additional_user_instructions(
     build_prompt(...),
     options.prompt,
@@ -153,7 +153,7 @@ Expected: PASS with the new additive prompt block preserved in resume prompts.
 - [ ] **Step 5: Commit the prompt-building change**
 
 ```bash
-git add src/triton_agent/prompts.py src/triton_agent/optimize/orchestration.py tests/test_cli.py tests/test_supervisor.py
+git add src/helix/prompts.py src/helix/optimize/orchestration.py tests/test_cli.py tests/test_supervisor.py
 git commit -m "feat: append optimize user instructions to worker prompts"
 ```
 
@@ -222,8 +222,8 @@ git commit -m "test: cover optimize user prompt runtime boundaries"
 - [ ] **Step 1: Update README optimize examples**
 
 ```markdown
-uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
-uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
+uv run helix optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
+uv run helix optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 ```
 
 - [ ] **Step 2: Run the focused optimize verification suite**
@@ -247,6 +247,6 @@ Expected: PASS
 - [ ] **Step 5: Commit the docs and verified change set**
 
 ```bash
-git add README.md tests/test_cli.py tests/test_supervisor.py tests/test_optimize_runtime.py src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py src/triton_agent/prompts.py src/triton_agent/optimize/orchestration.py
+git add README.md tests/test_cli.py tests/test_supervisor.py tests/test_optimize_runtime.py src/helix/cli.py src/helix/commands/optimize.py src/helix/optimize/models.py src/helix/prompts.py src/helix/optimize/orchestration.py
 git commit -m "feat: support additive optimize user prompts"
 ```

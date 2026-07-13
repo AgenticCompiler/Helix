@@ -6,14 +6,14 @@
 
 **Architecture:** Follow the existing backend adapter pattern: keep CLI parsing and prompt construction backend-neutral, add a dedicated `PiRunner` for Pi command construction, and stage repository skills into a Pi-specific workspace location that the runner passes back to Pi explicitly.
 
-**Tech Stack:** Python 3.11, `argparse`, `unittest`, `uv`, existing Triton agent CLI modules
+**Tech Stack:** Python 3.11, `argparse`, `unittest`, `uv`, existing Helix CLI modules
 
 ---
 
 ### Task 1: Extend the CLI backend selection
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Test: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
@@ -37,8 +37,8 @@ Expected: PASS
 ### Task 2: Add Pi runner and Pi skill staging
 
 **Files:**
-- Create: `src/triton_agent/backends/pi.py`
-- Modify: `src/triton_agent/skills.py`
+- Create: `src/helix/backends/pi.py`
+- Modify: `src/helix/skills.py`
 - Test: `tests/test_pi_runner.py`
 - Test: `tests/test_skills.py`
 

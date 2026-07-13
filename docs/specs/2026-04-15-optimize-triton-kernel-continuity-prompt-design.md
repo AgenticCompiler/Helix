@@ -94,7 +94,7 @@ This keeps the role separation intact:
 
 ### Prompt Construction
 
-- Keep the change localized to prompt-building helpers in `src/triton_agent/prompts.py`.
+- Keep the change localized to prompt-building helpers in `src/helix/prompts.py`.
 - Reuse the existing optimize prompt builders instead of introducing a second policy layer.
 - Preserve all current artifact, baseline, evidence, and `compare-perf` instructions.
 - Add the new kernel continuity language as a small cluster of adjacent lines so future maintainers can reason about the rule as one policy.

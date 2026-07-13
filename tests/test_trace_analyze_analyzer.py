@@ -4,12 +4,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.trace.analyze import build_summary
+from helix.trace.analyze import build_summary
 
 
 class TraceAnalysisAnalyzerTests(unittest.TestCase):
     def test_build_summary_detects_redundant_reads_and_msprof_commands(self) -> None:
-        trace_path = Path("/tmp/triton-agent-logs/run-001/trace-batch-1-5.jsonl")
+        trace_path = Path("/tmp/helix-logs/run-001/trace-batch-1-5.jsonl")
 
         events = [
             {
@@ -45,7 +45,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         self.assertEqual(summary["tool_trace_capability"], "partial")
         self.assertEqual(
             summary["paths"]["summary_json"],
-            "/tmp/triton-agent-logs/run-001/trace-batch-1-5.summary.json",
+            "/tmp/helix-logs/run-001/trace-batch-1-5.summary.json",
         )
         self.assertFalse(summary["capabilities"]["agent_invocation"])
         self.assertFalse(summary["capabilities"]["pre_tool_events"])
@@ -61,14 +61,14 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         )
 
     def test_build_summary_empty_events(self) -> None:
-        trace_path = Path("/tmp/triton-agent-logs/run-001/trace-batch-1-5.jsonl")
+        trace_path = Path("/tmp/helix-logs/run-001/trace-batch-1-5.jsonl")
         summary = build_summary([], trace_path=trace_path)
 
         self.assertFalse(summary["tool_trace_enabled"])
         self.assertEqual(summary["tool_trace_capability"], "disabled")
         self.assertEqual(
             summary["paths"]["summary_json"],
-            "/tmp/triton-agent-logs/run-001/trace-batch-1-5.summary.json",
+            "/tmp/helix-logs/run-001/trace-batch-1-5.summary.json",
         )
         self.assertEqual(summary["event_counts"]["total"], 0)
         self.assertEqual(summary["evidence_gaps"], [
@@ -78,7 +78,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         ])
 
     def test_build_summary_handles_non_skill_script_paths(self) -> None:
-        trace_path = Path("/tmp/triton-agent-logs/run-001/trace-batch-1-5.jsonl")
+        trace_path = Path("/tmp/helix-logs/run-001/trace-batch-1-5.jsonl")
 
         events = [
             {
@@ -109,13 +109,13 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         )
 
     def test_build_summary_keeps_summary_json_for_non_optimize_trace_name(self) -> None:
-        trace_path = Path("/tmp/triton-agent-logs/run-001/trace.jsonl")
+        trace_path = Path("/tmp/helix-logs/run-001/trace.jsonl")
 
         summary = build_summary([], trace_path=trace_path)
 
         self.assertEqual(
             summary["paths"]["summary_json"],
-            "/tmp/triton-agent-logs/run-001/summary.json",
+            "/tmp/helix-logs/run-001/summary.json",
         )
 
 

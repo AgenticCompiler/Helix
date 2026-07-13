@@ -23,9 +23,9 @@ from typing import Any, TextIO, cast
 from debug_device import maybe_print_visible_devices
 from env_registry import (
     TORCH_DEVICE_BACKEND_AUTOLOAD,
-    TRITON_AGENT_ACCURACY_MODE,
-    TRITON_AGENT_DTYPE_CLOSE_ATOL,
-    TRITON_AGENT_DTYPE_CLOSE_RTOL,
+    HELIX_ACCURACY_MODE,
+    HELIX_DTYPE_CLOSE_ATOL,
+    HELIX_DTYPE_CLOSE_RTOL,
     TRITON_ALWAYS_COMPILE,
 )
 from run_runtime import (
@@ -50,8 +50,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 _LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
 _LOCAL_TEST_PAYLOAD_WORKER_COMMAND = "local-test-payload-worker"
 _WARNING_PREFIX = "[WARNING]"
-_SERIALIZED_PAYLOAD_BEGIN = "__TRITON_AGENT_SERIALIZED_PAYLOAD_BEGIN__"
-_SERIALIZED_PAYLOAD_END = "__TRITON_AGENT_SERIALIZED_PAYLOAD_END__"
+_SERIALIZED_PAYLOAD_BEGIN = "__HELIX_SERIALIZED_PAYLOAD_BEGIN__"
+_SERIALIZED_PAYLOAD_END = "__HELIX_SERIALIZED_PAYLOAD_END__"
+_BASE64_SERIALIZED_PAYLOAD_LINE = re.compile(r"^[A-Za-z0-9+/=]+$")
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,38 @@ def _merge_failed_worker_result(result: ResultPayload) -> tuple[ResultPayload, N
 
 
 def _serialize_payload_object(payload: object) -> str:
-    return base64.b64encode(pickle.dumps(payload)).decode("ascii")
+    normalized_payload = _normalize_payload_for_serialization(payload)
+    return base64.b64encode(pickle.dumps(normalized_payload)).decode("ascii")
+
+
+def _normalize_payload_for_serialization(payload: object) -> object:
+    try:
+        torch_module = importlib.import_module("torch")
+    except ImportError:
+        torch_module = None
+
+    def _normalize(value: object) -> object:
+        tensor_type = None if torch_module is None else getattr(torch_module, "Tensor", None)
+        if isinstance(tensor_type, type) and isinstance(value, tensor_type):
+            tensor_like = cast(Any, value)
+            detached = cast(object, tensor_like.detach()) if hasattr(tensor_like, "detach") else value
+            copy_to_cpu = getattr(cast(Any, detached), "cpu", None)
+            return copy_to_cpu() if callable(copy_to_cpu) else detached
+        if isinstance(value, Mapping):
+            mapping = cast(Mapping[object, object], value)
+            return {key: _normalize(item) for key, item in mapping.items()}
+        if isinstance(value, tuple):
+            tuple_value = cast(tuple[object, ...], value)
+            items = tuple(_normalize(item) for item in tuple_value)
+            if hasattr(tuple_value, "_fields"):
+                named_tuple_type = cast(Any, type(tuple_value))
+                return cast(object, named_tuple_type(*items))
+            return items
+        if isinstance(value, list):
+            return [_normalize(item) for item in cast(list[object], value)]
+        return value
+
+    return _normalize(payload)
 
 
 def _deserialize_payload_object(serialized_payload: str) -> object:
@@ -888,11 +920,11 @@ def run_remote_test_case_payload(
 def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:
-        extra_env[TRITON_AGENT_ACCURACY_MODE] = accuracy_mode
+        extra_env[HELIX_ACCURACY_MODE] = accuracy_mode
     for name in (
-        TRITON_AGENT_ACCURACY_MODE,
-        TRITON_AGENT_DTYPE_CLOSE_ATOL,
-        TRITON_AGENT_DTYPE_CLOSE_RTOL,
+        HELIX_ACCURACY_MODE,
+        HELIX_DTYPE_CLOSE_ATOL,
+        HELIX_DTYPE_CLOSE_RTOL,
     ):
         if name in extra_env:
             continue
@@ -1059,6 +1091,10 @@ def _parse_metadata(test_file):
 
 {_remote_function_source(_select_differential_case_records)}
 
+{_remote_function_source(_normalize_payload_for_serialization)}
+
+{_remote_function_source(_serialize_payload_object)}
+
 def _compute_flag(metadata):
     return _parse_compute_kind(metadata.get("compute-kind"))
 
@@ -1103,7 +1139,7 @@ try:
         torch.save(payload, archive_file)
     if {emit_serialized_payload!r}:
         print({_SERIALIZED_PAYLOAD_BEGIN!r})
-        print(base64.b64encode(pickle.dumps(payload)).decode("ascii"))
+        print(_serialize_payload_object(payload))
         print({_SERIALIZED_PAYLOAD_END!r})
 except Exception:
     traceback.print_exc()
@@ -1122,7 +1158,7 @@ def _extract_serialized_payload_result(result: ResultPayload) -> tuple[ResultPay
     if match is None:
         return result, None
     prefix = match.group("prefix")
-    serialized_payload = match.group("payload")
+    serialized_payload_block = match.group("payload")
     suffix = match.group("suffix")
     clean_stdout = prefix + suffix.lstrip("\r\n")
     clean_result = make_result(
@@ -1132,7 +1168,21 @@ def _extract_serialized_payload_result(result: ResultPayload) -> tuple[ResultPay
         stalled=bool(result["stalled"]),
         session_id=result["session_id"],
     )
-    return clean_result, _deserialize_payload_object(serialized_payload.strip())
+    return clean_result, _extract_serialized_payload_object(serialized_payload_block)
+
+
+def _extract_serialized_payload_object(serialized_payload_block: str) -> object | None:
+    for line in reversed(serialized_payload_block.splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if _BASE64_SERIALIZED_PAYLOAD_LINE.fullmatch(candidate) is None:
+            continue
+        try:
+            return _deserialize_payload_object(candidate)
+        except Exception:
+            continue
+    return None
 
 
 def _remote_function_source(function: Callable[..., Any]) -> str:

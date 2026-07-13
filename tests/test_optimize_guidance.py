@@ -6,8 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.optimize.memory_file as optimize_memory_file
-from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
+import helix.optimize.memory_file as optimize_memory_file
+from helix.optimize.session_artifacts import OptimizeSessionArtifactsManager
 
 
 def _write_resumable_optimize_workspace(workspace: Path, operator: Path) -> None:
@@ -47,14 +47,14 @@ def _write_resumable_optimize_workspace(workspace: Path, operator: Path) -> None
 
 class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
     def test_memory_file_manager_selects_agents_by_default(self) -> None:
-        from triton_agent.optimize.memory_file import MemoryFileManager
+        from helix.optimize.memory_file import MemoryFileManager
 
         manager = MemoryFileManager()
 
         self.assertEqual(manager.guidance_filename("codex"), "AGENTS.md")
 
     def test_memory_file_manager_selects_claude_memory_file(self) -> None:
-        from triton_agent.optimize.memory_file import MemoryFileManager
+        from helix.optimize.memory_file import MemoryFileManager
 
         manager = MemoryFileManager()
 
@@ -80,10 +80,10 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
 
             self.assertEqual(warnings, [])
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
 
     def test_archive_manager_builds_run_paths(self) -> None:
-        from triton_agent.optimize.archive import ArchiveManager
+        from helix.optimize.archive import ArchiveManager
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -91,7 +91,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             state = manager.prepare(workdir, include_shared_guidance_snapshot=True)
 
-            expected_run_dir = workdir / "triton-agent-logs" / "20260423-123456"
+            expected_run_dir = workdir / "helix-logs" / "20260423-123456"
             self.assertEqual(state.run_archive_dir, expected_run_dir)
             self.assertEqual(
                 state.agent_session_path("baseline"),
@@ -111,7 +111,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
 
     def test_archive_manager_records_agent_session_compact_json(self) -> None:
-        from triton_agent.optimize.archive import ArchiveManager
+        from helix.optimize.archive import ArchiveManager
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -204,11 +204,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             agents_path = workdir / "AGENTS.md"
             guidance_content = agents_path.read_text(encoding="utf-8")
-            agent_path = workdir / ".codex" / "agents" / "triton-agent-perf-diagnosis-advisor.toml"
+            agent_path = workdir / ".codex" / "agents" / "helix-perf-diagnosis-advisor.toml"
 
             self.assertTrue(agent_path.exists())
             self.assertIn(
-                "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
+                "A diagnosis subagent named `helix-perf-diagnosis-advisor` is available in this workspace.",
                 guidance_content,
             )
             self.assertIn(
@@ -241,7 +241,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(state.guidance_path, agents_path)
             self.assertIsNone(state.backup_path)
             self.assertTrue(state.created_guidance)
-            self.assertIn("## Triton Agent Optimize Round Loop", guidance_content)
+            self.assertIn("## Helix Optimize Round Loop", guidance_content)
             self.assertIn("This workspace is under an optimize round loop.", guidance_content)
             self.assertIn(
                 "Read files cautiously. Do not read unrelated files speculatively or just in case.",
@@ -270,12 +270,12 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
             self.assertNotIn("Read the role brief", guidance_content)
             self.assertNotIn("Worker and supervisor roles", guidance_content)
-            self.assertNotIn(".triton-agent/roles/", guidance_content)
+            self.assertNotIn(".helix/roles/", guidance_content)
 
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
             self.assertFalse(agents_path.exists())
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
 
     def test_prepare_checked_session_bootstraps_workflow_state_only_when_hooks_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -291,7 +291,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 source_operator_path=operator,
             )
             self.assertIsNone(state_without_hooks.workflow_state_path)
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
             warnings = manager.cleanup_checked_session(state_without_hooks)
             self.assertEqual(warnings, [])
 
@@ -301,13 +301,13 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 enable_agent_hooks=True,
                 source_operator_path=operator,
             )
-            self.assertEqual(state_with_hooks.workflow_state_path, workdir / ".triton-agent" / "state.json")
+            self.assertEqual(state_with_hooks.workflow_state_path, workdir / ".helix" / "state.json")
             assert state_with_hooks.workflow_state_path is not None
             self.assertTrue(state_with_hooks.workflow_state_path.exists())
 
             warnings = manager.cleanup_checked_session(state_with_hooks)
             self.assertEqual(warnings, [])
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
 
     def test_prepare_checked_session_rebuilds_state_from_resumable_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,21 +331,21 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
 
     def test_prepare_checked_session_still_rejects_stale_hidden_runtime_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            runtime_dir = workdir / ".triton-agent"
+            runtime_dir = workdir / ".helix"
             runtime_dir.mkdir()
             (runtime_dir / "junk.txt").write_text("stale\n", encoding="utf-8")
             manager = OptimizeSessionArtifactsManager()
 
             with self.assertRaisesRegex(
                 RuntimeError,
-                "Existing \\.triton-agent/ directory contains data; remove it before starting optimize.",
+                "Existing \\.helix/ directory contains data; remove it before starting optimize.",
             ):
                 manager.prepare_checked_session(
                     workdir,
@@ -375,7 +375,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             assert state.supervisor_handoff_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
             self.assertFalse(state.supervisor_handoff_dir.exists())
-            self.assertEqual(state.run_archive_dir.parent, workdir / "triton-agent-logs")
+            self.assertEqual(state.run_archive_dir.parent, workdir / "helix-logs")
             self.assertEqual(
                 state.agent_session_path("baseline"),
                 state.run_archive_dir / "agent-session-baseline.json",
@@ -385,7 +385,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 state.run_archive_dir / "trace-supervisor.jsonl",
             )
 
-            self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
+            self.assertIn("## Helix Optimize Orchestration", shared_content)
             self.assertIn("This workspace is under optimize orchestration.", shared_content)
             self.assertIn("Use the staged workspace skills as the workflow source of truth.", shared_content)
             self.assertIn("Invocation-specific behavior comes from the launch prompt.", shared_content)
@@ -393,8 +393,8 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "Use `supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
                 shared_content,
             )
-            self.assertNotIn(".triton-agent/supervisor-report.md", shared_content)
-            self.assertNotIn(".triton-agent/state.json", shared_content)
+            self.assertNotIn(".helix/supervisor-report.md", shared_content)
+            self.assertNotIn(".helix/state.json", shared_content)
             self.assertIn("Treat `baseline/` as the canonical optimize baseline", shared_content)
             self.assertIn("Use `compare-perf` as the authoritative source", shared_content)
             self.assertNotIn("Improve the Triton operator", shared_content)
@@ -404,7 +404,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(warnings, [])
             self.assertFalse(agents_path.exists())
             self.assertFalse((workdir / "supervisor-report.md").exists())
-            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / ".helix").exists())
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
             self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
@@ -425,7 +425,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
 
             assert state.workflow_state_path is not None
-            timing_dir = workdir / ".triton-agent" / "round-timings"
+            timing_dir = workdir / ".helix" / "round-timings"
             timing_dir.mkdir(parents=True)
             (timing_dir / "opt-round-1.jsonl").write_text(
                 '{"event":"round_start","timestamp":"2026-06-22T12:40:00Z","run_id":"'
@@ -580,7 +580,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(state.backup_path is not None and state.backup_path.exists())
             self.assertEqual(state.guidance_path, guidance_path)
             self.assertIn("# CLAUDE.md", shared_content)
-            self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
+            self.assertIn("## Helix Optimize Orchestration", shared_content)
             self.assertIn(
                 "Read files cautiously. Do not read unrelated files speculatively or just in case.",
                 shared_content,
@@ -889,13 +889,13 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            runtime_root = workdir / ".triton-agent"
+            runtime_root = workdir / ".helix"
             runtime_root.mkdir()
             (runtime_root / "leftover.txt").write_text("busy\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
 
-            with self.assertRaisesRegex(RuntimeError, "Existing \\.triton-agent/ directory contains data"):
+            with self.assertRaisesRegex(RuntimeError, "Existing \\.helix/ directory contains data"):
                 manager.prepare_supervised_session(
                     workdir,
                     agent_name="codex",

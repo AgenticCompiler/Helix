@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Set, Union
 JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "JsonValue"]]
 
 DEFAULT_BASE_REVISION = "origin/main"
-DEFAULT_OUTPUT = ".triton-agent/git-operator-context.json"
+DEFAULT_OUTPUT = ".helix/git-operator-context.json"
 DEFAULT_MAX_CONTEXT_CHARS = 80_000
 COMMIT_RECORD_END = "==COMMIT_END=="
 

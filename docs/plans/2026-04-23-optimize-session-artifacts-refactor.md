@@ -4,7 +4,7 @@
 
 **Goal:** Replace `OptimizeGuidanceManager` with a thinner `OptimizeSessionArtifactsManager` facade and split optimize artifact handling by domain without changing optimize behavior.
 
-**Architecture:** Move the current mixed responsibilities in `src/triton_agent/optimize/guidance.py` into three focused modules: `memory_file`, `runtime_handoff`, and `archive`. Keep one facade in `session_artifacts.py` so `execution.py` can keep a compact call surface while domain modules own rendering, runtime files, and archive/session-record logic separately.
+**Architecture:** Move the current mixed responsibilities in `src/helix/optimize/guidance.py` into three focused modules: `memory_file`, `runtime_handoff`, and `archive`. Keep one facade in `session_artifacts.py` so `execution.py` can keep a compact call surface while domain modules own rendering, runtime files, and archive/session-record logic separately.
 
 **Tech Stack:** Python 3.12, `dataclasses`, `pathlib`, `textwrap.dedent`, existing optimize execution plumbing, Python `unittest`
 
@@ -13,16 +13,16 @@
 ### Task 1: Introduce Memory File Module And Preserve Guidance Behavior
 
 **Files:**
-- Create: `src/triton_agent/optimize/memory_file.py`
+- Create: `src/helix/optimize/memory_file.py`
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/optimize/guidance.py` only until the facade migration is complete
+- Modify: `src/helix/optimize/guidance.py` only until the facade migration is complete
 
 - [ ] **Step 1: Write failing tests that target a dedicated memory-file module**
 
 Add imports and tests in `tests/test_optimize_guidance.py` for:
 
 ```python
-from triton_agent.optimize.memory_file import (
+from helix.optimize.memory_file import (
     MemoryFileState,
     MemoryFileManager,
 )
@@ -44,11 +44,11 @@ def test_memory_file_manager_selects_claude_memory_file(self) -> None:
 
 Run: `python3 -m unittest tests.test_optimize_guidance.OptimizeGuidanceManagerTests.test_memory_file_manager_selects_agents_by_default tests.test_optimize_guidance.OptimizeGuidanceManagerTests.test_memory_file_manager_selects_claude_memory_file -v`
 
-Expected: FAIL because `triton_agent.optimize.memory_file` does not exist yet.
+Expected: FAIL because `helix.optimize.memory_file` does not exist yet.
 
 - [ ] **Step 3: Create the memory-file module with minimal state and filename logic**
 
-Create `src/triton_agent/optimize/memory_file.py` with:
+Create `src/helix/optimize/memory_file.py` with:
 
 ```python
 from __future__ import annotations
@@ -99,24 +99,24 @@ Expected: PASS with no guidance-content regressions.
 - [ ] **Step 7: Commit the memory-file extraction**
 
 ```bash
-git add src/triton_agent/optimize/memory_file.py tests/test_optimize_guidance.py src/triton_agent/optimize/guidance.py
+git add src/helix/optimize/memory_file.py tests/test_optimize_guidance.py src/helix/optimize/guidance.py
 git commit -m "refactor: extract optimize memory file manager"
 ```
 
 ### Task 2: Extract Runtime Handoff Lifecycle From Mixed Guidance Logic
 
 **Files:**
-- Create: `src/triton_agent/optimize/runtime_handoff.py`
+- Create: `src/helix/optimize/runtime_handoff.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/optimize/guidance.py` only until the facade migration is complete
+- Modify: `src/helix/optimize/guidance.py` only until the facade migration is complete
 
 - [ ] **Step 1: Write failing tests for runtime handoff state and file creation**
 
 Add tests that import:
 
 ```python
-from triton_agent.optimize.runtime_handoff import (
+from helix.optimize.runtime_handoff import (
     RuntimeHandoffManager,
     RuntimeHandoffState,
 )
@@ -124,9 +124,9 @@ from triton_agent.optimize.runtime_handoff import (
 
 and verify a new manager can create:
 
-- `.triton-agent/round-brief.md`
-- `.triton-agent/supervisor-report.md`
-- `.triton-agent/history/`
+- `.helix/round-brief.md`
+- `.helix/supervisor-report.md`
+- `.helix/history/`
 
 inside a temporary workspace.
 
@@ -138,14 +138,14 @@ Expected: FAIL because the module does not exist yet.
 
 - [ ] **Step 3: Create the runtime handoff module**
 
-Create `src/triton_agent/optimize/runtime_handoff.py` with:
+Create `src/helix/optimize/runtime_handoff.py` with:
 
 - `RuntimeHandoffState`
 - runtime-root creation
 - initial `round-brief.md` / `supervisor-report.md` seeding
 - runtime-tree cleanup for supervised sessions
 
-Move only `.triton-agent/` ownership into this module. Do not move archive logic here.
+Move only `.helix/` ownership into this module. Do not move archive logic here.
 
 - [ ] **Step 4: Wire the existing runtime cleanup through the new module**
 
@@ -165,30 +165,30 @@ Expected: PASS. Runtime handoff behavior should remain unchanged.
 - [ ] **Step 6: Commit the runtime handoff extraction**
 
 ```bash
-git add src/triton_agent/optimize/runtime_handoff.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/triton_agent/optimize/guidance.py
+git add src/helix/optimize/runtime_handoff.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/helix/optimize/guidance.py
 git commit -m "refactor: extract optimize runtime handoff manager"
 ```
 
 ### Task 3: Extract Archive And Session Recording Responsibilities
 
 **Files:**
-- Create: `src/triton_agent/optimize/archive.py`
+- Create: `src/helix/optimize/archive.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/guidance.py` only until the facade migration is complete
+- Modify: `src/helix/optimize/guidance.py` only until the facade migration is complete
 
 - [ ] **Step 1: Write failing tests for archive state and session recording helpers**
 
 Add tests for:
 
 ```python
-from triton_agent.optimize.archive import ArchiveManager, ArchiveState
+from helix.optimize.archive import ArchiveManager, ArchiveState
 ```
 
 Cover:
 
 - `agent-sessions.jsonl` append behavior
-- archive directory creation under `optimize-logs/triton-agent/<run-id>/`
+- archive directory creation under `optimize-logs/helix/<run-id>/`
 - shared-guidance snapshot writing
 - `final/` and `history/` output copying
 
@@ -200,7 +200,7 @@ Expected: FAIL because `archive.py` does not exist yet.
 
 - [ ] **Step 3: Create the archive module**
 
-Create `src/triton_agent/optimize/archive.py` with:
+Create `src/helix/optimize/archive.py` with:
 
 - `ArchiveState`
 - run-id generation
@@ -228,26 +228,26 @@ Expected: PASS. Archive output and session-recording behavior should remain unch
 - [ ] **Step 6: Commit the archive extraction**
 
 ```bash
-git add src/triton_agent/optimize/archive.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/triton_agent/optimize/guidance.py
+git add src/helix/optimize/archive.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py src/helix/optimize/guidance.py
 git commit -m "refactor: extract optimize archive manager"
 ```
 
 ### Task 4: Replace The Mixed Manager With A Session-Artifacts Facade
 
 **Files:**
-- Create: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Create: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_optimize_guidance.py`
-- Delete: `src/triton_agent/optimize/guidance.py` or reduce it to a compatibility shim only if necessary
+- Delete: `src/helix/optimize/guidance.py` or reduce it to a compatibility shim only if necessary
 
 - [ ] **Step 1: Write failing import/update tests for the renamed facade**
 
 Add or update tests so runtime code expects:
 
 ```python
-from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
+from helix.optimize.session_artifacts import OptimizeSessionArtifactsManager
 ```
 
 Use the existing optimize runtime tests to catch import-path breakage.
@@ -278,8 +278,8 @@ and expose the small set of session-level prepare/cleanup/describe methods still
 
 Replace `OptimizeGuidanceManager` imports/usages in:
 
-- `src/triton_agent/optimize/execution.py`
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/execution.py`
+- `src/helix/optimize/orchestration.py`
 
 Keep runtime behavior unchanged.
 
@@ -301,7 +301,7 @@ Expected: PASS with no optimize behavior regressions.
 - [ ] **Step 7: Commit the facade migration**
 
 ```bash
-git add src/triton_agent/optimize/session_artifacts.py src/triton_agent/optimize/memory_file.py src/triton_agent/optimize/runtime_handoff.py src/triton_agent/optimize/archive.py src/triton_agent/optimize/execution.py src/triton_agent/optimize/orchestration.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
+git add src/helix/optimize/session_artifacts.py src/helix/optimize/memory_file.py src/helix/optimize/runtime_handoff.py src/helix/optimize/archive.py src/helix/optimize/execution.py src/helix/optimize/orchestration.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
 git commit -m "refactor: split optimize session artifacts by domain"
 ```
 

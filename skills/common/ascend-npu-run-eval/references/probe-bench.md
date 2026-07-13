@@ -12,7 +12,7 @@ Treat it as screening only:
 Run with the `probe-bench` surface available in the current workspace:
 
 ```bash
-triton-agent probe-bench \
+helix probe-bench \
   --bench-file bench_<operator>.py \
   --operator-file opt_<operator>.py \
   --baseline-operator-file baseline/<operator>.py
@@ -34,7 +34,7 @@ Rules:
 - Default output is intentionally short and decision-oriented. Treat `Probe classification` and the final `Summary:` line as the screening result.
 - Advisory geomean, average improvement, and improved or regressed case counts are non-authoritative diagnostics.
 - Use `--verbose` only when you need cache or artifact-path diagnostics. Baseline cache hit or miss details and hidden probe perf paths are verbose-only.
-- The helper caches the baseline-side probe perf artifact under `.triton-agent/` so repeated screening against the same baseline is cheaper.
+- The helper caches the baseline-side probe perf artifact under `.helix/` so repeated screening against the same baseline is cheaper.
 - If the selected bench mode cannot apply the fast probe warmup and repeat caps, the command warns and falls back to canonical benchmark execution for that run. Treat that probe result as less useful for cost-saving decisions.
 
 After a promising or inconclusive probe result, still run canonical `run-bench` and then `compare-perf` before recording any official optimization conclusion.
