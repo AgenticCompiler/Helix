@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 
-DEFAULT_REPO = "midwinter1993/helix"
+DEFAULT_REPO = "midwinter1993/triton-agent"
 API_ROOT = "https://gitcode.com/api/v5/repos"
 LOCAL_PROXY_MARKERS = ("127.0.0.1", "localhost")
 PROXY_ENV_VARS = (

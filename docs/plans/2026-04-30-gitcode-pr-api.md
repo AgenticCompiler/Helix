@@ -56,7 +56,7 @@ Expected: FAIL because the API script and updated docs do not exist yet.
 
 - [ ] **Step 1: Add the API script**
 
-Implement `create`, `list`, and `view` on top of the official GitCode PR API with header-based auth and a default repo of `midwinter1993/helix`.
+Implement `create`, `list`, and `view` on top of the official GitCode PR API with header-based auth and a default repo of `midwinter1993/triton-agent`.
 
 - [ ] **Step 2: Update the skill docs**
 

@@ -14,7 +14,7 @@ The skill no longer needs GitCode CLI now that the official PR API shape is know
 - Add a Python script under `.codex/skills/managing-gitcode-prs/scripts/` that uses the official GitCode PR API.
 - Authenticate with `Authorization: Bearer $GC_TOKEN` instead of embedding tokens in URLs.
 - Keep the skill focused on create, list, and view PR workflows.
-- Preserve the workspace default repository of `midwinter1993/helix`.
+- Preserve the workspace default repository of `midwinter1993/triton-agent`.
 
 ## API Surface
 
@@ -28,7 +28,7 @@ The skill no longer needs GitCode CLI now that the official PR API shape is know
 
 - Add `scripts/gitcode_pr_api.py`.
 - Support subcommands `create`, `list`, and `view`.
-- Default `-R/--repo` to `midwinter1993/helix`.
+- Default `-R/--repo` to `midwinter1993/triton-agent`.
 - For `create`:
   - auto-detect the current branch when `--head` is omitted
   - support `--fill` from the latest git commit title/body

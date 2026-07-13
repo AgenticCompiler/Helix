@@ -12,13 +12,13 @@ Use this skill for GitCode pull request work only. Do not expand into general Gi
 Before running GitCode PR API requests:
 
 1. Confirm `GC_TOKEN` is present in the environment.
-2. Confirm the target repository is known as `owner/repo`. For this workspace, prefer `midwinter1993/helix` unless the user explicitly targets another repository.
+2. Confirm the target repository is known as `owner/repo`. For this workspace, prefer `midwinter1993/triton-agent` unless the user explicitly targets another repository.
 3. For PR creation, create a fresh topic branch for the change and use that branch as the PR head. Do not reuse an existing branch for a new PR.
 4. For PR creation, confirm the head branch is known. Prefer current-branch auto-detection after switching to the fresh topic branch, but fall back to explicit `--head` when the current directory is not a Git repository or the branch cannot be resolved.
 
 If `GC_TOKEN` is missing, stop and tell the user they need to set `GC_TOKEN="..."` before GitCode PR API requests can authenticate.
 
-If the repository is ambiguous, prefer explicit `-R owner/repo` instead of guessing. In this repository, default to `-R midwinter1993/helix` when the user does not name a different target.
+If the repository is ambiguous, prefer explicit `-R owner/repo` instead of guessing. In this repository, default to `-R midwinter1993/triton-agent` when the user does not name a different target.
 
 Prefer the bundled script at `<skill-path>/scripts/gitcode_pr_api.py` over ad hoc HTTP snippets. The script:
 
@@ -33,7 +33,7 @@ Read [references/pr-command-reference.md](./references/pr-command-reference.md) 
 
 ### Create a PR
 
-- Prefer `python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix ...` for this workspace unless the user explicitly names another repo.
+- Prefer `python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent ...` for this workspace unless the user explicitly names another repo.
 - Use explicit `--title` and `--body` when the user already knows the PR text.
 - Create a fresh topic branch for the PR first, then use that branch as the PR head.
 - Omit `--head` only when the current Git branch is the fresh topic branch and should become the PR head.
@@ -48,13 +48,13 @@ After creation, summarize the returned PR number, title, state, and URL for the 
 
 ### List PRs
 
-- Use `python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix ...` for this workspace unless the user explicitly names another repo.
+- Use `python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent ...` for this workspace unless the user explicitly names another repo.
 - Add filters such as `--state`, `--head`, `--base`, `--limit`, `--page`, `--sort`, or `--direction` when the request is specific.
 - Prefer `--json` when the result will be parsed, summarized, or used in follow-up reasoning.
 
 ### View a PR
 
-- Use `python3 <skill-path>/scripts/gitcode_pr_api.py view <number> -R midwinter1993/helix ...` for this workspace unless the user explicitly names another repo.
+- Use `python3 <skill-path>/scripts/gitcode_pr_api.py view <number> -R midwinter1993/triton-agent ...` for this workspace unless the user explicitly names another repo.
 - Add `--comments` when the user wants discussion context as well as PR metadata.
 - Prefer `--json` when extracting fields, comparing PRs, or feeding the result into another step.
 - Use `--time-format relative` when a concise human summary is more useful than absolute timestamps.
@@ -79,23 +79,23 @@ After creation, summarize the returned PR number, title, state, and URL for the 
 Create a standard PR:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --title "New feature" --body "Description"
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "New feature" --body "Description"
 ```
 
 Create a draft PR from an explicit branch:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/helix --head feature-branch --title "WIP: Feature" --draft
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --head feature-branch --title "WIP: Feature" --draft
 ```
 
 List merged PRs as JSON:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/helix --state merged --json
+python3 <skill-path>/scripts/gitcode_pr_api.py list -R midwinter1993/triton-agent --state merged --json
 ```
 
 View a PR with comments as JSON:
 
 ```bash
-python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/helix --comments --json
+python3 <skill-path>/scripts/gitcode_pr_api.py view 1 -R midwinter1993/triton-agent --comments --json
 ```

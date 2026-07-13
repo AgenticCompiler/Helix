@@ -13,7 +13,7 @@ This repository already treats skills as the primary place for workflow guidance
 - The skill lives under `.codex/skills/` so it can be used from this project workspace.
 - The skill triggers when Codex needs to create, list, or view GitCode pull requests for the current repository.
 - The skill requires `GC_TOKEN` to be present in the environment before running official GitCode PR API requests.
-- For this repository, the skill defaults to `-R midwinter1993/helix` unless the user explicitly targets another repo.
+- For this repository, the skill defaults to `-R midwinter1993/triton-agent` unless the user explicitly targets another repo.
 - The skill teaches safe defaults for current-branch and current-repository workflows, while documenting explicit fallback flags such as `--head`, `--base`, and `-R`.
 - The skill uses a repo-local script that talks to `https://gitcode.com/api/v5/repos/{owner}/{repo}/pulls` with header-based authentication.
 - The skill prefers structured `--json` output for follow-up inspection tasks and avoids browser-opening flags unless the user explicitly asks for them.

@@ -61,7 +61,7 @@ class GenerationContractTests(unittest.TestCase):
         script = _read(".codex/skills/managing-gitcode-prs/scripts/gitcode_pr_api.py")
 
         self.assertIn("scripts/gitcode_pr_api.py", skill)
-        self.assertIn("midwinter1993/helix", skill)
+        self.assertIn("midwinter1993/triton-agent", skill)
         self.assertIn("scripts/gitcode_pr_api.py", reference)
         self.assertIn("Authorization", script)
         self.assertIn("Bearer", script)
@@ -118,7 +118,7 @@ class GenerationContractTests(unittest.TestCase):
             }
 
         args = SimpleNamespace(
-            repo="midwinter1993/helix",
+            repo="midwinter1993/triton-agent",
             title="Feature",
             body=None,
             head="feature-branch",
