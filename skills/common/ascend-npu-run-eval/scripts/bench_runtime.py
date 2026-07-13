@@ -19,7 +19,7 @@ from typing import Any, Iterator, cast
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from env_registry import (
     TORCH_DEVICE_BACKEND_AUTOLOAD,
-    TRITON_AGENT_BENCH_OUTPUT_DIR,
+    HELIX_BENCH_OUTPUT_DIR,
     TRITON_ALWAYS_COMPILE,
 )
 from perf_artifacts import (
@@ -255,7 +255,7 @@ def profile_all_bench_cases(
         case_records: list[PerfCaseRecord] = []
         had_failures = False
         stderr_chunks: list[str] = []
-        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-bench-")
+        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="helix-bench-")
 
         for case in cases:
             record = profile_bench_case(
@@ -620,10 +620,10 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
 
 
 def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
-    configured_root = os.environ.get(TRITON_AGENT_BENCH_OUTPUT_DIR)
+    configured_root = os.environ.get(HELIX_BENCH_OUTPUT_DIR)
     if configured_root:
-        return str(Path(configured_root).expanduser().resolve()), TRITON_AGENT_BENCH_OUTPUT_DIR
-    return None, TRITON_AGENT_BENCH_OUTPUT_DIR
+        return str(Path(configured_root).expanduser().resolve()), HELIX_BENCH_OUTPUT_DIR
+    return None, HELIX_BENCH_OUTPUT_DIR
 
 
 def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
@@ -650,7 +650,7 @@ def _create_local_bench_profile_dir(
     preserved_run_dir: Path | None,
 ) -> PreservedRunDir:
     if preserved_run_dir is None:
-        temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-bench-{_sanitize_case_id(case_id)}-")
+        temp_dir = tempfile.TemporaryDirectory(prefix=f"helix-bench-{_sanitize_case_id(case_id)}-")
         return Path(temp_dir.name), temp_dir
     profile_root = preserved_run_dir.resolve() / f"case-{_sanitize_case_id(case_id)}"
     profile_root.mkdir(parents=True, exist_ok=False)

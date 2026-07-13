@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Iterator, Literal, Protocol, TextIO, cast
 
-from env_registry import TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES, TRITON_ALL_BLOCKS_PARALLEL
+from env_registry import HELIX_OPTIMIZE_DELETE_PT_FILES, TRITON_ALL_BLOCKS_PARALLEL
 from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,7 +33,7 @@ def _profile_bench_hint(profile_dir: Path) -> str:
 
 
 def _pt_cleanup_mode() -> PtCleanupMode:
-    raw_value = os.environ.get(TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES)
+    raw_value = os.environ.get(HELIX_OPTIMIZE_DELETE_PT_FILES)
     if raw_value is None:
         return "round"
     value = raw_value.strip().lower()
@@ -93,7 +93,7 @@ def _find_optimize_state_path(*paths: Path) -> Path | None:
             if current in seen:
                 break
             seen.add(current)
-            state_path = current / ".triton-agent" / "state.json"
+            state_path = current / ".helix" / "state.json"
             if state_path.is_file():
                 return state_path
             if current.parent == current:
@@ -160,7 +160,7 @@ def _append_optimize_timing_event(
         return
     try:
         workspace_root = Path(context["workspace_root"])
-        log_path = workspace_root / ".triton-agent" / "round-timings" / f"{context['round']}.jsonl"
+        log_path = workspace_root / ".helix" / "round-timings" / f"{context['round']}.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         payload: dict[str, object] = {
             "event": event,

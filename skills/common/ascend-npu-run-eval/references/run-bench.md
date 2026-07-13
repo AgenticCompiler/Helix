@@ -51,5 +51,5 @@ Remote examples:
 
 ```bash
 python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222
-python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 <ascend-npu-run-eval-skill-path>/scripts/cli.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof --remote user@host:2222 --remote-workdir /tmp/helix
 ```

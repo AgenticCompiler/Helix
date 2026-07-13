@@ -6,7 +6,7 @@ Make the `[hooks]` verbose prefix render with ANSI color in TTY output, matching
 
 ## Problem
 
-The backend runtime emits verbose lines under the `hooks` category, but `src/triton_agent/verbose.py` does not assign a color for that category. As a result, `[hooks]` falls back to plain text while nearby categories such as `[command]`, `[skills]`, and `[remote]` are colorized.
+The backend runtime emits verbose lines under the `hooks` category, but `src/helix/verbose.py` does not assign a color for that category. As a result, `[hooks]` falls back to plain text while nearby categories such as `[command]`, `[skills]`, and `[remote]` are colorized.
 
 ## User-Visible Behavior
 
@@ -16,7 +16,7 @@ The backend runtime emits verbose lines under the `hooks` category, but `src/tri
 
 ## Design
 
-- Add a `hooks` entry to the shared `COLORS` map in `src/triton_agent/verbose.py`.
+- Add a `hooks` entry to the shared `COLORS` map in `src/helix/verbose.py`.
 - Reuse the existing hook/log prefix formatter without introducing a hooks-specific output path.
 
 ## Testing

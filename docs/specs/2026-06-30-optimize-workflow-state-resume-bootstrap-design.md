@@ -3,16 +3,16 @@
 ## Goal
 
 Let optimize sessions resume cleanly across restarts even though
-`.triton-agent/` remains a temporary runtime directory that is cleaned up after
+`.helix/` remains a temporary runtime directory that is cleaned up after
 each session.
 
 ## User-Visible Semantics
 
 - All optimize entry points that currently manage workflow state should share the
   same startup behavior:
-  - reuse an existing valid `.triton-agent/state.json` when present
+  - reuse an existing valid `.helix/state.json` when present
   - otherwise, if durable optimize artifacts prove the workspace is resumable,
-    rebuild a minimal `.triton-agent/state.json`
+    rebuild a minimal `.helix/state.json`
   - otherwise bootstrap a fresh baseline-phase workflow state
 - Rebuilt workflow state must not automatically reopen an active round.
 - When state is rebuilt from durable artifacts, the restored state should be:
@@ -22,16 +22,16 @@ each session.
   - `current_round=null`
 - After this restore, the agent must run `ascend-npu-optimize-state`
   `start-round` before editing or submitting a new `opt-round-N/`.
-- `.triton-agent/` should still be removed at normal session cleanup so users do
+- `.helix/` should still be removed at normal session cleanup so users do
   not need to know about or manually manage that runtime directory.
 
 ## Problem
 
 The repository currently has two incompatible optimize bootstrap behaviors:
 
-- runner-managed optimize sessions create `.triton-agent/state.json` at startup
-  and remove `.triton-agent/` at cleanup
-- Claude plugin optimize sessions currently create `.triton-agent/` only and, if
+- runner-managed optimize sessions create `.helix/state.json` at startup
+  and remove `.helix/` at cleanup
+- Claude plugin optimize sessions currently create `.helix/` only and, if
   `state.json` is missing, return repair guidance instead of rebuilding state
 
 That behavior breaks restartable optimize workflows. If a workspace already has
@@ -43,22 +43,22 @@ durable optimize artifacts such as:
 - `opt-round-*`
 
 then a later optimize launch should continue from that durable state. Today it
-cannot, because the runtime-owned `.triton-agent/state.json` was cleaned up and
+cannot, because the runtime-owned `.helix/state.json` was cleaned up and
 there is no shared reconstruction path.
 
 ## Design
 
 ### Shared Bootstrap Helper
 
-Add one shared optimize bootstrap helper under `src/triton_agent/optimize/`.
+Add one shared optimize bootstrap helper under `src/helix/optimize/`.
 
 It should own these startup branches:
 
-1. If `.triton-agent/state.json` exists and is valid, reuse it unchanged.
+1. If `.helix/state.json` exists and is valid, reuse it unchanged.
 2. If `state.json` is missing, inspect durable optimize workspace artifacts
    using the existing resumable-session checks instead of ad-hoc filesystem
    guessing.
-3. If the workspace is resumable, rebuild `.triton-agent/state.json` as a
+3. If the workspace is resumable, rebuild `.helix/state.json` as a
    minimal awaiting-round-start state.
 4. If the workspace is not resumable, bootstrap a fresh baseline-phase state.
 
@@ -83,7 +83,7 @@ This helper should become the single source of truth for both:
 
 Implementation choice:
 
-- keep the durable recovery algorithm in `src/triton_agent/optimize/`
+- keep the durable recovery algorithm in `src/helix/optimize/`
 - keep `hooks/claude_plugin/state_bootstrap.py` as a thin plugin-local wrapper
   that imports and delegates to that shared helper
 
@@ -97,7 +97,7 @@ hook scripts. Do not re-implement the recovery algorithm separately inside
 ### Restore Source Of Truth
 
 Reuse the existing optimize workspace classification logic in
-`src/triton_agent/optimize/resume.py` to decide whether durable artifacts
+`src/helix/optimize/resume.py` to decide whether durable artifacts
 describe a resumable optimize session.
 
 Do not create a second independent “artifact recovery” scanner.
@@ -112,13 +112,13 @@ that field.
 ### Runtime Directory Ordering And Crash Residue
 
 The shared helper should run after the caller has claimed or prepared the
-workspace-local `.triton-agent/` directory, not before.
+workspace-local `.helix/` directory, not before.
 
 For runner-managed optimize startup:
 
-- keep `_prepare_hidden_triton_agent_dir(...)` as the owner of runtime-dir
+- keep `_prepare_hidden_helix_dir(...)` as the owner of runtime-dir
   creation and stale-runtime rejection
-- let it continue failing fast when `.triton-agent/` already exists with
+- let it continue failing fast when `.helix/` already exists with
   unexpected content
 - call the shared helper only after that directory is available
 
@@ -127,11 +127,11 @@ contract for crashed or interrupted runner-managed sessions.
 
 For Claude plugin startup:
 
-- keep the existing plugin-local best-effort creation path for `.triton-agent/`
+- keep the existing plugin-local best-effort creation path for `.helix/`
 - if the directory already exists, inspect `state.json` through the shared
   helper logic rather than deleting the directory silently
 
-Do not auto-delete a pre-existing `.triton-agent/` directory in either path.
+Do not auto-delete a pre-existing `.helix/` directory in either path.
 Unexpected runtime residue should remain visible as a recoverable or explicit
 failure condition, not be silently discarded.
 
@@ -159,7 +159,7 @@ runner-managed `baseline_reused=True` bootstrap path.
 
 ### Runtime Workflow State Scope
 
-`.triton-agent/state.json` should contain only temporary workflow-tracking data
+`.helix/state.json` should contain only temporary workflow-tracking data
 that is not already persisted elsewhere. In particular:
 
 - keep fields such as `schema_version`, `run_id`, `phase`, `baseline`, `rounds`,
@@ -185,8 +185,8 @@ Updated semantics:
 - `round_active` still restricts built-in edits to the active `opt-round-N/`
   plus approved top-level progress files
 - protected internal paths remain denied in every phase, including:
-  - `.triton-agent/`
-  - `triton-agent-logs/`
+  - `.helix/`
+  - `helix-logs/`
   - backend-managed staged hook and skill implementation directories
 
 This intentionally relaxes baseline gating because precise source-operator
@@ -195,7 +195,7 @@ baseline should not require path-exact interception to be usable.
 
 ### Invalid Existing `state.json`
 
-If `.triton-agent/state.json` exists but is malformed or fails schema
+If `.helix/state.json` exists but is malformed or fails schema
 validation:
 
 - do not silently delete it
@@ -204,7 +204,7 @@ validation:
 Instead:
 
 - runner-managed optimize should fail explicitly with a message telling the user
-  to remove `.triton-agent/` or restart from a clean runtime state
+  to remove `.helix/` or restart from a clean runtime state
 - Claude plugin hooks should surface repair guidance and deny optimize editing
   until the invalid runtime state is repaired or removed
 
@@ -215,8 +215,8 @@ allowing “state missing but durable artifacts valid” to be auto-recovered.
 
 Do not change cleanup ownership:
 
-- runner-managed cleanup still removes `.triton-agent/`
-- Claude plugin `SessionEnd` still removes `.triton-agent/`
+- runner-managed cleanup still removes `.helix/`
+- Claude plugin `SessionEnd` still removes `.helix/`
 
 The resumability contract should come from durable optimize artifacts plus
 shared bootstrap logic, not from keeping hidden runtime state around between
@@ -232,7 +232,7 @@ by the shared helper. After this change:
 
 - startup bootstrap decides fresh-baseline vs reusable-baseline state exactly
   once
-- successful baseline preflight should not rewrite `.triton-agent/state.json`
+- successful baseline preflight should not rewrite `.helix/state.json`
   again just to restate `baseline_reused=True`
 
 This keeps workflow-state creation single-sourced and avoids a confusing second
@@ -262,9 +262,9 @@ allocated archive `run_id`, not the prior session's run id.
 
 This is acceptable because:
 
-- `.triton-agent/state.json` is runtime-scoped rather than durable history
+- `.helix/state.json` is runtime-scoped rather than durable history
 - per-session archive output already lives under a fresh
-  `triton-agent-logs/<run-id>/`
+  `helix-logs/<run-id>/`
 - rebuild is starting a new optimize session that resumes durable workflow
   artifacts, not reopening the old session archive namespace
 
@@ -276,7 +276,7 @@ workspace artifacts” rather than “current session is the same archived run.�
 - Do not auto-restore `phase=round_active`.
 - Do not infer or recreate previous round strategy-state fields from old
   `opt-round-N/` artifacts.
-- Do not keep `.triton-agent/` after normal session cleanup.
+- Do not keep `.helix/` after normal session cleanup.
 - Do not change durable optimize artifact contracts such as `baseline/state.json`
   or `opt-round-N/round-state.json`.
 
@@ -287,18 +287,18 @@ Add focused coverage for:
 - shared bootstrap helper: existing valid state, resumable-artifact restore, and
   fresh baseline bootstrap
 - shared bootstrap helper failure paths:
-  - invalid existing `.triton-agent/state.json`
+  - invalid existing `.helix/state.json`
   - partial optimize session detected by resume classification
   - corrupted or missing `baseline/state.json` inside an otherwise
     optimize-looking workspace
 - runner-managed optimize artifact preparation: restored state is created when a
-  resumable workspace has no `.triton-agent/state.json`
+  resumable workspace has no `.helix/state.json`
 - runner-managed optimize startup still fails fast on unexpected pre-existing
-  `.triton-agent/` directory contents
+  `.helix/` directory contents
 - Claude plugin hooks: `SessionStart` rebuilds awaiting-round-start state from
   resumable durable artifacts and bootstraps fresh baseline state for new
   workspaces
-- cleanup behavior remains unchanged: `.triton-agent/` is still removed at
+- cleanup behavior remains unchanged: `.helix/` is still removed at
   session end
 
 Suggested test locations:
@@ -316,7 +316,7 @@ Suggested test locations:
 
 The test updates should explicitly replace current expectations that:
 
-- Claude plugin `SessionStart` creates `.triton-agent/` without `state.json`
+- Claude plugin `SessionStart` creates `.helix/` without `state.json`
 - Claude plugin always returns repair guidance when `state.json` is absent
 - optimize execution rewrites workflow state after baseline preflight via the
   old post-preflight `baseline_reused=True` bootstrap path

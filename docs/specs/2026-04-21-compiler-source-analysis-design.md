@@ -4,7 +4,7 @@
 
 - Add an optional compiler-source analysis capability for `optimize` and `optimize-batch`.
 - Keep compiler source provisioning in the CLI instead of asking the launched code agent to clone or update repositories.
-- Cache a shallow local checkout of AscendNPU-IR under the user's Triton Agent home directory.
+- Cache a shallow local checkout of AscendNPU-IR under the user's Helix home directory.
 - Add a dedicated `triton-npu-analyze-compiler-source` skill that explains the compiler project, guides read-only source analysis, and produces round-local compiler analysis evidence.
 - Defer detailed compiler source indexing design to a later spec.
 
@@ -36,8 +36,8 @@
 `optimize` and `optimize-batch` accept a new option:
 
 ```bash
-uv run triton-agent optimize -i a.py --enable-compiler-source-analysis
-uv run triton-agent optimize-batch -i operators --enable-compiler-source-analysis
+uv run helix optimize -i a.py --enable-compiler-source-analysis
+uv run helix optimize-batch -i operators --enable-compiler-source-analysis
 ```
 
 When enabled, the CLI prepares the compiler source checkout before launching the code agent.
@@ -45,7 +45,7 @@ When enabled, the CLI prepares the compiler source checkout before launching the
 The default compiler source location is:
 
 ```text
-~/.triton-agent/compiler-sources/AscendNPU-IR/
+~/.helix/compiler-sources/AscendNPU-IR/
 ```
 
 The default source repository is fixed in CLI code:
@@ -61,7 +61,7 @@ The launched agent should not receive this repository URL. It should receive onl
 Advanced users may point the CLI at an existing checkout:
 
 ```bash
-uv run triton-agent optimize -i a.py \
+uv run helix optimize -i a.py \
   --enable-compiler-source-analysis \
   --compiler-source-path /path/to/AscendNPU-IR
 ```
@@ -206,9 +206,9 @@ Other commands may continue using smaller command-specific staged skill sets whe
 
 ## Implementation Shape
 
-Add a small compiler source provisioning module under `src/triton_agent/optimize/` or another feature-local package. It should:
+Add a small compiler source provisioning module under `src/helix/optimize/` or another feature-local package. It should:
 
-- resolve the Triton Agent home directory, defaulting to `~/.triton-agent`
+- resolve the Helix home directory, defaulting to `~/.helix`
 - resolve the default source checkout path
 - clone the fixed repository with `--depth 1` when the checkout is missing
 - validate explicit and default checkouts
@@ -227,7 +227,7 @@ Add tests for:
 
 - parser support for `--enable-compiler-source-analysis` on `optimize` and `optimize-batch`
 - parser rejection or command validation for `--compiler-source-path` without `--enable-compiler-source-analysis`
-- default path resolution under a fake home or configured Triton Agent home
+- default path resolution under a fake home or configured Helix home
 - clone command construction uses the fixed URL and `--depth 1`
 - existing git checkout reuse does not run pull or fetch
 - invalid existing checkout fails with a concise error

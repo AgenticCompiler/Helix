@@ -2,7 +2,7 @@
 
 ## User-Visible Semantics
 
-`TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` is an enum-style environment variable with these values:
+`HELIX_OPTIMIZE_DELETE_PT_FILES` is an enum-style environment variable with these values:
 
 - `never`: do not delete ordinary `*_result.pt` files.
 - `round`: delete ordinary `*_result.pt` files after an optimize round passes the round contract.

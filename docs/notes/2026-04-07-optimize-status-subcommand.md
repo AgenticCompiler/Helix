@@ -10,7 +10,7 @@
 ## User-Visible Behavior
 
 - Add:
-  - `uv run triton-agent optimize-status --input <root-dir>`
+  - `uv run helix optimize-status --input <root-dir>`
 - The command scans immediate child directories only.
 - If `--input` already points at one optimize workspace, inspect that directory directly instead of treating it as a batch root.
 - The command does not launch a code agent, stage skills, or execute remote commands.

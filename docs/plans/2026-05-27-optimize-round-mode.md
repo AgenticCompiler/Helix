@@ -12,29 +12,29 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
   - Replace optimize-only `--supervise/--supervisor` parser wiring with `--round-mode`.
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/commands/optimize.py`
   - Parse and validate `round_mode` instead of `supervise`.
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/models.py`
   - Replace `AgentRequest.supervise` with `AgentRequest.round_mode` and carry prompt-rebuild context needed by runtime.
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/models.py`
   - Replace `OptimizeRunOptions.supervise` with `round_mode` and add any small enums/dataclasses needed for baseline preflight.
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
   - Route optimize prompt building by `round_mode`.
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
   - Rename continuous/round prompt helpers, add a baseline-focused prompt, and narrow supervisor wording.
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
   - Populate the new request fields and dispatch to continuous vs multi-invocation execution.
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/execution.py`
   - Implement baseline preflight, CLI technical gate, and the checked/supervised multi-invocation controller.
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/optimize/run_loop.py`
   - Keep this module focused on continuous recovery/min-round resume logic only.
-- Modify: `src/triton_agent/optimize/runtime_handoff.py`
+- Modify: `src/helix/optimize/runtime_handoff.py`
   - Narrow the live runtime tree to supervisor-report handling only, or remove the module if the remaining behavior folds cleanly into session artifacts.
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
   - Split continuous, checked, and supervised session artifact preparation/cleanup without a checked-mode handoff file.
-- Modify: `src/triton_agent/optimize/memory_file.py`
+- Modify: `src/helix/optimize/memory_file.py`
   - Render separate continuous vs round-gated shared guidance text.
 - Modify: `README.md`
   - Replace optimize supervise docs with round-mode docs and baseline preflight behavior.
@@ -54,10 +54,10 @@
 ### Task 1: Replace The CLI And Request Surface With `round_mode`
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_optimize_commands.py`
 
@@ -99,7 +99,7 @@ Expected: parser or option-mapping assertions fail because `--round-mode` does n
 - [ ] **Step 3: Replace `supervise` with `round_mode` in the CLI, options, and request models**
 
 ```python
-# src/triton_agent/cli.py
+# src/helix/cli.py
 _ROUND_MODE_CHOICES = ("continuous", "checked", "supervised")
 
 subparser.add_argument(
@@ -110,7 +110,7 @@ subparser.add_argument(
 ```
 
 ```python
-# src/triton_agent/commands/optimize.py
+# src/helix/commands/optimize.py
 def _validate_round_mode(
     args: argparse.Namespace,
 ) -> Literal["continuous", "checked", "supervised"]:
@@ -123,7 +123,7 @@ def _validate_round_mode(
 ```
 
 ```python
-# src/triton_agent/optimize/models.py
+# src/helix/optimize/models.py
 @dataclass(frozen=True)
 class OptimizeRunOptions:
     agent_name: str
@@ -144,7 +144,7 @@ class OptimizeRunOptions:
 ```
 
 ```python
-# src/triton_agent/models.py
+# src/helix/models.py
 @dataclass
 class AgentRequest:
     command_kind: CommandKind
@@ -169,7 +169,7 @@ class AgentRequest:
 ```
 
 ```python
-# src/triton_agent/optimize/orchestration.py
+# src/helix/optimize/orchestration.py
 return AgentRequest(
     command_kind=CommandKind.OPTIMIZE,
     input_path=input_path,
@@ -205,16 +205,16 @@ Expected: `OK`
 - [ ] **Step 5: Commit the surface rename**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/models.py src/triton_agent/optimize/models.py src/triton_agent/optimize/orchestration.py tests/test_cli.py tests/test_optimize_commands.py
+git add src/helix/cli.py src/helix/commands/optimize.py src/helix/models.py src/helix/optimize/models.py src/helix/optimize/orchestration.py tests/test_cli.py tests/test_optimize_commands.py
 git commit -m "feat: replace optimize supervise flag with round mode"
 ```
 
 ### Task 2: Introduce Phase-Specific Optimize Prompt Builders
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_backends_base.py`
 - Test: `tests/test_codex_runner.py`
@@ -262,7 +262,7 @@ Expected: import or assertion failures because the new prompt builders do not ex
 - [ ] **Step 3: Add continuous, round, and baseline prompt builders plus round-mode dispatch**
 
 ```python
-# src/triton_agent/optimize/prompts.py
+# src/helix/optimize/prompts.py
 def build_optimize_continuous_prompt(
     input_path: Path,
     output_path: Path | None,
@@ -319,7 +319,7 @@ def build_optimize_round_prompt(
 ) -> str:
     lines = [
         "This invocation owns exactly one round.",
-        "Read `.triton-agent/round-brief.md` before acting.",
+        "Read `.helix/round-brief.md` before acting.",
         "The baseline has already been validated before this round.",
         "Produce all required round artifacts before stopping.",
         "The CLI will validate this round after the invocation exits.",
@@ -372,7 +372,7 @@ def build_optimize_baseline_prompt(
 ```
 
 ```python
-# src/triton_agent/prompts.py
+# src/helix/prompts.py
 if command_kind == CommandKind.OPTIMIZE:
     if round_mode == "continuous":
         lines.extend(
@@ -410,7 +410,7 @@ if command_kind == CommandKind.OPTIMIZE:
 ```
 
 ```python
-# src/triton_agent/optimize/orchestration.py
+# src/helix/optimize/orchestration.py
 prompt = append_additional_user_instructions(
     build_prompt(
         CommandKind.OPTIMIZE,
@@ -444,17 +444,17 @@ Expected: `OK`
 - [ ] **Step 5: Commit the prompt split**
 
 ```bash
-git add src/triton_agent/prompts.py src/triton_agent/optimize/prompts.py src/triton_agent/optimize/orchestration.py tests/test_cli.py tests/test_backends_base.py tests/test_codex_runner.py tests/test_claude_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_traecli_runner.py
+git add src/helix/prompts.py src/helix/optimize/prompts.py src/helix/optimize/orchestration.py tests/test_cli.py tests/test_backends_base.py tests/test_codex_runner.py tests/test_claude_runner.py tests/test_opencode_runner.py tests/test_pi_runner.py tests/test_traecli_runner.py
 git commit -m "refactor: split optimize prompts by round mode"
 ```
 
 ### Task 3: Implement Baseline Preflight And The Multi-Invocation Runtime
 
 **Files:**
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/models.py`
 - Test: `tests/test_optimize_runtime.py`
 - Test: `tests/test_supervisor.py`
 
@@ -517,7 +517,7 @@ Expected: helper-name assertions or flow assertions fail because only the old su
 - [ ] **Step 3: Add baseline preflight, CLI technical gate, and the new multi-invocation controller**
 
 ```python
-# src/triton_agent/optimize/models.py
+# src/helix/optimize/models.py
 class BaselinePreflightState(str, Enum):
     READY = "ready"
     NEEDS_PREPARE = "needs-prepare"
@@ -531,7 +531,7 @@ class BaselinePreflightResult:
 ```
 
 ```python
-# src/triton_agent/optimize/execution.py
+# src/helix/optimize/execution.py
 def execute_multi_invocation_optimize(
     runner: AgentRunner,
     artifacts_manager: OptimizeSessionArtifactsManager,
@@ -599,7 +599,7 @@ class MultiInvocationOptimizeController:
 ```
 
 ```python
-# src/triton_agent/optimize/orchestration.py
+# src/helix/optimize/orchestration.py
 if request.round_mode == "continuous":
     return optimize_execution.execute_continuous_optimize(
         runner,
@@ -620,7 +620,7 @@ return optimize_execution.execute_multi_invocation_optimize(
 ```
 
 ```python
-# src/triton_agent/optimize/run_loop.py
+# src/helix/optimize/run_loop.py
 class OptimizeRunLoop:
     def run(self, runner: SupportsOptimizeRecovery, request: AgentRequest) -> AgentResult:
         attempt = 0
@@ -643,16 +643,16 @@ Expected: `OK`
 - [ ] **Step 5: Commit the runtime controller**
 
 ```bash
-git add src/triton_agent/optimize/execution.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/models.py tests/test_optimize_runtime.py tests/test_supervisor.py
+git add src/helix/optimize/execution.py src/helix/optimize/run_loop.py src/helix/optimize/orchestration.py src/helix/optimize/models.py tests/test_optimize_runtime.py tests/test_supervisor.py
 git commit -m "feat: add checked optimize round controller"
 ```
 
 ### Task 4: Split Checked And Supervised Session Artifacts And Refresh Docs
 
 **Files:**
-- Modify: `src/triton_agent/optimize/runtime_handoff.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
+- Modify: `src/helix/optimize/runtime_handoff.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/memory_file.py`
 - Modify: `README.md`
 - Test: `tests/test_optimize_guidance.py`
 - Test: `tests/test_optimize_runtime.py`
@@ -672,7 +672,7 @@ def test_prepare_checked_session_creates_round_brief_without_supervisor_report(s
         guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
         self.assertTrue(state.round_brief_path.exists())
         self.assertIsNone(state.supervisor_report_path)
-        self.assertIn("Use `.triton-agent/round-brief.md` as the live handoff file.", guidance_content)
+        self.assertIn("Use `.helix/round-brief.md` as the live handoff file.", guidance_content)
         self.assertNotIn("supervisor-report.md", guidance_content)
 ```
 
@@ -697,7 +697,7 @@ Expected: attribute or assertion failures because checked-mode artifacts do not 
 - [ ] **Step 3: Add checked-mode artifact preparation and update documentation text**
 
 ```python
-# src/triton_agent/optimize/runtime_handoff.py
+# src/helix/optimize/runtime_handoff.py
 @dataclass
 class RuntimeHandoffState:
     runtime_root: Path
@@ -708,7 +708,7 @@ class RuntimeHandoffState:
 
 
 def prepare(self, workdir: Path, *, include_supervisor: bool) -> RuntimeHandoffState:
-    runtime_root = workdir / ".triton-agent"
+    runtime_root = workdir / ".helix"
     runtime_root.mkdir(parents=True, exist_ok=True)
     round_brief_path.write_text("# Optimize Round Brief\n\nPending runtime handoff.\n", encoding="utf-8")
     if include_supervisor:
@@ -725,7 +725,7 @@ def prepare(self, workdir: Path, *, include_supervisor: bool) -> RuntimeHandoffS
 ```
 
 ```python
-# src/triton_agent/optimize/session_artifacts.py
+# src/helix/optimize/session_artifacts.py
 def prepare_checked_session(
     self,
     workdir: Path,
@@ -769,12 +769,12 @@ def prepare_supervised_session(
 ```
 
 ```python
-# src/triton_agent/optimize/memory_file.py
+# src/helix/optimize/memory_file.py
 _ROUND_GATED_GUIDANCE_TEMPLATE = dedent(
     \"\"\"\
     # {guidance_filename}
 
-    ## Triton Agent Optimize Round Loop
+    ## Helix Optimize Round Loop
 
     This workspace is under an optimize round loop.
 
@@ -783,7 +783,7 @@ _ROUND_GATED_GUIDANCE_TEMPLATE = dedent(
     \"\"\"\
     Use the staged workspace skills as the workflow source of truth.
     Role-specific behavior comes from the launch prompt.
-    Use `.triton-agent/round-brief.md` as the live handoff file.
+    Use `.helix/round-brief.md` as the live handoff file.
     Treat `baseline/` as the canonical optimize baseline.
     Use `compare-perf` as the authoritative source for round performance summaries.
     {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}\
@@ -821,6 +821,6 @@ Expected: `OK`
 - [ ] **Step 5: Commit the artifact split and docs update**
 
 ```bash
-git add src/triton_agent/optimize/runtime_handoff.py src/triton_agent/optimize/session_artifacts.py src/triton_agent/optimize/memory_file.py README.md tests/test_optimize_guidance.py tests/test_optimize_runtime.py
+git add src/helix/optimize/runtime_handoff.py src/helix/optimize/session_artifacts.py src/helix/optimize/memory_file.py README.md tests/test_optimize_guidance.py tests/test_optimize_runtime.py
 git commit -m "feat: add checked optimize artifacts and docs"
 ```

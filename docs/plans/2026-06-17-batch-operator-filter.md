@@ -4,7 +4,7 @@
 
 **Goal:** Add a shared `--operator-filter <glob>` option to `optimize-batch`, `gen-eval-batch`, and `convert-batch` so users can further narrow batch operator file selection by basename after the existing built-in candidate exclusions.
 
-**Architecture:** Keep the CLI thin and treat this as batch workspace-selection behavior instead of workflow runtime behavior. Add one shared basename-glob filtering hook in `src/triton_agent/batch_utils.py`, wire the parsed option only through the three batch command paths, and preserve the existing `0 / 1 / many` candidate resolution contract with clearer filter-aware errors.
+**Architecture:** Keep the CLI thin and treat this as batch workspace-selection behavior instead of workflow runtime behavior. Add one shared basename-glob filtering hook in `src/helix/batch_utils.py`, wire the parsed option only through the three batch command paths, and preserve the existing `0 / 1 / many` candidate resolution contract with clearer filter-aware errors.
 
 **Tech Stack:** Python 3, `argparse`, `fnmatch`, `unittest`, existing batch helper modules
 
@@ -12,21 +12,21 @@
 
 ## File Structure
 
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
   - Add a command-spec capability bit for the new batch-only option and register `--operator-filter` only on the three supported batch commands.
-- Modify: `src/triton_agent/batch_utils.py`
+- Modify: `src/helix/batch_utils.py`
   - Add shared basename glob filtering support and filter-aware error wording to the batch operator resolver.
-- Modify: `src/triton_agent/optimize/naming.py`
+- Modify: `src/helix/optimize/naming.py`
   - Thread the optional filter into optimize batch operator resolution.
-- Modify: `src/triton_agent/generation/batch.py`
+- Modify: `src/helix/generation/batch.py`
   - Thread the parsed option into batch workspace discovery and add helper-level coverage for filtered selection.
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/convert/batch.py`
   - Thread the parsed option into batch workspace discovery and preserve convert-specific candidate exclusions.
-- Modify: `src/triton_agent/commands/optimize.py`
+- Modify: `src/helix/commands/optimize.py`
   - Forward the parsed CLI option into `run_optimize_batch(...)`.
-- Modify: `src/triton_agent/commands/generation.py`
+- Modify: `src/helix/commands/generation.py`
   - Forward the parsed CLI option into `run_gen_eval_batch(...)`.
-- Modify: `src/triton_agent/commands/convert.py`
+- Modify: `src/helix/commands/convert.py`
   - Forward the parsed CLI option into `run_convert_batch(...)`.
 - Test: `tests/test_cli.py`
   - Cover parser acceptance and handler forwarding for the new flag.
@@ -92,7 +92,7 @@ Expected: FAIL because `--operator-filter` is not registered yet.
 
 - [ ] **Step 3: Implement the parser flag**
 
-In `src/triton_agent/cli.py`, add one command-spec capability for the new batch-only option and register it in `build_parser()`:
+In `src/helix/cli.py`, add one command-spec capability for the new batch-only option and register it in `build_parser()`:
 
 ```python
 @dataclass(frozen=True)
@@ -144,7 +144,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the parser surface change**
 
 ```bash
-git add src/triton_agent/cli.py tests/test_cli.py
+git add src/helix/cli.py tests/test_cli.py
 git commit -m "feat: add batch operator filter cli flag"
 ```
 
@@ -152,8 +152,8 @@ git commit -m "feat: add batch operator filter cli flag"
 
 **Files:**
 - Modify: `tests/test_generation_batch.py`
-- Modify: `src/triton_agent/batch_utils.py`
-- Modify: `src/triton_agent/generation/batch.py`
+- Modify: `src/helix/batch_utils.py`
+- Modify: `src/helix/generation/batch.py`
 
 - [ ] **Step 1: Write the failing shared-helper tests**
 
@@ -220,7 +220,7 @@ Expected: FAIL because the resolver does not accept `operator_filter` yet.
 
 - [ ] **Step 3: Implement shared basename filtering in the batch helper**
 
-In `src/triton_agent/batch_utils.py`, add basename-glob filtering and filter-aware errors:
+In `src/helix/batch_utils.py`, add basename-glob filtering and filter-aware errors:
 
 ```python
 from fnmatch import fnmatchcase
@@ -256,7 +256,7 @@ def resolve_batch_operator_file(
     return candidates[0]
 ```
 
-Then update `resolve_batch_gen_eval_operator_file(...)` in `src/triton_agent/generation/batch.py`:
+Then update `resolve_batch_gen_eval_operator_file(...)` in `src/helix/generation/batch.py`:
 
 ```python
 def resolve_batch_gen_eval_operator_file(
@@ -288,7 +288,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the shared helper change**
 
 ```bash
-git add src/triton_agent/batch_utils.py src/triton_agent/generation/batch.py tests/test_generation_batch.py
+git add src/helix/batch_utils.py src/helix/generation/batch.py tests/test_generation_batch.py
 git commit -m "feat: add batch operator basename filtering"
 ```
 
@@ -296,8 +296,8 @@ git commit -m "feat: add batch operator basename filtering"
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/generation/batch.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/generation/batch.py`
 
 - [ ] **Step 1: Write the failing generation handler forwarding test**
 
@@ -318,7 +318,7 @@ def test_main_gen_eval_batch_forwards_operator_filter(self) -> None:
             return 0
 
         with patch(
-            "triton_agent.commands.generation.run_gen_eval_batch",
+            "helix.commands.generation.run_gen_eval_batch",
             side_effect=_fake_run,
         ):
             exit_code = main(
@@ -350,7 +350,7 @@ Expected: FAIL because `run_gen_eval_batch(...)` does not accept or receive the 
 
 - [ ] **Step 3: Implement generation batch forwarding**
 
-Update `src/triton_agent/commands/generation.py`:
+Update `src/helix/commands/generation.py`:
 
 ```python
 return run_gen_eval_batch(
@@ -361,7 +361,7 @@ return run_gen_eval_batch(
 )
 ```
 
-Update `src/triton_agent/generation/batch.py`:
+Update `src/helix/generation/batch.py`:
 
 ```python
 def run_gen_eval_batch(
@@ -403,7 +403,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the generation batch wiring**
 
 ```bash
-git add src/triton_agent/commands/generation.py src/triton_agent/generation/batch.py tests/test_cli.py
+git add src/helix/commands/generation.py src/helix/generation/batch.py tests/test_cli.py
 git commit -m "feat: wire operator filter through gen-eval-batch"
 ```
 
@@ -412,8 +412,8 @@ git commit -m "feat: wire operator filter through gen-eval-batch"
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_convert_commands.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/convert/batch.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/convert/batch.py`
 
 - [ ] **Step 1: Write the failing convert tests**
 
@@ -433,7 +433,7 @@ def test_main_convert_batch_forwards_operator_filter(self) -> None:
             return 0
 
         with patch(
-            "triton_agent.commands.convert.run_convert_batch",
+            "helix.commands.convert.run_convert_batch",
             side_effect=_fake_run,
         ):
             exit_code = main(
@@ -456,7 +456,7 @@ Add a convert-specific behavior test in `tests/test_convert_commands.py`:
 
 ```python
 def test_run_convert_batch_operator_filter_does_not_reinclude_triton_prefixed_files(self) -> None:
-    from triton_agent.convert.batch import run_convert_batch
+    from helix.convert.batch import run_convert_batch
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -511,7 +511,7 @@ Expected: FAIL because the convert batch path does not accept or forward the opt
 
 - [ ] **Step 3: Implement convert batch forwarding**
 
-Update `src/triton_agent/commands/convert.py`:
+Update `src/helix/commands/convert.py`:
 
 ```python
 return run_convert_batch(
@@ -522,7 +522,7 @@ return run_convert_batch(
 )
 ```
 
-Update `src/triton_agent/convert/batch.py`:
+Update `src/helix/convert/batch.py`:
 
 ```python
 def run_convert_batch(
@@ -579,7 +579,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the convert batch wiring**
 
 ```bash
-git add src/triton_agent/commands/convert.py src/triton_agent/convert/batch.py tests/test_cli.py tests/test_convert_commands.py
+git add src/helix/commands/convert.py src/helix/convert/batch.py tests/test_cli.py tests/test_convert_commands.py
 git commit -m "feat: wire operator filter through convert-batch"
 ```
 
@@ -588,9 +588,9 @@ git commit -m "feat: wire operator filter through convert-batch"
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/optimize/naming.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/optimize/naming.py`
 
 - [ ] **Step 1: Write the failing optimize tests**
 
@@ -610,7 +610,7 @@ def test_main_optimize_batch_forwards_operator_filter(self) -> None:
             return 0
 
         with patch(
-            "triton_agent.commands.optimize.run_optimize_batch",
+            "helix.commands.optimize.run_optimize_batch",
             side_effect=_fake_run,
         ):
             exit_code = main(
@@ -665,7 +665,7 @@ def test_run_optimize_batch_operator_filter_selects_matching_candidate(self) -> 
             return AgentResult(return_code=0, stdout="ok", stderr="")
 
         with patch(
-            "triton_agent.optimize.batch.render_batch_optimize_results",
+            "helix.optimize.batch.render_batch_optimize_results",
             return_value=0,
         ):
             exit_code = run_optimize_batch(
@@ -696,7 +696,7 @@ Expected: FAIL because the optimize batch path does not accept or forward the op
 
 - [ ] **Step 3: Implement optimize batch forwarding**
 
-Update `src/triton_agent/commands/optimize.py`:
+Update `src/helix/commands/optimize.py`:
 
 ```python
 return run_optimize_batch(
@@ -707,7 +707,7 @@ return run_optimize_batch(
 )
 ```
 
-Update `src/triton_agent/optimize/naming.py`:
+Update `src/helix/optimize/naming.py`:
 
 ```python
 def resolve_batch_optimize_operator_file(
@@ -723,7 +723,7 @@ def resolve_batch_optimize_operator_file(
     )
 ```
 
-Update `src/triton_agent/optimize/batch.py`:
+Update `src/helix/optimize/batch.py`:
 
 ```python
 def run_optimize_batch(
@@ -764,7 +764,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit the optimize batch wiring**
 
 ```bash
-git add src/triton_agent/commands/optimize.py src/triton_agent/optimize/batch.py src/triton_agent/optimize/naming.py tests/test_cli.py tests/test_optimize_runtime.py
+git add src/helix/commands/optimize.py src/helix/optimize/batch.py src/helix/optimize/naming.py tests/test_cli.py tests/test_optimize_runtime.py
 git commit -m "feat: wire operator filter through optimize-batch"
 ```
 
@@ -792,15 +792,15 @@ Expected: PASS.
 Possible code touchpoints if needed:
 
 ```text
-src/triton_agent/cli.py
-src/triton_agent/batch_utils.py
-src/triton_agent/generation/batch.py
-src/triton_agent/convert/batch.py
-src/triton_agent/optimize/batch.py
-src/triton_agent/optimize/naming.py
-src/triton_agent/commands/generation.py
-src/triton_agent/commands/convert.py
-src/triton_agent/commands/optimize.py
+src/helix/cli.py
+src/helix/batch_utils.py
+src/helix/generation/batch.py
+src/helix/convert/batch.py
+src/helix/optimize/batch.py
+src/helix/optimize/naming.py
+src/helix/commands/generation.py
+src/helix/commands/convert.py
+src/helix/commands/optimize.py
 tests/test_cli.py
 tests/test_generation_batch.py
 tests/test_convert_commands.py
@@ -835,15 +835,15 @@ Expected: PASS.
 
 ```bash
 git add \
-  src/triton_agent/cli.py \
-  src/triton_agent/batch_utils.py \
-  src/triton_agent/generation/batch.py \
-  src/triton_agent/convert/batch.py \
-  src/triton_agent/optimize/batch.py \
-  src/triton_agent/optimize/naming.py \
-  src/triton_agent/commands/generation.py \
-  src/triton_agent/commands/convert.py \
-  src/triton_agent/commands/optimize.py \
+  src/helix/cli.py \
+  src/helix/batch_utils.py \
+  src/helix/generation/batch.py \
+  src/helix/convert/batch.py \
+  src/helix/optimize/batch.py \
+  src/helix/optimize/naming.py \
+  src/helix/commands/generation.py \
+  src/helix/commands/convert.py \
+  src/helix/commands/optimize.py \
   tests/test_cli.py \
   tests/test_generation_batch.py \
   tests/test_convert_commands.py \

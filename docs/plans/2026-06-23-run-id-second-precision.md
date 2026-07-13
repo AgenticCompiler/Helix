@@ -15,7 +15,7 @@
 ## File Map
 
 - Create: `tests/test_otel_trace.py`
-- Modify: `src/triton_agent/otel_trace.py`
+- Modify: `src/helix/otel_trace.py`
 - Modify: `docs/specs/2026-06-23-run-id-second-precision-design.md`
 
 ### Task 1: Add focused failing tests
@@ -29,7 +29,7 @@
 ### Task 2: Implement second-precision IDs
 
 **Files:**
-- Modify: `src/triton_agent/otel_trace.py`
+- Modify: `src/helix/otel_trace.py`
 
 - [ ] Replace microsecond formatting with second-precision formatting.
 - [ ] Add per-process collision tracking keyed by the base run ID string.

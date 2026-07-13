@@ -4,7 +4,7 @@
 
 **Goal:** Add a local-only `run-simulator` CLI subcommand that executes one selected benchmark case under `msprof op simulator` without producing perf or profile artifacts.
 
-**Architecture:** The CLI will register a new `run-simulator` command and route it to a new execution handler in `src/`. That handler will call a thin wrapper in `src/triton_agent/execution.py`, which will load a new internal helper module in `skills/triton-npu-run-eval/scripts/simulator_runner.py`. The helper will reuse the unified benchmark runtime (`bench_runtime.py`) for case selection and `bench_contract.py` for kernel resolution, then invoke `msprof op simulator` around `bench_runtime.py run-one`.
+**Architecture:** The CLI will register a new `run-simulator` command and route it to a new execution handler in `src/`. That handler will call a thin wrapper in `src/helix/execution.py`, which will load a new internal helper module in `skills/triton-npu-run-eval/scripts/simulator_runner.py`. The helper will reuse the unified benchmark runtime (`bench_runtime.py`) for case selection and `bench_contract.py` for kernel resolution, then invoke `msprof op simulator` around `bench_runtime.py run-one`.
 
 **Tech Stack:** Python 3, argparse, repository skill-loader bridge, existing run-eval benchmark runtime helpers, unittest, pyright, ruff, pytest
 
@@ -89,7 +89,7 @@ def test_handle_run_simulator_returns_child_exit_code(self) -> None:
 
         fake_result = AgentResult(return_code=7, stdout="sim out\n", stderr="")
         with patch(
-            "triton_agent.commands.execution.run_local_simulator",
+            "helix.commands.execution.run_local_simulator",
             return_value=fake_result,
         ) as mocked:
             exit_code = handle_run_simulator(parser, args)
@@ -185,10 +185,10 @@ git commit -m "test: add run-simulator coverage"
 ### Task 2: Implement the CLI command and runtime bridge
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/execution.py`
-- Modify: `src/triton_agent/execution.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/execution.py`
+- Modify: `src/helix/execution.py`
 
 - [ ] **Step 1: Add the new command kind and empty skill mapping**
 
@@ -295,7 +295,7 @@ Expected: FAIL only in simulator helper command-construction and validation test
 - [ ] **Step 7: Commit the CLI and bridge changes**
 
 ```bash
-git add src/triton_agent/models.py src/triton_agent/cli.py src/triton_agent/commands/execution.py src/triton_agent/execution.py
+git add src/helix/models.py src/helix/cli.py src/helix/commands/execution.py src/helix/execution.py
 git commit -m "feat: add run-simulator command surface"
 ```
 
@@ -375,7 +375,7 @@ def _resolve_selected_kernel_name(
 
 ```python
 def _simulator_timeout() -> int:
-    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
+    return env_int("HELIX_BENCH_TIMEOUT_SECONDS", 900)
 
 
 def run_local_simulator(... ) -> ResultPayload:
@@ -486,6 +486,6 @@ Expected: PASS
 - [ ] **Step 4: Commit the finished implementation**
 
 ```bash
-git add docs/specs/2026-06-11-run-simulator-subcommand-design.md src/triton_agent/models.py src/triton_agent/cli.py src/triton_agent/commands/execution.py src/triton_agent/execution.py skills/triton-npu-run-eval/scripts/simulator_runner.py tests/test_cli.py tests/test_execution_commands.py tests/test_simulator_runner.py
+git add docs/specs/2026-06-11-run-simulator-subcommand-design.md src/helix/models.py src/helix/cli.py src/helix/commands/execution.py src/helix/execution.py skills/triton-npu-run-eval/scripts/simulator_runner.py tests/test_cli.py tests/test_execution_commands.py tests/test_simulator_runner.py
 git commit -m "feat: add run-simulator subcommand"
 ```

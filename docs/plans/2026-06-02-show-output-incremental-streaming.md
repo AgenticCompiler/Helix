@@ -12,25 +12,25 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/models.py`
   - Add an explicit result field for transient retry detection.
-- Modify: `src/triton_agent/show_output_log.py`
+- Modify: `src/helix/show_output_log.py`
   - Keep log-path helpers, replace marker-writing helpers with an incremental chunk writer.
-- Modify: `src/triton_agent/process_runner.py`
+- Modify: `src/helix/process_runner.py`
   - Add streaming chunk sink support, optional streamed-stdout suppression, and rolling transient-failure detection for streaming runs.
-- Modify: `src/triton_agent/backends/base.py`
+- Modify: `src/helix/backends/base.py`
   - Pass the show-output sink into streaming runs, stop post-run log writes, and switch retry logic to the explicit result flag for streamed runs.
-- Modify: `src/triton_agent/backends/openhands.py`
+- Modify: `src/helix/backends/openhands.py`
   - Stream event text directly into the same log sink and stop returning aggregated stdout for `show_output=True`.
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/optimize/run_loop.py`
   - Replace stdout-derived stalled-recovery summaries with a fixed workspace-based continuation summary.
-- Modify: `src/triton_agent/otel_trace.py`
+- Modify: `src/helix/otel_trace.py`
   - Remove agent-invocation stdout/stderr digests and excerpts.
-- Modify: `src/triton_agent/commands/report.py`
+- Modify: `src/helix/commands/report.py`
   - Stop depending on `result.stdout` for streamed failure messaging.
-- Modify: `src/triton_agent/report/workspace.py`
+- Modify: `src/helix/report/workspace.py`
   - Stop depending on `result.stdout` for streamed failure messaging.
-- Modify: `src/triton_agent/log_check/log_check_launcher.py`
+- Modify: `src/helix/log_check/log_check_launcher.py`
   - Stop depending on `result.stdout` for streamed failure messaging.
 - Test: `tests/test_process_runner.py`
   - Streaming sink behavior, streamed-stdout suppression, transient retry detection.
@@ -44,9 +44,9 @@
 ### Task 1: Add Incremental Streaming Sink Support And Explicit Retry Metadata
 
 **Files:**
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/show_output_log.py`
-- Modify: `src/triton_agent/process_runner.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/show_output_log.py`
+- Modify: `src/helix/process_runner.py`
 - Test: `tests/test_process_runner.py`
 
 - [ ] **Step 1: Write the failing process-runner tests for incremental sink behavior**
@@ -57,14 +57,14 @@ def test_streaming_can_write_rendered_chunks_to_incremental_sink(self) -> None:
     sink = StringIO()
     process = _StreamingFakeProcess(wait_code=0)
     chunks = [b"line one\n", b"line two\n", b""]
-    with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
-        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+    with patch("helix.process_runner.pty.openpty", return_value=(11, 12)):
+        with patch("helix.process_runner.subprocess.Popen", return_value=process):
             with patch(
-                "triton_agent.process_runner.select.select",
+                "helix.process_runner.select.select",
                 side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
             ):
-                with patch("triton_agent.process_runner.os.read", side_effect=chunks):
-                    with patch("triton_agent.process_runner.os.close"):
+                with patch("helix.process_runner.os.read", side_effect=chunks):
+                    with patch("helix.process_runner.os.close"):
                         result = run_streaming_process(
                             ["codex", "exec"],
                             "/tmp",
@@ -82,14 +82,14 @@ def test_streaming_can_write_rendered_chunks_to_incremental_sink(self) -> None:
 def test_streaming_marks_retryable_failure_from_raw_chunks(self) -> None:
     process = _StreamingFakeProcess(wait_code=1)
     chunks = [b"ERROR: exceeded retry limit, ", b"last status: 429 Too Many Requests\n", b""]
-    with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
-        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+    with patch("helix.process_runner.pty.openpty", return_value=(11, 12)):
+        with patch("helix.process_runner.subprocess.Popen", return_value=process):
             with patch(
-                "triton_agent.process_runner.select.select",
+                "helix.process_runner.select.select",
                 side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
             ):
-                with patch("triton_agent.process_runner.os.read", side_effect=chunks):
-                    with patch("triton_agent.process_runner.os.close"):
+                with patch("helix.process_runner.os.read", side_effect=chunks):
+                    with patch("helix.process_runner.os.close"):
                         result = run_streaming_process(
                             ["codex", "exec"],
                             "/tmp",
@@ -108,7 +108,7 @@ Expected: FAIL because `run_streaming_process()` does not accept an incremental 
 - [ ] **Step 3: Add the result field, log sink helper, and streaming-runner plumbing**
 
 ```python
-# src/triton_agent/models.py
+# src/helix/models.py
 @dataclass
 class AgentResult:
     return_code: int
@@ -120,7 +120,7 @@ class AgentResult:
 ```
 
 ```python
-# src/triton_agent/show_output_log.py
+# src/helix/show_output_log.py
 def write_show_output_chunk(stream: TextIO | None, text: str) -> None:
     if stream is None or not text:
         return
@@ -129,7 +129,7 @@ def write_show_output_chunk(stream: TextIO | None, text: str) -> None:
 ```
 
 ```python
-# src/triton_agent/process_runner.py
+# src/helix/process_runner.py
 def run_streaming_process(
     command: list[str],
     workdir: str,
@@ -197,15 +197,15 @@ Expected: `OK`
 - [ ] **Step 5: Commit the streaming sink foundation**
 
 ```bash
-git add src/triton_agent/models.py src/triton_agent/show_output_log.py src/triton_agent/process_runner.py tests/test_process_runner.py
+git add src/helix/models.py src/helix/show_output_log.py src/helix/process_runner.py tests/test_process_runner.py
 git commit -m "feat: stream show-output logs incrementally"
 ```
 
 ### Task 2: Wire Base Backends And OpenHands To The Incremental Log Path
 
 **Files:**
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/backends/openhands.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/backends/openhands.py`
 - Test: `tests/test_backends_base.py`
 - Test: `tests/test_openhands_runner.py`
 
@@ -238,12 +238,12 @@ def test_show_output_log_contains_streamed_text_without_wrapper_markers(self) ->
             sink("first streamed output\n")
             return AgentResult(return_code=0, stdout="", stderr="", session_id="session-1")
 
-        with patch("triton_agent.backends.base.run_process", side_effect=_run_process):
+        with patch("helix.backends.base.run_process", side_effect=_run_process):
             result = runner.run(request, stdout=StringIO())
-        log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+        log_path = workspace / "helix-logs" / "gen-test.show-output.log"
         content = log_path.read_text(encoding="utf-8")
-        self.assertNotIn("triton-agent show-output start", content)
-        self.assertNotIn("triton-agent show-output end", content)
+        self.assertNotIn("helix show-output start", content)
+        self.assertNotIn("helix show-output end", content)
         self.assertEqual(content, "first streamed output\n")
         self.assertEqual(result.stdout, "")
 ```
@@ -268,9 +268,9 @@ def test_retry_uses_explicit_retryable_failure_for_show_output_runs(self) -> Non
         workdir=workspace,
     )
     with (
-        patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "1"}, clear=False),
+        patch.dict(environ, {"HELIX_CODE_AGENT_MAX_RETRIES": "1"}, clear=False),
         patch(
-            "triton_agent.backends.base.run_process",
+            "helix.backends.base.run_process",
             side_effect=[
                 AgentResult(return_code=1, stdout="", stderr="", retryable_failure=True),
                 AgentResult(return_code=0, stdout="", stderr="", retryable_failure=False),
@@ -290,7 +290,7 @@ def test_show_output_writes_openhands_events_without_markers(self) -> None:
         runner = OpenHandsRunner()
         (workspace / ".openhands" / "skills").mkdir(parents=True)
         with patch(
-            "triton_agent.backends.openhands._supports_openhands_runtime",
+            "helix.backends.openhands._supports_openhands_runtime",
             return_value=True,
         ):
             with patch.dict(
@@ -299,11 +299,11 @@ def test_show_output_writes_openhands_events_without_markers(self) -> None:
                 clear=True,
             ):
                 with patch(
-                    "triton_agent.backends.openhands._load_openhands_dependencies",
+                    "helix.backends.openhands._load_openhands_dependencies",
                     return_value=_fake_dependencies(),
                 ):
                     result = runner.run(self._request(workspace, show_output=True), stdout=io.StringIO())
-        log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+        log_path = workspace / "helix-logs" / "gen-test.show-output.log"
     self.assertEqual(result.stdout, "")
     content = log_path.read_text(encoding="utf-8")
     self.assertNotIn("attempt=1", content)
@@ -320,7 +320,7 @@ Expected: FAIL because base still writes marker text after the run, still retrie
 - [ ] **Step 3: Wire the shared runner and OpenHands to the incremental sink**
 
 ```python
-# src/triton_agent/backends/base.py
+# src/helix/backends/base.py
 with open_show_output_log(request) as log_stream:
     result = self._run_once(
         command,
@@ -334,7 +334,7 @@ with open_show_output_log(request) as log_stream:
 ```
 
 ```python
-# src/triton_agent/backends/base.py
+# src/helix/backends/base.py
 def _is_transient_agent_failure(result: AgentResult) -> bool:
     if result.stalled or result.return_code == 130:
         return False
@@ -345,7 +345,7 @@ def _is_transient_agent_failure(result: AgentResult) -> bool:
 ```
 
 ```python
-# src/triton_agent/backends/openhands.py
+# src/helix/backends/openhands.py
 with open_show_output_log(request) as log_stream:
     emitted_lines: list[str] = []
 
@@ -370,18 +370,18 @@ Expected: `OK`
 - [ ] **Step 5: Commit the backend integration**
 
 ```bash
-git add src/triton_agent/backends/base.py src/triton_agent/backends/openhands.py tests/test_backends_base.py tests/test_openhands_runner.py
+git add src/helix/backends/base.py src/helix/backends/openhands.py tests/test_backends_base.py tests/test_openhands_runner.py
 git commit -m "feat: tee show-output streams directly to log files"
 ```
 
 ### Task 3: Remove Streamed-Stdout Dependencies From Optimize Recovery, Trace, And Failure Reporting
 
 **Files:**
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/otel_trace.py`
-- Modify: `src/triton_agent/commands/report.py`
-- Modify: `src/triton_agent/report/workspace.py`
-- Modify: `src/triton_agent/log_check/log_check_launcher.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/otel_trace.py`
+- Modify: `src/helix/commands/report.py`
+- Modify: `src/helix/report/workspace.py`
+- Modify: `src/helix/log_check/log_check_launcher.py`
 - Test: `tests/test_supervisor.py`
 - Test: `tests/test_report_command.py`
 - Test: `tests/test_log_check_launcher.py`
@@ -434,13 +434,13 @@ def test_handle_report_failure_with_show_output_uses_generic_log_hint(self) -> N
                 return AgentResult(return_code=1, stdout="", stderr="", stalled=False)
 
         with patch(
-            "triton_agent.commands.report.resolve_staged_skills",
+            "helix.commands.report.resolve_staged_skills",
             side_effect=_dummy_resolve_staged_skills,
         ), patch(
-            "triton_agent.commands.report.SkillLinkManager",
+            "helix.commands.report.SkillLinkManager",
             return_value=_DummySkillLinkManager(),
         ), patch(
-            "triton_agent.commands.report.create_runner",
+            "helix.commands.report.create_runner",
             return_value=FailingRunner(),
         ), patch("sys.stderr", stderr):
             exit_code = handle_report(parser, args)
@@ -458,7 +458,7 @@ Expected: FAIL because stalled recovery still injects captured stdout into resum
 - [ ] **Step 3: Switch stalled recovery, trim trace payloads, and stop using streamed stdout for failure details**
 
 ```python
-# src/triton_agent/optimize/run_loop.py
+# src/helix/optimize/run_loop.py
 _STALL_RECOVERY_SUMMARY = (
     "The previous invocation ended unexpectedly before completion. "
     "Continue from the existing workspace state and recorded optimize artifacts."
@@ -485,7 +485,7 @@ while True:
 ```
 
 ```python
-# src/triton_agent/otel_trace.py
+# src/helix/otel_trace.py
 event: dict[str, Any] = {
     "schema_version": 1,
     "type": "agent_invocation",
@@ -505,7 +505,7 @@ event: dict[str, Any] = {
 ```
 
 ```python
-# src/triton_agent/report/workspace.py
+# src/helix/report/workspace.py
 if not result.succeeded:
     if request.show_output:
         return False, f"agent execution failed; see show-output log: {show_output_log_path(request)}"
@@ -514,7 +514,7 @@ if not result.succeeded:
 ```
 
 ```python
-# src/triton_agent/log_check/log_check_launcher.py
+# src/helix/log_check/log_check_launcher.py
 if not result.succeeded:
     if request.show_output:
         detail = f"agent execution failed; see show-output log: {show_output_log_path(request)}"
@@ -541,6 +541,6 @@ Expected: `0 errors, 0 warnings`
 - [ ] **Step 5: Commit the contract cleanup**
 
 ```bash
-git add src/triton_agent/optimize/run_loop.py src/triton_agent/otel_trace.py src/triton_agent/commands/report.py src/triton_agent/report/workspace.py src/triton_agent/log_check/log_check_launcher.py tests/test_supervisor.py tests/test_report_command.py tests/test_log_check_launcher.py
+git add src/helix/optimize/run_loop.py src/helix/otel_trace.py src/helix/commands/report.py src/helix/report/workspace.py src/helix/log_check/log_check_launcher.py tests/test_supervisor.py tests/test_report_command.py tests/test_log_check_launcher.py
 git commit -m "refactor: remove streamed stdout dependencies"
 ```

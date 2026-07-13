@@ -38,7 +38,7 @@ The immediate motivating case is `grid-flatten-and-ub-buffering`: splitting work
 ## Non-Goals
 
 - Do not parse checked-in `pattern_index.md` as a runtime data source.
-- Do not hardcode a second manual high-priority pattern list in `src/triton_agent/optimize/memory_file.py`.
+- Do not hardcode a second manual high-priority pattern list in `src/helix/optimize/memory_file.py`.
 - Do not create a new standalone "`grid=40`" optimize pattern.
 - Do not redesign symptom-index generation or symptom-card behavior.
 - Do not add a new ranking field beyond existing `priority: high|normal`.
@@ -207,7 +207,7 @@ This refactor is internal and should not change the generated file shape beyond 
 
 Add a runtime-side adapter, for example:
 
-- `src/triton_agent/optimize/pattern_reminders.py`
+- `src/helix/optimize/pattern_reminders.py`
 
 This module should not parse pattern cards directly. Instead, it should:
 
@@ -273,8 +273,8 @@ Runtime reminder generation must use the same resource-resolution model as the r
 
 Use:
 
-- `triton_agent.resources.skills_root()` to resolve the root of bundled `skills/`
-- `triton_agent.skill_loader.load_skill_script_module()` to load the helper module from the selected knowledge tree
+- `helix.resources.skills_root()` to resolve the root of bundled `skills/`
+- `helix.skill_loader.load_skill_script_module()` to load the helper module from the selected knowledge tree
 
 Do not:
 

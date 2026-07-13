@@ -148,8 +148,8 @@ Expected: PASS
 
 **Files:**
 - Create: `skills/triton-npu-analyze-round-performance/SKILL.md`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/models.py`
 - Modify: `tests/test_models.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_skills.py`
@@ -191,8 +191,8 @@ Expected: PASS for the touched assertions
 ### Task 6: Add optional round-state and triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round support for `perf-analysis.md`
 
 **Files:**
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/round_contract.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/round_contract.py`
 - Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
 - Modify: `tests/test_optimize_round_contract.py`
 - Modify: `tests/test_optimize_checks.py`
@@ -230,7 +230,7 @@ Expected: PASS
 ### Task 7: Integrate the new skill into optimize prompts and optimize docs
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 - Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
@@ -303,11 +303,11 @@ uv run --group dev ruff check \
   skills/triton-npu-profile-operator/scripts/profile_summary.py \
   skills/triton-npu-analyze-ir/scripts/inspect_ir.py \
   skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py \
-  src/triton_agent/models.py \
-  src/triton_agent/optimize/models.py \
-  src/triton_agent/optimize/orchestration.py \
-  src/triton_agent/optimize/round_contract.py \
-  src/triton_agent/prompts.py \
+  src/helix/models.py \
+  src/helix/optimize/models.py \
+  src/helix/optimize/orchestration.py \
+  src/helix/optimize/round_contract.py \
+  src/helix/prompts.py \
   tests/test_ascend_npu_operator_profiler.py \
   tests/test_inspect_ir.py \
   tests/test_optimize_round_contract.py \

@@ -9,15 +9,15 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.trace.core import new_trace_run_id
+from helix.trace.core import new_trace_run_id
 
 
 class RunIdTests(unittest.TestCase):
     def test_new_trace_run_id_uses_second_precision_on_first_allocation(self) -> None:
         fixed = datetime(2026, 6, 23, 9, 29, 59, 505637, tzinfo=timezone.utc)
 
-        with patch("triton_agent.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
-            "triton_agent.trace.core.datetime"
+        with patch("helix.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
+            "helix.trace.core.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = fixed
 
@@ -28,8 +28,8 @@ class RunIdTests(unittest.TestCase):
     def test_new_trace_run_id_appends_numeric_suffix_for_same_second_collision(self) -> None:
         fixed = datetime(2026, 6, 23, 9, 29, 59, 505637, tzinfo=timezone.utc)
 
-        with patch("triton_agent.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
-            "triton_agent.trace.core.datetime"
+        with patch("helix.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
+            "helix.trace.core.datetime"
         ) as mock_datetime:
             mock_datetime.now.side_effect = [fixed, fixed, fixed]
 
@@ -44,8 +44,8 @@ class RunIdTests(unittest.TestCase):
     def test_new_trace_run_id_without_prefix_uses_same_collision_rule(self) -> None:
         fixed = datetime(2026, 6, 23, 9, 29, 59, 505637, tzinfo=timezone.utc)
 
-        with patch("triton_agent.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
-            "triton_agent.trace.core.datetime"
+        with patch("helix.trace.core._RUN_ID_COLLISION_COUNTS", Counter()), patch(
+            "helix.trace.core.datetime"
         ) as mock_datetime:
             mock_datetime.now.side_effect = [fixed, fixed]
 

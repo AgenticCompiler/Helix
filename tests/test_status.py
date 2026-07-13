@@ -7,7 +7,7 @@ from typing import Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.status.core import (
+from helix.status.core import (
     inspect_optimize_status_workspace,
     parse_logged_best_round,
     scan_optimize_status_workspaces,

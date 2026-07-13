@@ -133,13 +133,13 @@ Because at least one adjacent gain is materially larger than the threshold, the 
 
 Add two advisory environment variables:
 
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW`
   - integer
   - default: `3`
   - meaning: how many most-recent comparable rounds to inspect, including the current round
   - minimum effective value: `2`
 
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`
   - float
   - default: `0.02`
   - meaning: the maximum adjacent geomean-speedup gain that still counts as "almost no improvement"
@@ -147,16 +147,16 @@ Add two advisory environment variables:
 
 Examples:
 
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4`
-- `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4`
+- `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01`
 
 Configuration parsing rules:
 
 - unset variables use defaults
 - invalid integers/floats do not fail the round
 - invalid values add a pass-time warning such as:
-  - `invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW='abc'; using default 3`
-  - `invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN='-1'; using default 0.02`
+  - `invalid HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW='abc'; using default 3`
+  - `invalid HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN='-1'; using default 0.02`
 
 This preserves explicit diagnostics without turning local configuration mistakes into round failures.
 
@@ -209,7 +209,7 @@ No runtime stop/continue semantics change in this feature.
 Effects by layer:
 
 - `check-round` returns `decision="pass"` with warning text
-- `src/triton_agent/optimize/execution.py` continues to interpret the round as passed
+- `src/helix/optimize/execution.py` continues to interpret the round as passed
 - continuous mode keeps the warning in the direct `check-round` result seen by the worker, and the continuous prompt explicitly tells the agent to revisit earlier rounds when that warning appears
 - checked mode must preserve pass-time warning text when the session continues only because `min_rounds` is not yet satisfied, so the next worker prompt still receives the local-optimum signal
 - supervised mode must carry the same CLI technical summary into both the supervisor prompt and the later worker continuation prompt
@@ -230,11 +230,11 @@ This keeps the new signal aligned with the user's intended semantics: `pass + wa
     - baseline-relative comparable round speedup calculation
     - local-optimum warning generation
 
-- `src/triton_agent/optimize/execution.py`
+- `src/helix/optimize/execution.py`
   - preserve pass-time warnings when `GateDecision.PASS_CONTINUE` is caused only by the minimum-round requirement
   - pass those warnings through checked and supervised continuation summaries
 
-- `src/triton_agent/optimize/prompts.py`
+- `src/helix/optimize/prompts.py`
   - tell continuous-mode workers how to react when `check-round` warns about a possible local optimum
 
 - `tests/test_optimize_checks.py`

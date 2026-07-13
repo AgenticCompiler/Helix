@@ -16,7 +16,7 @@ runtime semantics.
 
 ## Implementation Shape
 
-- Update the shared argparse registration in [src/triton_agent/cli.py](/Users/cdj/Projects/triton-agent/src/triton_agent/cli.py)
+- Update the shared argparse registration in [src/helix/cli.py](/Users/cdj/Projects/helix/src/helix/cli.py)
   so both the direct `--npu-devices` path and the batch-affinity path expose
   the singular alias.
 - Keep the change parser-only; do not touch downstream command handling.

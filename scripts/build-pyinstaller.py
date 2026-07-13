@@ -13,7 +13,7 @@ from typing import Sequence
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
-PROJECT_NAME = "triton-agent"
+PROJECT_NAME = "helix"
 
 
 DEFAULT_SPEC = '''from pathlib import Path
@@ -37,7 +37,7 @@ def collect_skills():
 
 
 a = Analysis(
-    [str(ROOT / "src" / "triton_agent" / "cli.py")],
+    [str(ROOT / "src" / "helix" / "cli.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
     datas=collect_skills(),
@@ -58,7 +58,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="triton-agent",
+    name="helix",
     strip=False,
     upx=False,
     console=True,
@@ -113,8 +113,8 @@ def run_command(command: Sequence[str], cwd: Path) -> None:
 
 
 def _generate_build_meta(root: Path) -> None:
-    meta_path = root / "src" / "triton_agent" / "_build_meta.json"
-    commit = os.environ.get("TRITON_AGENT_BUILD_GIT_COMMIT", "").strip()
+    meta_path = root / "src" / "helix" / "_build_meta.json"
+    commit = os.environ.get("HELIX_BUILD_GIT_COMMIT", "").strip()
     if not commit:
         try:
             result = subprocess.run(
@@ -136,7 +136,7 @@ def _generate_build_meta(root: Path) -> None:
 
 
 def _cleanup_build_meta(root: Path) -> None:
-    meta_path = root / "src" / "triton_agent" / "_build_meta.json"
+    meta_path = root / "src" / "helix" / "_build_meta.json"
     if meta_path.exists():
         meta_path.unlink()
 
@@ -280,7 +280,7 @@ def build(args: argparse.Namespace) -> int:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build the triton-agent PyInstaller onefile executable for the current OS. "
+            "Build the helix PyInstaller onefile executable for the current OS. "
             "Run this script separately on Windows, Linux, and macOS to produce "
             "platform-specific executables."
         )
@@ -318,7 +318,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--spec",
-        default="packaging/triton-agent.spec",
+        default="packaging/helix.spec",
         help="Path to the PyInstaller spec file, relative to the repository root.",
     )
     parser.add_argument(

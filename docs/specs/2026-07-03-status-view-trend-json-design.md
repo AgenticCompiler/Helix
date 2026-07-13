@@ -2,7 +2,7 @@
 
 ## Summary
 
-Extend `triton-agent status` with an explicit view selector and JSON output:
+Extend `helix status` with an explicit view selector and JSON output:
 
 - `--view best|trend`, defaulting to `best`
 - `--format text|markdown|json`
@@ -29,16 +29,16 @@ view reports per-operator round speedup trends as a wide table.
 `best` remains the default:
 
 ```bash
-uv run triton-agent status --input operators_root
-uv run triton-agent status --input operators_root --view best
+uv run helix status --input operators_root
+uv run helix status --input operators_root --view best
 ```
 
 `trend` shows a wide table with one operator per row and one column per round:
 
 ```bash
-uv run triton-agent status --input operators_root --view trend
-uv run triton-agent status --input operators_root --view trend --format markdown
-uv run triton-agent status --input operators_root --view trend --format json
+uv run helix status --input operators_root --view trend
+uv run helix status --input operators_root --view trend --format markdown
+uv run helix status --input operators_root --view trend --format json
 ```
 
 Trend columns use the union of all comparable round names across non-`NO-SESSION`

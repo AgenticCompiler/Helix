@@ -18,7 +18,7 @@
 
 ## Implementation Notes
 
-- Update `src/triton_agent/skills.py` so the skill manager stages copies rather than symlinks.
+- Update `src/helix/skills.py` so the skill manager stages copies rather than symlinks.
 - For Codex:
   - if `.codex/skills` does not exist, create it by copying the repository `skills/` tree
   - if `.codex/skills` already exists as a directory, copy only missing per-skill directories into it

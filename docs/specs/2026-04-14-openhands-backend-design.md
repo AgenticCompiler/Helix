@@ -125,7 +125,7 @@ OpenHands backend requires LLM_MODEL to be set.
 
 ### CLI Surface
 
-- Extend `_AGENT_CHOICES` in `src/triton_agent/cli.py` to include `openhands`.
+- Extend `_AGENT_CHOICES` in `src/helix/cli.py` to include `openhands`.
 - Do not add backend-specific CLI flags in this change.
 - Validate the unsupported interactive case in command-handling code before attempting to launch OpenHands.
 
@@ -135,7 +135,7 @@ This keeps the first-phase CLI change intentionally small and reversible.
 
 Add a new module:
 
-- `src/triton_agent/backends/openhands.py`
+- `src/helix/backends/openhands.py`
 
 Responsibilities:
 

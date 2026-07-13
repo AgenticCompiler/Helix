@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a temporary optimize workflow state file under `.triton-agent/state.json` so the optimize runtime and optimize skill scripts share one runner-owned source of truth for:
+Add a temporary optimize workflow state file under `.helix/state.json` so the optimize runtime and optimize skill scripts share one runner-owned source of truth for:
 
 - the current optimize workflow phase
 - whether baseline has been formally accepted in the current run
@@ -15,9 +15,9 @@ This design covers workflow state, phase transitions, and a cleanup-time archive
 
 - The workflow-state features in this design are enabled only when optimize runs with `--enable-agent-hook`.
 - Without `--enable-agent-hook`, optimize should keep today's behavior: no temporary workflow-state file, no phase-summary injection derived from workflow state, and no cleanup-time `round-timings.json` archive.
-- Optimize startup should create a temporary `.triton-agent/state.json` alongside the existing temporary `.triton-agent/` runtime files.
-- Optimize cleanup should remove `.triton-agent/state.json` together with the rest of `.triton-agent/`.
-- Optimize cleanup should derive `triton-agent-logs/<run-id>/round-timings.json` from the temporary workflow state when one or more rounds completed successfully.
+- Optimize startup should create a temporary `.helix/state.json` alongside the existing temporary `.helix/` runtime files.
+- Optimize cleanup should remove `.helix/state.json` together with the rest of `.helix/`.
+- Optimize cleanup should derive `helix-logs/<run-id>/round-timings.json` from the temporary workflow state when one or more rounds completed successfully.
 - `round-timings.json` should contain only completed rounds. Unfinished rounds must not be archived there.
 - The workflow phase names should be:
   - `baseline`
@@ -27,7 +27,7 @@ This design covers workflow state, phase transitions, and a cleanup-time archive
 - `triton-npu-optimize-start-round` should formally open one specific round and record that round's `started_at` timestamp.
 - `triton-npu-optimize-submit-round` should keep the round active on failure and record that round's `ended_at` timestamp only on success.
 - The state file is behavioral for optimize runtime and optimize workflow scripts, not just a post-hoc log.
-- The agent should learn the current workflow phase from runtime-injected guidance or prompt text derived from `.triton-agent/state.json`; the agent should not be required to parse the JSON directly for correctness.
+- The agent should learn the current workflow phase from runtime-injected guidance or prompt text derived from `.helix/state.json`; the agent should not be required to parse the JSON directly for correctness.
 - Existing Codex and OpenCode hook behavior should remain unchanged in this design.
 
 ## Problem
@@ -50,7 +50,7 @@ This design also deliberately avoids coupling workflow-state delivery to hook en
 Add one temporary workflow-state file:
 
 ```text
-.triton-agent/state.json
+.helix/state.json
 ```
 
 This file should be owned by the current optimize run and removed during ordinary optimize cleanup. It should only exist for optimize runs launched with `--enable-agent-hook`. It should not be treated as a durable optimize artifact and should not itself be uploaded or archived as a contract artifact, even though cleanup may derive a separate minimal `round-timings.json` summary from it. The workflow state file should not be reused across future optimize runs.
@@ -105,7 +105,7 @@ This file should not duplicate `round-state.json` fields such as perf paths, com
 
 ### Shared Workflow State Helper Placement
 
-The workflow-state helper should not live under `src/triton_agent/` because the optimize skill scripts under `skills/*/scripts/` must not import `triton_agent`.
+The workflow-state helper should not live under `src/helix/` because the optimize skill scripts under `skills/*/scripts/` must not import `helix`.
 
 Instead, add a skill-side shared helper at:
 
@@ -115,13 +115,13 @@ skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py
 
 This helper should be the single owner of:
 
-- loading and validating `.triton-agent/state.json`
+- loading and validating `.helix/state.json`
 - enforcing legal phase transitions
 - normalizing round numbers and round directory names
 - producing UTC ISO 8601 timestamps
 - writing the updated JSON atomically
 
-The helper must not import `triton_agent`.
+The helper must not import `helix`.
 
 Runtime code under `src/` that needs the same logic should load this helper through the existing skill-loader bridge rather than creating a reverse dependency from the skill back into `src/`.
 
@@ -146,8 +146,8 @@ Workflow-state writes should be atomic.
 The helper should:
 
 - render the full next JSON payload in memory
-- write it to a temporary file in `.triton-agent/`
-- replace `.triton-agent/state.json` with a final rename
+- write it to a temporary file in `.helix/`
+- replace `.helix/state.json` with a final rename
 
 This avoids future readers observing partial JSON.
 
@@ -159,8 +159,8 @@ Optimize runtime should keep bootstrap ownership narrow.
 
 At optimize startup:
 
-- when `--enable-agent-hook` is enabled, create `.triton-agent/` through the existing runtime artifact preparation flow
-- when `--enable-agent-hook` is enabled, write the minimal `.triton-agent/state.json` skeleton
+- when `--enable-agent-hook` is enabled, create `.helix/` through the existing runtime artifact preparation flow
+- when `--enable-agent-hook` is enabled, write the minimal `.helix/state.json` skeleton
 - when `--enable-agent-hook` is enabled, initialize `phase=baseline` and `baseline.status=pending`
 - when `--enable-agent-hook` is disabled, do not bootstrap workflow state and leave optimize runtime behavior unchanged
 
@@ -177,30 +177,30 @@ This keeps runtime responsible only for minimum bootstrap and teardown while lea
 
 At optimize cleanup:
 
-- if workflow state was bootstrapped for this run and one or more rounds have reached `status=passed`, derive a minimal timing summary file at `triton-agent-logs/<run-id>/round-timings.json` before removing live runtime state
-- if workflow state was bootstrapped for this run, remove `.triton-agent/state.json` together with the existing `.triton-agent/` runtime directory cleanup
-- preserve current fail-fast behavior when stale `.triton-agent/` data already exists before startup
+- if workflow state was bootstrapped for this run and one or more rounds have reached `status=passed`, derive a minimal timing summary file at `helix-logs/<run-id>/round-timings.json` before removing live runtime state
+- if workflow state was bootstrapped for this run, remove `.helix/state.json` together with the existing `.helix/` runtime directory cleanup
+- preserve current fail-fast behavior when stale `.helix/` data already exists before startup
 
-`reset_optimize_workspace()` and clean-subcommand behavior do not need new special cases because `.triton-agent/` is already cleanup-owned.
+`reset_optimize_workspace()` and clean-subcommand behavior do not need new special cases because `.helix/` is already cleanup-owned.
 
 ### Cleanup-Time Round Timings Archive
 
 Optimize cleanup should project completed round timings into the existing per-run archive directory:
 
 ```text
-triton-agent-logs/<run-id>/round-timings.json
+helix-logs/<run-id>/round-timings.json
 ```
 
 Implementation ownership and timing:
 
 - extend the existing optimize runtime cleanup path rather than introducing a new skill script
-- specifically, wire this into the same `OptimizeSessionArtifactsManager.archive(...)` / `ArchiveManager` flow that already owns `triton-agent-logs/<run-id>/`
+- specifically, wire this into the same `OptimizeSessionArtifactsManager.archive(...)` / `ArchiveManager` flow that already owns `helix-logs/<run-id>/`
 - use `OptimizeSessionArtifactsState.archive.run_archive_dir` as the authoritative archive destination for the current run
-- read `.triton-agent/state.json` while the live runtime directory still exists
-- write `round-timings.json` before removing `.triton-agent/state.json`
+- read `.helix/state.json` while the live runtime directory still exists
+- write `round-timings.json` before removing `.helix/state.json`
 - if there are no completed rounds, skip writing `round-timings.json` entirely
 
-This archive file should be derived from `.triton-agent/state.json`, but it should not reuse the workflow-state schema verbatim.
+This archive file should be derived from `.helix/state.json`, but it should not reuse the workflow-state schema verbatim.
 
 The file should contain a single JSON array. Each element should contain only:
 
@@ -239,9 +239,9 @@ Archive projection rules:
 - require both `started_at` and `ended_at` to be non-null for an archived round
 - sort entries by canonical numeric round order
 - do not include unfinished or still-active rounds
-- do not archive `.triton-agent/state.json` itself
+- do not archive `.helix/state.json` itself
 - treat archive write failures as cleanup warnings, not as a fatal optimize failure
-- continue removing live `.triton-agent/` runtime state even when `round-timings.json` could not be written
+- continue removing live `.helix/` runtime state even when `round-timings.json` could not be written
 
 Error-handling behavior should mirror the existing optimize archive flow:
 
@@ -263,7 +263,7 @@ It changes behavior at workflow boundaries because:
 
 These behavioral rules apply only for optimize runs that bootstrapped workflow state under `--enable-agent-hook`.
 
-The agent does not need to parse `.triton-agent/state.json` directly for correctness. Instead, when workflow state is enabled, optimize runtime should surface a compact phase summary through the existing optimize prompt builders in [src/triton_agent/optimize/prompts.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/prompts.py) on each optimize agent launch. If the temporary optimize guidance file also mirrors this summary, it should reuse the same rendered content rather than creating a second independent wording source. That summary should include at least:
+The agent does not need to parse `.helix/state.json` directly for correctness. Instead, when workflow state is enabled, optimize runtime should surface a compact phase summary through the existing optimize prompt builders in [src/helix/optimize/prompts.py](/Users/cdj/Projects/helix/src/helix/optimize/prompts.py) on each optimize agent launch. If the temporary optimize guidance file also mirrors this summary, it should reuse the same rendered content rather than creating a second independent wording source. That summary should include at least:
 
 - current phase
 - current round when present
@@ -330,23 +330,23 @@ The existing `check-baseline` behavior should remain the baseline validation aut
 
 Caller contract:
 
-- if `.triton-agent/state.json` is absent, `check-baseline` behaves like today's pure validation command
-- if `.triton-agent/state.json` is present, `check-baseline` must treat workflow-state advancement as part of the optimize workflow contract
+- if `.helix/state.json` is absent, `check-baseline` behaves like today's pure validation command
+- if `.helix/state.json` is present, `check-baseline` must treat workflow-state advancement as part of the optimize workflow contract
 - callers should not need to pass a separate `--update-optimize-state` flag
 
-Optimize runtime should only make `.triton-agent/state.json` available to this script when the optimize session was started with `--enable-agent-hook`.
+Optimize runtime should only make `.helix/state.json` available to this script when the optimize session was started with `--enable-agent-hook`.
 
 State-file discovery for baseline submit should use the direct-child workspace layout only:
 
 - `baseline_dir = Path(args.baseline_dir).expanduser().resolve()`
 - `workspace_root = baseline_dir.parent`
-- `state_path = workspace_root / ".triton-agent" / "state.json"`
+- `state_path = workspace_root / ".helix" / "state.json"`
 
 This design assumes optimize runs only inside an operator workspace root, with `baseline/` as a direct child of that root. No ancestor search or alternative discovery path should be performed. If the caller points `--baseline-dir` at some other layout, that invocation is outside this optimize workflow contract.
 
 This makes optimize workflow state mutation automatic when optimize runtime has bootstrapped state, while preserving the existing script behavior for non-optimize contexts that have no workflow-state file.
 
-When `check-baseline` runs in a workspace that has `.triton-agent/state.json`:
+When `check-baseline` runs in a workspace that has `.helix/state.json`:
 
 - if the baseline check fails, do not mutate workflow state
 - if the baseline check passes:
@@ -377,7 +377,7 @@ python3 scripts/optimize_start_round.py start-round --round-dir opt-round-1
 
 Expected behavior:
 
-- require `.triton-agent/state.json` to exist and be valid
+- require `.helix/state.json` to exist and be valid
 - require `phase=awaiting_round_start`
 - require `baseline.status=passed`
 - require `--round-dir` to match `opt-round-<integer>`
@@ -418,27 +418,27 @@ The existing `check-round` contract should remain the round validation authority
 
 Caller contract:
 
-- if `.triton-agent/state.json` is absent, `check-round` behaves like today's pure validation command
-- if `.triton-agent/state.json` is present, `check-round` must treat workflow-state advancement as part of the optimize workflow contract
+- if `.helix/state.json` is absent, `check-round` behaves like today's pure validation command
+- if `.helix/state.json` is present, `check-round` must treat workflow-state advancement as part of the optimize workflow contract
 - callers should not need to pass a separate `--update-optimize-state` flag
 
-Optimize runtime should only make `.triton-agent/state.json` available to this script when the optimize session was started with `--enable-agent-hook`.
+Optimize runtime should only make `.helix/state.json` available to this script when the optimize session was started with `--enable-agent-hook`.
 
 State-file discovery for round submit should use the same direct-child workspace layout:
 
 - `round_dir = Path(args.round_dir).expanduser().resolve()`
 - `workspace_root = round_dir.parent`
-- `state_path = workspace_root / ".triton-agent" / "state.json"`
+- `state_path = workspace_root / ".helix" / "state.json"`
 
 This design assumes optimize runs only inside an operator workspace root, with each `opt-round-N/` as a direct child of that root. No ancestor search or alternative discovery path should be performed. If the caller points `--round-dir` at some other layout, that invocation is outside this optimize workflow contract.
 
-When `check-round` runs in a workspace that has `.triton-agent/state.json`:
+When `check-round` runs in a workspace that has `.helix/state.json`:
 
-- require a valid `.triton-agent/state.json`
+- require a valid `.helix/state.json`
 - require `phase=round_active`
 - require `current_round` to match the submitted `opt-round-N`
 
-When `.triton-agent/state.json` is present, it is the authoritative source of the active round. Existing CLI arguments keep their current meaning for reporting and min-round guidance, but they must not override workflow state:
+When `.helix/state.json` is present, it is the authoritative source of the active round. Existing CLI arguments keep their current meaning for reporting and min-round guidance, but they must not override workflow state:
 
 - if `--current-round` is omitted, use `state.json["current_round"]` as the only workflow round authority
 - if `--current-round` is provided, it must equal `state.json["current_round"]`; otherwise fail explicitly
@@ -471,7 +471,7 @@ The shared helper should reject invalid combinations such as:
 - `phase=awaiting_round_start` with `current_round` still set
 - `current_round=N` but no matching `rounds["N"]`
 - a round entry with `status=passed` but missing `ended_at`
-- malformed JSON in `.triton-agent/state.json`
+- malformed JSON in `.helix/state.json`
 
 These rules should fail the workflow-state operation explicitly rather than attempting silent repair.
 
@@ -486,7 +486,7 @@ Hook-based write enforcement is intentionally deferred to a follow-up design.
 That follow-up should explicitly scope and estimate the net-new work required in both existing guard implementations:
 
 - built-in edit tool recognition in the Codex Python guard and OpenCode JavaScript plugin
-- `.triton-agent/state.json` loading and parsing in both languages
+- `.helix/state.json` loading and parsing in both languages
 - phase-specific path allowlist evaluation
 - workspace-relative path normalization and symlink handling for write targets
 - denial message generation from the current workflow phase
@@ -502,7 +502,7 @@ The optimize command already stages both:
 - `triton-npu-optimize`
 - `triton-npu-optimize-start-round`
 
-through [src/triton_agent/skill_staging.py](/Users/cdj/Projects/triton-agent/src/triton_agent/skill_staging.py), so adding new scripts under those skills rides along automatically. The implementer should still verify that no additional skill names or new staged command surfaces were introduced.
+through [src/helix/skill_staging.py](/Users/cdj/Projects/helix/src/helix/skill_staging.py), so adding new scripts under those skills rides along automatically. The implementer should still verify that no additional skill names or new staged command surfaces were introduced.
 
 ## Testing
 
@@ -518,8 +518,8 @@ Add focused tests instead of depending on a live agent session.
 - Add baseline submit tests showing:
   - failed baseline checks do not mutate workflow state
   - successful baseline checks set `phase=awaiting_round_start`
-  - state mutation happens automatically when `.triton-agent/state.json` exists, without a caller flag
-  - direct-child workspace-root discovery resolves `.triton-agent/state.json` correctly
+  - state mutation happens automatically when `.helix/state.json` exists, without a caller flag
+  - direct-child workspace-root discovery resolves `.helix/state.json` correctly
   - state discovery does not walk ancestor directories
 - Add start-round tests showing:
   - valid `awaiting_round_start -> round_active` transition
@@ -530,13 +530,13 @@ Add focused tests instead of depending on a live agent session.
   - failed checks remain in `round_active`
   - successful checks set `ended_at` and return to `awaiting_round_start`
   - mismatch between active round and submitted round is rejected
-  - state mutation happens automatically when `.triton-agent/state.json` exists, without a caller flag
+  - state mutation happens automatically when `.helix/state.json` exists, without a caller flag
   - `--current-round` must agree with `state.json["current_round"]` when state is present
   - state discovery does not walk ancestor directories
 - Add optimize runtime tests showing:
-  - `--enable-agent-hook` startup bootstrap writes `.triton-agent/state.json`
+  - `--enable-agent-hook` startup bootstrap writes `.helix/state.json`
   - reusable-baseline startup enters `awaiting_round_start` when workflow state is enabled
-  - `--enable-agent-hook` cleanup writes `triton-agent-logs/<run-id>/round-timings.json` for completed rounds
+  - `--enable-agent-hook` cleanup writes `helix-logs/<run-id>/round-timings.json` for completed rounds
   - unfinished rounds are excluded from `round-timings.json`
   - `round-timings.json` matches the minimal array schema exactly
   - cleanup creates the archive directory when needed before writing `round-timings.json`
@@ -549,13 +549,13 @@ Because this change modifies Python under `skills/*/scripts/`, implementation ve
 
 ## Scope Boundaries
 
-- Do not treat `.triton-agent/state.json` as a durable optimize artifact.
-- Do not archive `.triton-agent/state.json` itself; archive only the derived `round-timings.json` summary.
+- Do not treat `.helix/state.json` as a durable optimize artifact.
+- Do not archive `.helix/state.json` itself; archive only the derived `round-timings.json` summary.
 - Do not add timestamps to `baseline/state.json` or `opt-round-N/round-state.json`.
-- Do not change upload, status, verify, report, or hook features to consume `.triton-agent/state.json` in this design.
+- Do not change upload, status, verify, report, or hook features to consume `.helix/state.json` in this design.
 - Do not change upload, status, verify, report, or hook features to consume `round-timings.json` in this design.
 - Do not enable workflow-state bootstrap, phase-summary injection, or `round-timings.json` archive for optimize runs that do not use `--enable-agent-hook`.
 - Do not change current Codex or OpenCode hook denial behavior in this design.
 - Do not change current `opt-note.md`, `learned_lessons.md`, or supervisor-report ownership semantics in this design.
-- Do not merge this temporary workflow state with any user-owned pre-existing `.triton-agent/` data. Existing fail-fast startup behavior should remain.
+- Do not merge this temporary workflow state with any user-owned pre-existing `.helix/` data. Existing fail-fast startup behavior should remain.
 - Do not describe this feature as a security boundary. It is temporary workflow state for optimize orchestration.

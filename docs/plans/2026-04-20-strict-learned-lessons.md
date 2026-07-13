@@ -62,7 +62,7 @@ Expected: PASS.
 ### Task 3: Update Runtime Prompts
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_backends_base.py`
 
@@ -97,6 +97,6 @@ Expected: PASS.
 
 - [ ] **Step 2: Review diff**
 
-Run: `git diff -- docs/specs/2026-04-20-strict-learned-lessons-design.md docs/plans/2026-04-20-strict-learned-lessons.md skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/artifacts.md src/triton_agent/prompts.py tests/test_generation_contracts.py tests/test_cli.py tests/test_backends_base.py`
+Run: `git diff -- docs/specs/2026-04-20-strict-learned-lessons-design.md docs/plans/2026-04-20-strict-learned-lessons.md skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/artifacts.md src/helix/prompts.py tests/test_generation_contracts.py tests/test_cli.py tests/test_backends_base.py`
 
 Expected: Only strict learned-lessons docs, prompt wording, and matching tests changed.

@@ -18,16 +18,16 @@
 - Modify: `tests/test_comparison_commands.py`
 - Modify: `tests/test_execution_commands.py`
 
-- [ ] **Step 1: Update tests that import helper functions from `triton_agent.cli` to import from the dedicated modules instead**
+- [ ] **Step 1: Update tests that import helper functions from `helix.cli` to import from the dedicated modules instead**
 - [ ] **Step 2: Run focused CLI-related tests and confirm they fail only where the old passthrough surface is still assumed**
 - [ ] **Step 3: Keep parser and command-dispatch coverage intact so the CLI entrypoint still has regression protection**
 
 ### Task 2: Remove Redundant CLI Wrapper Surface
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/__init__.py`
-- Modify: `src/triton_agent/output.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/generation/__init__.py`
+- Modify: `src/helix/output.py`
 - Modify: any tests identified in Task 1
 
 - [ ] **Step 1: Delete redundant passthrough helpers from `cli.py` and keep only entrypoint responsibilities**
@@ -37,7 +37,7 @@
 ### Task 3: Make CLI Parsing And Dispatch Table-Driven
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Add an internal command-definition structure that describes handlers and supported options per command**
@@ -48,11 +48,11 @@
 ### Task 4: Centralize Shared Backend Runner Flow
 
 **Files:**
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/backends/codex.py`
-- Modify: `src/triton_agent/backends/opencode.py`
-- Modify: `src/triton_agent/backends/pi.py`
-- Modify: `src/triton_agent/backends/claude.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/backends/codex.py`
+- Modify: `src/helix/backends/opencode.py`
+- Modify: `src/helix/backends/pi.py`
+- Modify: `src/helix/backends/claude.py`
 - Modify: backend runner tests as needed
 
 - [ ] **Step 1: Write or update tests that rely on shared runner behavior staying stable**

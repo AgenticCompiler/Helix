@@ -6,11 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/tool_trace_hook.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/policy.json\" --event PreToolUse"
+            "command": "python \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/tool_trace_hook.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/policy.json\" --event PreToolUse"
           },
           {
             "type": "command",
-            "command": "python3 \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/pretooluse_guard.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/policy.json\""
+            "command": "python3 \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/pretooluse_guard.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/policy.json\""
           }
         ]
       }
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/tool_trace_hook.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/triton-agent-hooks/policy.json\" --event PostToolUse"
+            "command": "python \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/tool_trace_hook.py\" --policy \"${CODEX_PROJECT_DIR}/.codex/helix-hooks/policy.json\" --event PostToolUse"
           }
         ]
       }

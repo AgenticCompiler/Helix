@@ -8,7 +8,7 @@ Treat the standalone Claude optimize plugin as optimize-only at the plugin level
 
 The current Claude plugin hook flow assumes the optimize plugin can identify optimize sessions from hook payload metadata such as `agent_type`. That assumption is not stable for direct main-session usage: when the plugin is used in the active Claude session instead of a subagent, `agent_type` may be empty, so:
 
-- `SessionStart` skips `.triton-agent/` bootstrap
+- `SessionStart` skips `.helix/` bootstrap
 - `PreToolUse` skips optimize workflow guard enforcement
 - `SessionEnd` skips runtime cleanup
 
@@ -23,7 +23,7 @@ This leaves direct optimize sessions without the workflow state and protections 
 
 ## Non-Goals
 
-- Do not redesign optimize workflow phases or `.triton-agent/state.json` contents.
+- Do not redesign optimize workflow phases or `.helix/state.json` contents.
 - Do not change subagent ownership recording or owner matching rules.
 - Do not make this plugin support mixed optimize and non-optimize Claude agents in the same installation.
 - Do not change shared hook-runtime path protection semantics beyond routing more direct sessions through the existing guard.
@@ -36,7 +36,7 @@ When this plugin is installed and Claude starts a session in a workspace:
 
 - `SessionStart` always bootstraps optimize runtime state for the workspace.
 - `PreToolUse` always enforces the optimize path and workflow guard for the workspace.
-- `SessionEnd` always removes the live `.triton-agent/` runtime tree.
+- `SessionEnd` always removes the live `.helix/` runtime tree.
 
 This behavior no longer depends on `agent_type`, `subagent_type`, or other optimize-session inference.
 
@@ -71,9 +71,9 @@ Treat the built Claude plugin as an optimize-only plugin contract rather than a 
 
 Add regression coverage proving that direct main-session behavior no longer depends on `agent_type`:
 
-- `SessionStart` bootstraps `.triton-agent/state.json` when the payload only contains `cwd`.
+- `SessionStart` bootstraps `.helix/state.json` when the payload only contains `cwd`.
 - `PreToolUse` still denies protected runtime reads and still applies workflow gating when the payload only contains `cwd`, `tool_name`, and `tool_input`.
-- `SessionEnd` removes `.triton-agent/` when the payload only contains `cwd`.
+- `SessionEnd` removes `.helix/` when the payload only contains `cwd`.
 
 Keep existing subagent tests to prove:
 

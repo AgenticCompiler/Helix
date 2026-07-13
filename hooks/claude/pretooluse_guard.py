@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Claude Code PreToolUse hook wrapper for triton-agent optimize runs.
+Claude Code PreToolUse hook wrapper for helix optimize runs.
 
 This wrapper adapts Claude Code hook stdin/stdout handling to the shared
 backend-agnostic guard policy module.
@@ -31,7 +31,7 @@ from hook_runtime.pretooluse_adapter import run_policy_file_wrapper  # noqa: E40
 def main(argv: list[str] | None = None) -> int:
     return run_policy_file_wrapper(
         argv=argv,
-        failure_prefix="triton-agent claude hook",
+        failure_prefix="helix claude hook",
     )
 
 

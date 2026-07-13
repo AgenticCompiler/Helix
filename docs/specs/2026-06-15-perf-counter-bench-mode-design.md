@@ -227,20 +227,20 @@ Key decision: populate `kernel_avg_time_us` with the per-iteration average so `c
 
 - Remove `bench-mode` parsing from `parse_bench_metadata()`. The function still parses `# kernel:` / `# kernels:` and other metadata, just not `# bench-mode`.
 
-### 7. `src/triton_agent/cli.py`
+### 7. `src/helix/cli.py`
 
 - **`run-bench` command**: `_BENCH_MODE_CHOICES` updated to `("torch-npu-profiler", "msprof", "perf-counter")`. Default `"torch-npu-profiler"`.
-- **`profile-bench` path** (if represented in CLI — check `src/triton_agent/cli.py`): Remove `--bench-mode` if present.
+- **`profile-bench` path** (if represented in CLI — check `src/helix/cli.py`): Remove `--bench-mode` if present.
 - **Other commands** (`gen-eval`, `gen-bench`, `verify`, `optimize`, etc.): `--bench-mode` still informs the agent prompt about the target execution mode, but the generated bench file no longer writes a `# bench-mode` header — the generated file is mode-agnostic. `perf-counter` is accepted on generation commands too (the shared `_BENCH_MODE_CHOICES` covers all commands with `has_bench_mode=True`); on the generation path it simply tells the agent the user intends to run with `perf-counter`.
 - **`_BENCH_MODE_CHOICES`**: Add `"perf-counter"`. All commands with `has_bench_mode=True` share the same choices tuple.
 
-### 8. `src/triton_agent/execution.py`
+### 8. `src/helix/execution.py`
 
 - **`resolve_bench_mode_from_metadata()` (line 225-232)**: Remove the function. Bench mode is no longer resolved from file metadata.
 - **`run_local_bench()` / `run_remote_bench()`**: Accept `bench_mode` parameter as before. Callers now pass the CLI value or the default `"torch-npu-profiler"`.
 - **`handle_run_bench()` (in `commands/execution.py`)**: Replace `args.bench_mode or resolve_bench_mode_from_metadata(bench_file)` with `args.bench_mode or "torch-npu-profiler"`.
 
-### 9. `src/triton_agent/optimize/resume.py`
+### 9. `src/helix/optimize/resume.py`
 
 Remove `_parse_bench_mode()` (line 334) — bench mode is no longer parsed from harness file headers. The optimize session's canonical bench mode is stored in `baseline/state.json`, which already has `bench_mode` as a required field (`BaselineState.bench_mode`).
 
@@ -271,7 +271,7 @@ The `bench_mode` field added to JSONL (section 1) enables `compare-perf` to dete
 
 Note: `perf-counter` results set `total_op_avg_time_us = kernel_avg_time_us` (see section 1), so `--metric-source total-op` and `--metric-source all` work without special handling. No per-mode `metric_source` guard is needed.
 
-### 12. `src/triton_agent/run_eval_mcp_server.py`
+### 12. `src/helix/run_eval_mcp_server.py`
 
 - **Line 168** (`run_bench` tool): Update `bench_mode` field description to include `"perf-counter"`.
 - **Line 206** (`profile_bench` tool): Remove `bench_mode` field from the tool schema.

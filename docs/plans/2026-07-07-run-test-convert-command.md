@@ -4,7 +4,7 @@
 
 **Goal:** Add a skill-local `run-test-convert` command plus matching MCP tool so convert workflows stop borrowing baseline/optimize command names while preserving existing run-test execution behavior.
 
-**Architecture:** Keep the repository-level `triton-agent` CLI unchanged and implement the new surface entirely inside the staged run-eval helper and MCP server. Reuse the existing local/remote test runners, archived-result comparison helpers, and reference-result derivation flow; only the command routing, validation contract, MCP schema, and skill documentation should change.
+**Architecture:** Keep the repository-level `helix` CLI unchanged and implement the new surface entirely inside the staged run-eval helper and MCP server. Reuse the existing local/remote test runners, archived-result comparison helpers, and reference-result derivation flow; only the command routing, validation contract, MCP schema, and skill documentation should change.
 
 **Tech Stack:** Python 3.11, `argparse`, `unittest`, FastMCP metadata registration, Markdown skill docs, existing `run_local_test` / `run_remote_test` helpers.
 
@@ -299,8 +299,8 @@ def test_script_run_test_convert_does_not_append_active_round_timing_events(self
         workspace = Path(tmp)
         round_dir = workspace / "opt-round-2"
         round_dir.mkdir()
-        (workspace / ".triton-agent").mkdir()
-        (workspace / ".triton-agent" / "state.json").write_text(
+        (workspace / ".helix").mkdir()
+        (workspace / ".helix" / "state.json").write_text(
             json.dumps(
                 {
                     "schema_version": 1,
@@ -315,7 +315,7 @@ def test_script_run_test_convert_does_not_append_active_round_timing_events(self
         )
         test_file = workspace / "differential_test_kernel.py"
         operator_file = round_dir / "triton_kernel.py"
-        timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-2.jsonl"
+        timing_path = workspace / ".helix" / "round-timings" / "opt-round-2.jsonl"
         baseline_result = workspace / "kernel_result.pt"
         test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
         operator_file.write_text("print('kernel')\n", encoding="utf-8")
@@ -419,7 +419,7 @@ def test_script_run_test_convert_preserves_pt_files_when_run_test_cleanup_policy
 
         with patch.dict(
             os.environ,
-            {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+            {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"},
             clear=False,
         ), patch.object(
             module,
@@ -835,7 +835,7 @@ git commit -m "feat: add run-test-convert helper command"
 ### Task 5: Implement the MCP tool, update docs, and run verification
 
 **Files:**
-- Modify: `src/triton_agent/eval/mcp_server.py`
+- Modify: `src/helix/eval/mcp_server.py`
 - Modify: `skills/common/ascend-npu-run-eval/SKILL.md`
 - Modify: `skills/common/ascend-npu-run-eval/references/run-test.md`
 - Modify: `skills/common/ascend-npu-run-eval-mcp/SKILL.md`
@@ -983,6 +983,6 @@ Expected: PASS
 - [ ] **Step 5: Commit the MCP/doc implementation**
 
 ```bash
-git add src/triton_agent/eval/mcp_server.py skills/common/ascend-npu-run-eval/SKILL.md skills/common/ascend-npu-run-eval/references/run-test.md skills/common/ascend-npu-run-eval-mcp/SKILL.md skills/triton/triton-npu-convert-pytorch-operator/SKILL.md skills/tilelang/tilelang-npu-convert-pytorch-operator/SKILL.md tests/test_run_eval_mcp_server.py tests/test_run_eval_mcp_server_tool_metadata.py tests/test_generation_contracts.py
+git add src/helix/eval/mcp_server.py skills/common/ascend-npu-run-eval/SKILL.md skills/common/ascend-npu-run-eval/references/run-test.md skills/common/ascend-npu-run-eval-mcp/SKILL.md skills/triton/triton-npu-convert-pytorch-operator/SKILL.md skills/tilelang/tilelang-npu-convert-pytorch-operator/SKILL.md tests/test_run_eval_mcp_server.py tests/test_run_eval_mcp_server_tool_metadata.py tests/test_generation_contracts.py
 git commit -m "feat: add run-test-convert validation surface"
 ```

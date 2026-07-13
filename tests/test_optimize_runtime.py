@@ -14,24 +14,24 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.optimize.batch import run_optimize_batch
-from triton_agent.optimize import checks as optimize_checks
-import triton_agent.optimize.execution as execution_module
-from triton_agent.optimize.compiler_source import CompilerSourceInfo
-from triton_agent.optimize.models import OptimizeRunOptions
-from triton_agent.optimize.execution import (
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.optimize.batch import run_optimize_batch
+from helix.optimize import checks as optimize_checks
+import helix.optimize.execution as execution_module
+from helix.optimize.compiler_source import CompilerSourceInfo
+from helix.optimize.models import OptimizeRunOptions
+from helix.optimize.execution import (
     _latest_round_dir,
 )
-from triton_agent.optimize.env import optimize_min_speedup_env_name
-from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
-from triton_agent.optimize.prompts import build_optimize_round_prompt
-from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
-from triton_agent.optimize.archive import ArchiveState
-from triton_agent.optimize.memory_file import MemoryFileState
-from triton_agent.optimize.resume import reset_optimize_workspace
-from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
-from triton_agent.remote.env import remote_target_env_name, remote_workdir_env_name
+from helix.optimize.env import optimize_min_speedup_env_name
+from helix.optimize.orchestration import build_optimize_request, run_optimize_request
+from helix.optimize.prompts import build_optimize_round_prompt
+from helix.optimize.pt_cleanup import cleanup_workspace_pt_files
+from helix.optimize.archive import ArchiveState
+from helix.optimize.memory_file import MemoryFileState
+from helix.optimize.resume import reset_optimize_workspace
+from helix.optimize.session_artifacts import OptimizeSessionArtifactsState
+from helix.remote.env import remote_target_env_name, remote_workdir_env_name
 
 
 def _optimize_invocation_kind(request: AgentRequest) -> str:
@@ -46,7 +46,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
         self._report_patcher = patch(
-            "triton_agent.report.workspace.generate_workspace_report",
+            "helix.report.workspace.generate_workspace_report",
             return_value=(True, "ok"),
         )
         self._report_patcher.start()
@@ -56,7 +56,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         super().tearDown()
 
     def test_optimize_recovery_progress_path_allowlist_includes_business_artifacts(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
+        recovery = importlib.import_module("helix.optimize.recovery")
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -74,11 +74,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue(recovery.is_optimize_progress_path(attempts, workspace))
 
     def test_optimize_recovery_progress_path_allowlist_excludes_logs_and_hidden_runtime_state(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
+        recovery = importlib.import_module("helix.optimize.recovery")
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            log_file = workspace / "triton-agent-logs" / "optimize.show-output.log"
+            log_file = workspace / "helix-logs" / "optimize.show-output.log"
             hidden_file = workspace / "supervisor-report.md"
             log_file.parent.mkdir(parents=True)
             log_file.write_text("log\n", encoding="utf-8")
@@ -88,7 +88,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse(recovery.is_optimize_progress_path(hidden_file, workspace))
 
     def test_optimize_recovery_scan_ignores_directory_mtime_only_changes(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
+        recovery = importlib.import_module("helix.optimize.recovery")
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -102,7 +102,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(after, before)
 
     def test_optimize_recovery_scan_tolerates_transient_non_progress_directory_disappearing(self) -> None:
-        recovery = importlib.import_module("triton_agent.optimize.recovery")
+        recovery = importlib.import_module("helix.optimize.recovery")
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -133,15 +133,15 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
     def test_optimize_orchestration_module_replaces_runtime_module(self) -> None:
-        self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.orchestration"))
-        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.runtime"))
+        self.assertIsNotNone(importlib.util.find_spec("helix.optimize.orchestration"))
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.runtime"))
 
     def test_optimize_run_loop_and_supervisor_modules_have_been_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.run_loop"))
-        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.supervisor"))
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.run_loop"))
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.supervisor"))
 
     def test_optimize_gate_module_has_been_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.gate"))
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.gate"))
 
     def test_optimize_execution_module_no_longer_exports_legacy_supervised_entrypoints(
         self,
@@ -193,15 +193,15 @@ class OptimizeRuntimeTests(unittest.TestCase):
         self.assertTrue(request.enable_agent_hooks)
 
     def _build_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
-        hidden_triton_agent_dir = workdir / ".triton-agent"
-        hidden_triton_agent_dir.mkdir(parents=True, exist_ok=True)
+        hidden_helix_dir = workdir / ".helix"
+        hidden_helix_dir.mkdir(parents=True, exist_ok=True)
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        handoff_dir = hidden_triton_agent_dir / "supervisor-handoffs"
+        handoff_dir = hidden_helix_dir / "supervisor-handoffs"
         handoff_dir.mkdir(parents=True, exist_ok=True)
         supervisor_report_path = workdir / "supervisor-report.md"
         supervisor_report_path.write_text("report\n", encoding="utf-8")
-        run_archive_dir = workdir / "triton-agent-logs" / "run-001"
+        run_archive_dir = workdir / "helix-logs" / "run-001"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeSessionArtifactsState(
             memory_file=MemoryFileState(
@@ -213,7 +213,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 run_archive_dir=run_archive_dir,
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             ),
-            hidden_triton_agent_dir=hidden_triton_agent_dir,
+            hidden_helix_dir=hidden_helix_dir,
             supervisor_report_path=supervisor_report_path,
             supervisor_handoff_dir=handoff_dir,
         )
@@ -221,7 +221,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def _build_checked_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        run_archive_dir = workdir / "triton-agent-logs" / "run-checked"
+        run_archive_dir = workdir / "helix-logs" / "run-checked"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeSessionArtifactsState(
             memory_file=MemoryFileState(
@@ -358,9 +358,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             expected = AgentResult(return_code=0, stdout="ok", stderr="")
             fake_runner = object()
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=fake_runner):
-                with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                    with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
+            with patch("helix.optimize.orchestration.create_runner", return_value=fake_runner):
+                with patch("helix.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                    with patch("helix.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
                         with patch.object(
                             execution_module,
                             "execute_multi_invocation_optimize",
@@ -394,7 +394,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 prompt=None,
             )
 
-            with patch("triton_agent.optimize.orchestration.prepare_compiler_source") as mocked:
+            with patch("helix.optimize.orchestration.prepare_compiler_source") as mocked:
                 request = build_optimize_request(operator, workdir, options)
 
             mocked.assert_not_called()
@@ -487,7 +487,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             request.staged_skill_sources,
             {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
-        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
+        self.assertEqual(request.mcp_servers, ("helix-run-eval",))
 
     def test_build_optimize_request_omits_mcp_servers_without_run_eval_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -513,7 +513,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.orchestration.resolve_staged_skills",
+                "helix.optimize.orchestration.resolve_staged_skills",
                 return_value=(("triton-npu-optimize",), None),
             ):
                 request = build_optimize_request(operator, workdir, options)
@@ -615,7 +615,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose=False,
                 stream_output=False,
                 remote="alice@example.com:2200",
-                remote_workdir="/tmp/triton-agent",
+                remote_workdir="/tmp/helix",
                 min_rounds=1,
                 resume_mode="auto",
                 reset_optimize=False,
@@ -630,11 +630,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             request = build_optimize_request(operator, workdir, options)
 
             self.assertEqual(request.remote, "alice@example.com:2200")
-            self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+            self.assertEqual(request.remote_workdir, "/tmp/helix")
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com:2200")
-            self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
+            self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/helix")
 
     def test_build_optimize_request_uses_explicit_optimize_skill_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1006,7 +1006,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.orchestration.prepare_compiler_source",
+                "helix.optimize.orchestration.prepare_compiler_source",
                 return_value=CompilerSourceInfo(
                     path=source_path,
                     commit="abc123",
@@ -1051,7 +1051,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.orchestration.prepare_compiler_source",
+                "helix.optimize.orchestration.prepare_compiler_source",
                 return_value=CompilerSourceInfo(
                     path=source_path,
                     commit="abc123",
@@ -1194,9 +1194,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
@@ -1221,8 +1221,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(worker_request.supervisor_report_path, workdir / "supervisor-report.md")
             self.assertFalse((workdir / "supervisor-report.md").exists())
-            self.assertFalse((workdir / ".triton-agent").exists())
-            archive_root = workdir / "triton-agent-logs"
+            self.assertFalse((workdir / ".helix").exists())
+            archive_root = workdir / "helix-logs"
             self.assertTrue(archive_root.exists())
             run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
             self.assertEqual(len(run_archives), 1)
@@ -1305,9 +1305,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
@@ -1412,12 +1412,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
-                    with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
+                    with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
                         result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -1488,9 +1488,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
@@ -1577,7 +1577,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -1751,7 +1751,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
@@ -1832,7 +1832,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -1841,7 +1841,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ),
             ):
                 with patch(
-                    "triton_agent.optimize.execution.best_completed_round_geomean_speedup",
+                    "helix.optimize.execution.best_completed_round_geomean_speedup",
                     side_effect=[None, 1.15],
                 ):
                     result = controller.run_round_loop(request)
@@ -1977,7 +1977,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
@@ -2082,7 +2082,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
@@ -2187,7 +2187,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -2287,7 +2287,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -2417,7 +2417,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("triton_agent.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 0)
@@ -2544,7 +2544,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="fail",
@@ -2598,7 +2598,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         return AgentResult(return_code=0, stdout="ok", stderr="")
 
                     with patch(
-                        "triton_agent.optimize.batch.render_batch_optimize_results",
+                        "helix.optimize.batch.render_batch_optimize_results",
                         return_value=0,
                     ):
                         exit_code = run_optimize_batch(
@@ -2806,7 +2806,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -2863,7 +2863,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -2918,11 +2918,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 )
 
             with patch(
-                "triton_agent.optimize.batch.run_post_optimize_command",
+                "helix.optimize.batch.run_post_optimize_command",
                 side_effect=fake_post_optimize_command,
             ):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -2977,7 +2977,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return 1
 
             with patch(
-                "triton_agent.optimize.batch.run_post_optimize_command",
+                "helix.optimize.batch.run_post_optimize_command",
                 return_value=subprocess.CompletedProcess(
                     args="echo done",
                     returncode=3,
@@ -2986,7 +2986,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ),
             ):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     side_effect=fake_render,
                 ):
                     exit_code = run_optimize_batch(
@@ -3045,7 +3045,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -3098,9 +3098,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -3139,7 +3139,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 prompt=None,
             )
 
-            with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0"}, clear=False):
                 with self.assertRaisesRegex(ValueError, "--concurrency"):
                     run_optimize_batch(
                         root,
@@ -3190,12 +3190,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             env_vars = {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             }
             with patch.dict(os.environ, env_vars, clear=False):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -3248,9 +3248,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -3299,9 +3299,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 def __exit__(self, exc_type, exc, tb):
                     return False
 
-            with patch("triton_agent.optimize.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+            with patch("helix.optimize.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -3386,11 +3386,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             env_vars = {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             }
             with patch.dict(os.environ, env_vars, clear=False):
-                with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+                with self.assertRaisesRegex(ValueError, "HELIX_BATCH_WORKERS_PER_NPU"):
                     run_optimize_batch(
                         root,
                         options,
@@ -3441,14 +3441,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch(
-                "triton_agent.optimize.orchestration.prepare_compiler_source",
+                "helix.optimize.orchestration.prepare_compiler_source",
                 return_value=CompilerSourceInfo(
                     path=source_path,
                     commit="abc123",
                 ),
             ):
                 with patch(
-                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    "helix.optimize.batch.render_batch_optimize_results",
                     return_value=0,
                 ):
                     exit_code = run_optimize_batch(
@@ -3525,7 +3525,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 captured_results.extend(results)
                 return 0
 
-            with patch("triton_agent.optimize.batch.render_batch_optimize_results", side_effect=fake_render):
+            with patch("helix.optimize.batch.render_batch_optimize_results", side_effect=fake_render):
                 exit_code = run_optimize_batch(
                     root,
                     options,
@@ -3565,7 +3565,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -3612,7 +3612,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=1,
             ):
                 exit_code = run_optimize_batch(
@@ -3670,7 +3670,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -3724,7 +3724,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
                 exit_code = run_optimize_batch(
@@ -3761,8 +3761,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             (workdir / "learned_lessons.md").write_text("lesson\n", encoding="utf-8")
             try:
                 (workdir / "baseline").symlink_to(outside / "baseline-real", target_is_directory=True)
-                (workdir / ".triton-agent").symlink_to(outside / "runtime-real", target_is_directory=True)
-                (workdir / "triton-agent-logs").symlink_to(outside / "logs-real", target_is_directory=True)
+                (workdir / ".helix").symlink_to(outside / "runtime-real", target_is_directory=True)
+                (workdir / "helix-logs").symlink_to(outside / "logs-real", target_is_directory=True)
                 (workdir / "opt-round-1").symlink_to(outside / "round-real", target_is_directory=True)
             except OSError as exc:
                 self.skipTest(f"directory symlinks are unavailable: {exc}")
@@ -3774,8 +3774,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse((workdir / "opt-note.md").exists())
             self.assertFalse((workdir / "learned_lessons.md").exists())
             self.assertFalse((workdir / "baseline").exists())
-            self.assertFalse((workdir / ".triton-agent").exists())
-            self.assertFalse((workdir / "triton-agent-logs").exists())
+            self.assertFalse((workdir / ".helix").exists())
+            self.assertFalse((workdir / "helix-logs").exists())
             self.assertFalse((workdir / "opt-round-1").exists())
             self.assertFalse(optimized.exists())
 
@@ -3799,7 +3799,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             round_pt.write_text("round\n", encoding="utf-8")
 
             with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", None)
+                os.environ.pop("HELIX_OPTIMIZE_DELETE_PT_FILES", None)
                 cleaned = cleanup_workspace_pt_files(workdir)
 
             self.assertEqual(
@@ -3828,7 +3828,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             baseline_pt.write_text("baseline\n", encoding="utf-8")
             round_pt.write_text("round\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
                 cleaned = cleanup_workspace_pt_files(workdir)
 
             self.assertEqual(
@@ -3853,7 +3853,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             root_pt.write_text("root\n", encoding="utf-8")
             round_pt.write_text("round\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"}, clear=False):
                 cleaned = cleanup_workspace_pt_files(workdir)
 
             self.assertEqual(cleaned, [])
@@ -3868,7 +3868,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             result_pt = workdir / "kernel_result.pt"
             result_pt.write_text("stub\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "0"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "0"}, clear=False):
                 reset_optimize_workspace(operator, workdir)
 
             self.assertFalse(result_pt.exists())
@@ -3915,7 +3915,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -3983,7 +3983,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self_outer = self
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -4063,7 +4063,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self_outer = self
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -4138,13 +4138,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     with patch(
-                        "triton_agent.optimize.execution.check_round",
+                        "helix.optimize.execution.check_round",
                         return_value=SimpleNamespace(
                             kind="round",
                             status="pass",
@@ -4323,7 +4323,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.execution.check_round",
+                "helix.optimize.execution.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -4393,9 +4393,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self_outer = self
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+            with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.execution.check_round",
+                    "helix.optimize.execution.check_round",
                     return_value=SimpleNamespace(
                         kind="round",
                         status="fail",
@@ -4729,10 +4729,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
-                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                with patch("helix.optimize.batch.upload_optimize_workspace") as mock_upload:
                     exit_code = run_optimize_batch(
                         root,
                         options,
@@ -4775,10 +4775,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
-                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                with patch("helix.optimize.batch.upload_optimize_workspace") as mock_upload:
                     exit_code = run_optimize_batch(
                         root,
                         options,
@@ -4821,10 +4821,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.optimize.batch.render_batch_optimize_results",
+                "helix.optimize.batch.render_batch_optimize_results",
                 return_value=0,
             ):
-                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                with patch("helix.optimize.batch.upload_optimize_workspace") as mock_upload:
                     exit_code = run_optimize_batch(
                         root,
                         options,
@@ -4858,7 +4858,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 skill_name="triton-npu-optimize",
                 prompt="Prompt body",
                 workdir=workdir,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             entered: list[str] = []
@@ -4875,12 +4875,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             class DummyRunner:
                 pass
 
-            with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
-                with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
-                    with patch("triton_agent.optimize.orchestration.managed_mcp_scope", return_value=_DummyScope()):
-                        with patch("triton_agent.optimize.orchestration.create_runner", return_value=DummyRunner()):
+            with patch("helix.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("helix.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("helix.optimize.orchestration.managed_mcp_scope", return_value=_DummyScope()):
+                        with patch("helix.optimize.orchestration.create_runner", return_value=DummyRunner()):
                             with patch(
-                                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                                "helix.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                                 return_value=AgentResult(return_code=0, stdout="", stderr=""),
                             ):
                                     result = run_optimize_request(request)

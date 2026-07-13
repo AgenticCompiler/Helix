@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from env_registry import ASCEND_RT_VISIBLE_DEVICES, TRITON_AGENT_DEBUG
-_DEBUG_PREFIX = "[TRITON_AGENT_DEBUG]"
+from env_registry import ASCEND_RT_VISIBLE_DEVICES, HELIX_DEBUG
+_DEBUG_PREFIX = "[HELIX_DEBUG]"
 
 
 def debug_enabled(env: Mapping[str, str] | None = None) -> bool:
     current_env = os.environ if env is None else env
-    raw = current_env.get(TRITON_AGENT_DEBUG, "")
+    raw = current_env.get(HELIX_DEBUG, "")
     return raw.strip().lower() in {"true", "1"}
 
 

@@ -28,16 +28,16 @@ self.assertEqual(
                 {
                     "type": "command",
                     "command": (
-                        f"python \"{workspace.resolve() / '.codex' / 'triton-agent-hooks' / 'tool_trace_hook.py'}\" "
-                        f"--policy \"{workspace.resolve() / '.codex' / 'triton-agent-hooks' / 'policy.json'}\" "
+                        f"python \"{workspace.resolve() / '.codex' / 'helix-hooks' / 'tool_trace_hook.py'}\" "
+                        f"--policy \"{workspace.resolve() / '.codex' / 'helix-hooks' / 'policy.json'}\" "
                         "--event PreToolUse"
                     ),
                 },
                 {
                     "type": "command",
                     "command": (
-                        f"python3 \"{workspace.resolve() / '.codex' / 'triton-agent-hooks' / 'pretooluse_guard.py'}\" "
-                        f"--policy \"{workspace.resolve() / '.codex' / 'triton-agent-hooks' / 'policy.json'}\""
+                        f"python3 \"{workspace.resolve() / '.codex' / 'helix-hooks' / 'pretooluse_guard.py'}\" "
+                        f"--policy \"{workspace.resolve() / '.codex' / 'helix-hooks' / 'policy.json'}\""
                     ),
                 },
             ],
@@ -57,9 +57,9 @@ self.assertEqual(
                     "type": "command",
                     "command": "python3",
                     "args": [
-                        str(workspace.resolve() / ".claude" / "triton-agent-hooks" / "pretooluse_guard.py"),
+                        str(workspace.resolve() / ".claude" / "helix-hooks" / "pretooluse_guard.py"),
                         "--policy",
-                        str(workspace.resolve() / ".claude" / "triton-agent-hooks" / "policy.json"),
+                        str(workspace.resolve() / ".claude" / "helix-hooks" / "policy.json"),
                     ],
                 }
             ],
@@ -81,8 +81,8 @@ Expected: FAIL because the checked-in templates do not yet use project-dir place
 ### Task 2: Rewrite Staged Hook Config Paths Minimally
 
 **Files:**
-- Modify: `src/triton_agent/backends/claude_hooks.py`
-- Modify: `src/triton_agent/backends/codex_hooks.py`
+- Modify: `src/helix/backends/claude_hooks.py`
+- Modify: `src/helix/backends/codex_hooks.py`
 - Test: `tests/test_agent_hooks.py`
 
 - [ ] **Step 1: Replace verbatim config copies with placeholder-rendered staged JSON writers**

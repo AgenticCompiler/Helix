@@ -38,8 +38,8 @@
 
 **Files:**
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
-- Modify: `src/triton_agent/status/core.py`
-- Modify: `src/triton_agent/verification/core.py`
+- Modify: `src/helix/status/core.py`
+- Modify: `src/helix/verification/core.py`
 
 - [ ] Replace permissive round operator discovery with a helper that resolves the original workspace operator and requires `opt_<original>.py` inside `opt-round-N/`.
 - [ ] Replace permissive round perf discovery with a helper that requires `opt_<original>_perf.txt`.
@@ -49,7 +49,7 @@
 ### Task 4: Implement run-bench saved-path messaging
 
 **Files:**
-- Modify: `src/triton_agent/commands/execution.py`
+- Modify: `src/helix/commands/execution.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run-command.py`
 
 - [ ] After `run-bench` succeeds and returns a perf path, print `Saved perf file to: <path>` after the existing perf-path line.
@@ -60,7 +60,7 @@
 **Files:**
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 
 - [ ] Update optimize workflow text to require `opt_<original>.py` in each round.
 - [ ] Update artifact docs to require `opt_<original>_perf.txt` instead of `perf.txt`.

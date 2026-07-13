@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.openhands import OpenHandsRunner, OpenHandsSetupError
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.prompts import build_prompt
+from helix.backends.openhands import OpenHandsRunner, OpenHandsSetupError
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.prompts import build_prompt
 
 
 class OpenHandsRunnerTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             runner = OpenHandsRunner()
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(os.environ, {"LLM_MODEL": "gpt-5.4-mini"}, clear=True):
@@ -48,7 +48,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             runner = OpenHandsRunner()
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=False,
             ):
                 result = runner.run(self._request(workspace))
@@ -62,7 +62,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             runner = OpenHandsRunner()
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(os.environ, {"LLM_API_KEY": "secret"}, clear=True):
@@ -78,7 +78,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             (workspace / ".openhands" / "skills").mkdir(parents=True)
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -90,7 +90,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         side_effect=OpenHandsSetupError(
                             "OpenHands backend requires the openhands-sdk and openhands-tools packages to be installed."
                         ),
@@ -107,7 +107,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             (workspace / ".openhands" / "skills").mkdir(parents=True)
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -120,7 +120,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=_fake_dependencies(),
                     ):
                         result = runner.run(self._request(workspace))
@@ -136,7 +136,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             (workspace / ".openhands" / "skills").mkdir(parents=True)
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -148,14 +148,14 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=_fake_dependencies(),
                     ):
                         result = runner.run(self._request(workspace, show_output=True), stdout=io.StringIO())
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(result.stdout, "")
-            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_path = workspace / "helix-logs" / "gen-test.show-output.log"
             self.assertTrue(log_path.exists())
             content = log_path.read_text(encoding="utf-8")
             self.assertNotIn("attempt=1", content)
@@ -170,7 +170,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             fake_dependencies = _fake_dependencies()
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -183,7 +183,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=fake_dependencies,
                     ):
                         result = runner.run(self._request(workspace))
@@ -235,7 +235,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             fake_dependencies.load_project_skills = _load_project_skills
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -247,7 +247,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=fake_dependencies,
                     ):
                         result = runner.run(self._request(workspace))
@@ -269,7 +269,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             ]
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -281,7 +281,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=fake_dependencies,
                     ):
                         result = runner.run(self._request(workspace))
@@ -298,7 +298,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             stderr = io.StringIO()
 
             with patch(
-                "triton_agent.backends.openhands._supports_openhands_runtime",
+                "helix.backends.openhands._supports_openhands_runtime",
                 return_value=True,
             ):
                 with patch.dict(
@@ -310,7 +310,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     clear=True,
                 ):
                     with patch(
-                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        "helix.backends.openhands._load_openhands_dependencies",
                         return_value=_fake_dependencies(),
                     ):
                         result = runner.run(

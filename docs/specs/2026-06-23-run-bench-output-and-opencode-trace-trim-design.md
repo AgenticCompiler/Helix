@@ -17,7 +17,7 @@ This keeps `bench_runner.py` focused on selecting output paths while `perf_artif
 
 ### Opencode Trace Payload
 
-Trim the extra metadata directly in `hooks/opencode/triton-agent-hook-guard.js` so both start and end events share the same smaller schema. Keep the existing event types, status fields, timestamps, run IDs, command summaries, and durations, but drop:
+Trim the extra metadata directly in `hooks/opencode/helix-hook-guard.js` so both start and end events share the same smaller schema. Keep the existing event types, status fields, timestamps, run IDs, command summaries, and durations, but drop:
 
 - `source`
 - `confidence`

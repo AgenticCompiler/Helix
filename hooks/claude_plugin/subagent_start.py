@@ -17,7 +17,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict) or not is_optimize_subagent_payload(payload):
         return 0
@@ -30,9 +30,9 @@ def main() -> int:
         return 0
     try:
         result = bootstrap_runtime_state(workspace)
-        record_runtime_owner(workspace / ".triton-agent", agent_id=agent_id, agent_type=agent_type)
+        record_runtime_owner(workspace / ".helix", agent_id=agent_id, agent_type=agent_type)
     except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
         return 0
     if not result.additional_context:
         return 0

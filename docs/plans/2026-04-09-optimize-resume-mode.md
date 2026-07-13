@@ -13,10 +13,10 @@
 ### Task 1: Replace The CLI Surface With `--resume`
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/models.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing parser and option-mapping tests**
@@ -85,9 +85,9 @@ Expected: PASS
 ### Task 2: Add Workspace Classification And Resume Validation
 
 **Files:**
-- Create: `src/triton_agent/optimize/resume.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/validation.py`
+- Create: `src/helix/optimize/resume.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/validation.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing classification and validation tests**
@@ -155,10 +155,10 @@ Expected: PASS
 ### Task 3: Wire Effective Continuation Through Requests And Prompts
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/agent.py`
-- Modify: `src/triton_agent/models.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/agent.py`
+- Modify: `src/helix/models.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing prompt and request tests**
@@ -223,7 +223,7 @@ Expected: PASS
 ### Task 4: Update Batch Behavior And User-Facing Documentation
 
 **Files:**
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/optimize/batch.py`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 - Modify: `docs/notes/2026-04-02-optimize-continue-mode.md`

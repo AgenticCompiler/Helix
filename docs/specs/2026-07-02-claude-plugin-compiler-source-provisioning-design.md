@@ -4,15 +4,15 @@
 
 Give the standalone Claude optimize plugin the same compiler-source evidence path
 as CLI-launched optimize runs, without requiring the user to run the
-`triton-agent` CLI lifecycle first.
+`helix` CLI lifecycle first.
 
 ## User-Visible Semantics
 
 - The generated Claude optimize plugin prepares AscendNPU-IR on the first
   optimize-agent session start.
 - The default checkout remains
-  `~/.triton-agent/compiler-sources/AscendNPU-IR/`, with
-  `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` as the cache-root override.
+  `~/.helix/compiler-sources/AscendNPU-IR/`, with
+  `HELIX_COMPILER_SOURCE_CACHE_DIR` as the cache-root override.
 - If the checkout is missing, the plugin runs a shallow `git clone --depth 1`.
 - If the checkout exists, the plugin reuses it and only reads the current commit.
 - The plugin does not run `git fetch`, `git pull`, or automatic refresh.
@@ -27,8 +27,8 @@ as CLI-launched optimize runs, without requiring the user to run the
 ## Design
 
 Move the compiler-source provisioning logic into `hook_runtime` so the built
-plugin can package it without importing `triton_agent`. Keep
-`triton_agent.optimize.compiler_source` as a thin facade so existing CLI callers
+plugin can package it without importing `helix`. Keep
+`helix.optimize.compiler_source` as a thin facade so existing CLI callers
 and tests keep their current import path.
 
 `hooks/claude_plugin/session_start.py` continues to delegate lifecycle work to

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend `ascend-npu-optimize-state` so optimize rounds carry explicit `round_strategy`, `analysis_policy`, and `reason` state in `.triton-agent/state.json`, support mid-round updates through `set-current-round-state`, and mirror state changes into structured `opt-round-N/attempts.md` entries.
+**Goal:** Extend `ascend-npu-optimize-state` so optimize rounds carry explicit `round_strategy`, `analysis_policy`, and `reason` state in `.helix/state.json`, support mid-round updates through `set-current-round-state`, and mirror state changes into structured `opt-round-N/attempts.md` entries.
 
-**Architecture:** Keep workflow-state authority inside `skills/common/ascend-npu-optimize-state/scripts/state_manage/`. `start-round` will become the initialization path for round strategy state, a new `set-current-round-state` subcommand will own same-round updates, and `workflow.py` will enforce enum validation, transition rules, and attempts-log writes. Runtime code remains a thin loader bridge through `src/triton_agent/optimize/workflow_state.py`, while optimize skills and prompts are updated to treat workflow state as the authority and `attempts.md` as the structured history mirror.
+**Architecture:** Keep workflow-state authority inside `skills/common/ascend-npu-optimize-state/scripts/state_manage/`. `start-round` will become the initialization path for round strategy state, a new `set-current-round-state` subcommand will own same-round updates, and `workflow.py` will enforce enum validation, transition rules, and attempts-log writes. Runtime code remains a thin loader bridge through `src/helix/optimize/workflow_state.py`, while optimize skills and prompts are updated to treat workflow state as the authority and `attempts.md` as the structured history mirror.
 
 **Tech Stack:** Python 3.11, `argparse`, `json`, `pathlib`, `tempfile`, `unittest`, `load_skill_script_module`, optimize-state skill scripts, optimize prompt builders, `uv`
 
@@ -26,7 +26,7 @@
   Explain that state blocks in `attempts.md` are script-written and that active strategy state is owned by `ascend-npu-optimize-state`.
 - Modify: `skills/tilelang/tilelang-npu-optimize/SKILL.md`
   Mirror the same workflow-state and `attempts.md` guidance for TileLang.
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
   Update optimize guidance so `start-round` is treated as explicit state initialization and mid-round state changes use `set-current-round-state`.
 - Modify: `tests/test_optimize_workflow_state.py`
   Add unit coverage for the new workflow helper signatures, legacy-session initialization, transition rules, and attempts-log mirroring.
@@ -50,7 +50,7 @@ def test_start_round_records_strategy_state(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
-        state_path = workspace / ".triton-agent" / "state.json"
+        state_path = workspace / ".helix" / "state.json"
         round_dir = workspace / "opt-round-1"
         attempts_path = round_dir / "attempts.md"
         state_path.parent.mkdir()
@@ -85,7 +85,7 @@ def test_set_current_round_state_rejects_noop_and_policy_rollback(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
-        state_path = workspace / ".triton-agent" / "state.json"
+        state_path = workspace / ".helix" / "state.json"
         round_dir = workspace / "opt-round-2"
         state_path.parent.mkdir()
         round_dir.mkdir()
@@ -127,7 +127,7 @@ def test_set_current_round_state_initializes_missing_legacy_strategy_state(self)
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
-        state_path = workspace / ".triton-agent" / "state.json"
+        state_path = workspace / ".helix" / "state.json"
         round_dir = workspace / "opt-round-4"
         state_path.parent.mkdir()
         round_dir.mkdir()
@@ -171,7 +171,7 @@ def test_state_updates_append_structured_attempts_log_blocks(self) -> None:
     module = load_workflow_state_module()
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
-        state_path = workspace / ".triton-agent" / "state.json"
+        state_path = workspace / ".helix" / "state.json"
         round_dir = workspace / "opt-round-3"
         attempts_path = round_dir / "attempts.md"
         state_path.parent.mkdir()
@@ -470,7 +470,7 @@ Expected: PASS, including `attempts.md` state-update mirroring and CLI payload a
 - Modify: `skills/common/ascend-npu-optimize-state/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/tilelang/tilelang-npu-optimize/SKILL.md`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_cli.py`
 - Test: `tests/test_generation_contracts.py`

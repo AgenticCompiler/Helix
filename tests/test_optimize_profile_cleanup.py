@@ -7,8 +7,8 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize import checks as optimize_checks
-from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
+from helix.optimize import checks as optimize_checks
+from helix.optimize.session_artifacts import OptimizeSessionArtifactsManager
 
 
 TRITON_ROUND_OPERATOR = """\

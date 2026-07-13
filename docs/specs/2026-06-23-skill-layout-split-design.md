@@ -47,9 +47,9 @@ skills/<skill-name>/
 
 That assumption leaks into several layers:
 
-- `src/triton_agent/skill_staging.py` stages skills by logical name with no notion of grouped source directories
-- `src/triton_agent/skills.py` assumes the source tree is already flat and can sometimes copy the entire `skills/` root directly
-- `src/triton_agent/skill_loader.py` assumes `repo_root()/skills/<skill-name>/scripts/...`
+- `src/helix/skill_staging.py` stages skills by logical name with no notion of grouped source directories
+- `src/helix/skills.py` assumes the source tree is already flat and can sometimes copy the entire `skills/` root directly
+- `src/helix/skill_loader.py` assumes `repo_root()/skills/<skill-name>/scripts/...`
 - multiple skill scripts dynamically load sibling skills by walking to a flat `skills/<skill-name>/scripts/` source path
 - tests read live skill files through hard-coded flat paths
 
@@ -92,7 +92,7 @@ These skills move under `skills/common/` and are renamed from `triton-npu-*` to 
 
 `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` remain allowed to reference the Triton optimize skill by logical skill name when they need shared optimize workflow helpers. The key constraint is that their script logic must not encode the physical group names `common/` or `triton/`.
 
-`triton-npu-analyze-commit-perf` is superseded by `ascend-npu-plan-git-operator-workspaces`. It is not part of any `CommandKind` staging rule, but it is a real repository skill referenced directly by `src/triton_agent/distill/git_repo_workspaces.py`. It must still be cataloged and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
+`triton-npu-analyze-commit-perf` is superseded by `ascend-npu-plan-git-operator-workspaces`. It is not part of any `CommandKind` staging rule, but it is a real repository skill referenced directly by `src/helix/distill/git_repo_workspaces.py`. It must still be cataloged and moved under `skills/common/` so it does not remain as an uncategorized flat-root orphan after the split.
 
 ### Triton Skills
 
@@ -116,7 +116,7 @@ These skills move under `skills/triton/` and keep their current logical names:
 
 ### Central Skill Catalog
 
-Add one central catalog in `src/triton_agent/` that becomes the source of truth for repository-owned skills.
+Add one central catalog in `src/helix/` that becomes the source of truth for repository-owned skills.
 
 Each catalog entry should define at least:
 
@@ -142,7 +142,7 @@ Tests should assert that every repository-owned skill directory appears exactly 
 
 ### Physical Skills Root
 
-`src/triton_agent/resources.py` should continue exposing the repository `skills/` root:
+`src/helix/resources.py` should continue exposing the repository `skills/` root:
 
 ```text
 <repo>/skills
@@ -183,7 +183,7 @@ After the split, none of those paths may copy or enumerate `skills/common/` and 
 
 ### Stage Rules And Command Ownership
 
-`src/triton_agent/skill_staging.py` and any related command-to-skill mapping should be updated to the new logical names.
+`src/helix/skill_staging.py` and any related command-to-skill mapping should be updated to the new logical names.
 
 High-level command ownership after the rename should be:
 
@@ -210,8 +210,8 @@ The optimize-knowledge version switching logic should remain Triton-owned for no
 
 Today that version-switching path lives in:
 
-- `src/triton_agent/skill_staging.py::_resolve_skill_sources()`
-- `src/triton_agent/optimize/pattern_reminders.py::resolve_generic_optimize_knowledge_skill_name()`
+- `src/helix/skill_staging.py::_resolve_skill_sources()`
+- `src/helix/optimize/pattern_reminders.py::resolve_generic_optimize_knowledge_skill_name()`
 
 Those modules should keep owning Triton optimize-knowledge version selection in this iteration.
 
@@ -221,7 +221,7 @@ The MCP override path also needs an explicit rename at the source-override site.
 sources["triton-npu-run-eval"] = "triton-npu-run-eval-mcp"
 ```
 
-in `src/triton_agent/skill_staging.py::_resolve_skill_sources()` must become:
+in `src/helix/skill_staging.py::_resolve_skill_sources()` must become:
 
 ```python
 sources["ascend-npu-run-eval"] = "ascend-npu-run-eval-mcp"
@@ -233,7 +233,7 @@ while preserving the same "logical staged name, alternate source directory" sema
 
 ### Runtime Skill Loading
 
-`src/triton_agent/skill_loader.py` should load skill scripts by logical skill name through the central catalog rather than directly concatenating `repo_root() / "skills" / skill_name`.
+`src/helix/skill_loader.py` should load skill scripts by logical skill name through the central catalog rather than directly concatenating `repo_root() / "skills" / skill_name`.
 
 Required consequences:
 
@@ -334,7 +334,7 @@ Recommended branch implementation order:
 
 Current implementation blast radius is already large enough that this should be planned as one repository-wide migration batch:
 
-- 23 `src/triton_agent/*.py` files currently contain skill-name or flat-skill-path assumptions
+- 23 `src/helix/*.py` files currently contain skill-name or flat-skill-path assumptions
 - 39 `tests/test_*.py` files currently contain repository skill-name or flat-skill-path assumptions
 
 Merge and rollback rules:

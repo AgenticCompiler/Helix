@@ -1,17 +1,17 @@
 # Optimize Supervised Log Archive Design
 
-> **Superseded note:** This design assumed live `.triton-agent/roles/*` files. The current implementation archives shared guidance, round briefs, and supervisor reports only; role-specific behavior comes from prompts rather than persisted role brief files.
+> **Superseded note:** This design assumed live `.helix/roles/*` files. The current implementation archives shared guidance, round briefs, and supervisor reports only; role-specific behavior comes from prompts rather than persisted role brief files.
 
 ## Summary
 
-When `optimize` runs with `--supervise on`, the runtime currently creates a live `.triton-agent/` directory for shared guidance, role briefs, the current round brief, and the current supervisor report. Those files are deleted during cleanup. This keeps later runs clean, but it also discards the supervisor handoff trail that would be useful when reviewing how an optimize session progressed.
+When `optimize` runs with `--supervise on`, the runtime currently creates a live `.helix/` directory for shared guidance, role briefs, the current round brief, and the current supervisor report. Those files are deleted during cleanup. This keeps later runs clean, but it also discards the supervisor handoff trail that would be useful when reviewing how an optimize session progressed.
 
-This design keeps `.triton-agent/` as an ephemeral runtime directory and adds a persistent archive under `triton-agent-logs/triton-agent/<run-id>/`. The archive stores immutable snapshots of supervised orchestration artifacts without leaving the live `.triton-agent/` directory behind for future runs to accidentally read.
+This design keeps `.helix/` as an ephemeral runtime directory and adds a persistent archive under `helix-logs/helix/<run-id>/`. The archive stores immutable snapshots of supervised orchestration artifacts without leaving the live `.helix/` directory behind for future runs to accidentally read.
 
 ## Goals
 
 - Preserve supervised optimize orchestration logs after the run finishes.
-- Keep live `.triton-agent/` semantics unchanged: it remains a runtime-only working directory.
+- Keep live `.helix/` semantics unchanged: it remains a runtime-only working directory.
 - Avoid contaminating later optimize runs with stale round briefs or supervisor reports.
 - Archive enough information to reconstruct the supervision flow across rounds.
 - Apply the behavior only to `--supervise on`.
@@ -25,26 +25,26 @@ This design keeps `.triton-agent/` as an ephemeral runtime directory and adds a 
 
 ## Current Behavior
 
-- Supervised optimize writes these live files under `.triton-agent/`:
+- Supervised optimize writes these live files under `.helix/`:
   - `roles/optimize-worker.md`
   - `roles/optimize-supervisor.md`
   - `round-brief.md`
   - `supervisor-report.md`
 - The top-level shared guidance file (`AGENTS.md` or `CLAUDE.md`) is rendered into the workspace for the duration of the run and then removed or restored.
 - `round-brief.md` and `supervisor-report.md` are overwritten as the session progresses.
-- Cleanup removes the live `.triton-agent/` tree and restores the workspace guidance file.
+- Cleanup removes the live `.helix/` tree and restores the workspace guidance file.
 
 ## Proposed Behavior
 
 ### Runtime Directory
 
-The live `.triton-agent/` directory continues to exist only for the current supervised run. Agents still read and write the same live paths during execution.
+The live `.helix/` directory continues to exist only for the current supervised run. Agents still read and write the same live paths during execution.
 
 ### Persistent Archive
 
 At the end of a supervised run, the runtime writes a persistent archive under:
 
-`triton-agent-logs/triton-agent/<run-id>/`
+`helix-logs/helix/<run-id>/`
 
 `<run-id>` should be unique per supervised run. A timestamp-based identifier is sufficient for the first version.
 
@@ -69,7 +69,7 @@ The archive contains:
 
 ### Per-Round History
 
-Each time the supervised loop writes the live `round-brief.md` and `supervisor-report.md`, it must also write immutable copies into `.triton-agent/history/`.
+Each time the supervised loop writes the live `round-brief.md` and `supervisor-report.md`, it must also write immutable copies into `.helix/history/`.
 
 This avoids losing intermediate handoff state when:
 
@@ -79,17 +79,17 @@ This avoids losing intermediate handoff state when:
 
 ### Final Archive
 
-During supervised cleanup, before removing `.triton-agent/`, the runtime copies the live history and final snapshots into `triton-agent-logs/triton-agent/<run-id>/`.
+During supervised cleanup, before removing `.helix/`, the runtime copies the live history and final snapshots into `helix-logs/helix/<run-id>/`.
 
 After the archive is written, cleanup proceeds as it does today:
 
-- remove live `.triton-agent/` files
-- remove empty live `.triton-agent/` directories
+- remove live `.helix/` files
+- remove empty live `.helix/` directories
 - remove or restore the workspace guidance file
 
 ## Failure And Interrupt Semantics
 
-If a supervised run created `.triton-agent/`, the runtime should attempt to archive the supervised logs on:
+If a supervised run created `.helix/`, the runtime should attempt to archive the supervised logs on:
 
 - successful completion
 - supervisor-driven stop
@@ -105,8 +105,8 @@ If archive creation itself fails, the runtime should:
 ## Archive Layout Example
 
 ```text
-triton-agent-logs/
-  triton-agent/
+helix-logs/
+  helix/
     20260413-153045/
       shared-guidance.md
       roles/
@@ -124,7 +124,7 @@ triton-agent-logs/
 
 ## Implementation Notes
 
-- Keep `.triton-agent/` role-neutral and runtime-only.
+- Keep `.helix/` role-neutral and runtime-only.
 - Add archive paths to optimize guidance state so cleanup can archive before deletion.
 - Write per-round immutable history from the supervised loop when gate handoff files are updated.
 - Preserve current behavior for unsupervised optimize.
@@ -134,7 +134,7 @@ triton-agent-logs/
 Add coverage for:
 
 - supervised optimize writes immutable `history/` snapshots without overwriting previous rounds
-- supervised cleanup creates `triton-agent-logs/triton-agent/<run-id>/`
-- supervised cleanup removes the live `.triton-agent/` directory after archiving
+- supervised cleanup creates `helix-logs/helix/<run-id>/`
+- supervised cleanup removes the live `.helix/` directory after archiving
 - unsupervised optimize does not create supervised archives
 - failure or interruption after at least one supervisor pass still leaves an archive when cleanup runs

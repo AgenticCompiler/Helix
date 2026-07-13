@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_codex_runner.py`
-- Modify: `src/triton_agent/backends/codex.py`
+- Modify: `src/helix/backends/codex.py`
 
 - [ ] Add a failing test for `session id: <uuid>` startup text.
 - [ ] Run `uv run python -m unittest tests.test_codex_runner -v` and verify the test fails.
@@ -25,7 +25,7 @@
 
 **Files:**
 - Modify: `tests/test_optimize_guidance.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/optimize/guidance.py`
 
 - [ ] Add failing tests for the session log path and JSONL writer.
 - [ ] Run `uv run python -m unittest tests.test_optimize_guidance -v` and verify failure.
@@ -36,7 +36,7 @@
 
 **Files:**
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] Add failing supervised tests that record worker and supervisor launches.
 - [ ] Add failing unsupervised tests that record worker launch with `unknown` fallback.

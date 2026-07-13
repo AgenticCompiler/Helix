@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `check-baseline` always preserve archived PT files, make ordinary optimize cleanup preserve them by default, and add `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` to re-enable ordinary optimize PT cleanup without changing `--reset-optimize`.
+**Goal:** Make `check-baseline` always preserve archived PT files, make ordinary optimize cleanup preserve them by default, and add `HELIX_OPTIMIZE_DELETE_PT_FILES` to re-enable ordinary optimize PT cleanup without changing `--reset-optimize`.
 
 **Architecture:** Keep PT cleanup ownership inside the existing optimize-check skill contract and the optimize runtime bridge. Remove baseline-side mutation entirely, gate round and end-of-run PT cleanup through one skill-owned environment-variable helper, and leave `reset_optimize_workspace()` unchanged so destructive fresh resets keep their current semantics.
 
@@ -22,11 +22,11 @@ Update `tests/test_skill_command_script.py` so the existing baseline-check scena
 
 - [ ] **Step 2: Add a failing round-check test for the default preserve behavior**
 
-Add one focused test in `tests/test_optimize_checks.py` that writes `opt-round-1/test_result.pt`, calls `optimize_checks.check_round(round_dir)`, asserts the result still passes, and asserts the PT file still exists when `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` is unset.
+Add one focused test in `tests/test_optimize_checks.py` that writes `opt-round-1/test_result.pt`, calls `optimize_checks.check_round(round_dir)`, asserts the result still passes, and asserts the PT file still exists when `HELIX_OPTIMIZE_DELETE_PT_FILES` is unset.
 
 - [ ] **Step 3: Add a failing round-check test for the opt-in delete behavior**
 
-Add one focused test in `tests/test_optimize_checks.py` that uses `patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False)`, calls `optimize_checks.check_round(round_dir)`, asserts a passing result, and asserts the PT file is deleted.
+Add one focused test in `tests/test_optimize_checks.py` that uses `patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False)`, calls `optimize_checks.check_round(round_dir)`, asserts a passing result, and asserts the PT file is deleted.
 
 - [ ] **Step 4: Run the focused tests and confirm RED**
 
@@ -43,13 +43,13 @@ Expected: failures showing that baseline and/or round cleanup still delete PT fi
 **Files:**
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py`
-- Modify: `src/triton_agent/optimize/pt_cleanup.py`
+- Modify: `src/helix/optimize/pt_cleanup.py`
 
 - [ ] **Step 1: Add the environment-variable helper in the skill contract**
 
 In `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`, add:
 
-- a module-level constant for `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`
+- a module-level constant for `HELIX_OPTIMIZE_DELETE_PT_FILES`
 - a small helper that returns `True` only for case-insensitive values `1`, `true`, `yes`, or `on`
 - default `False` for unset or any other value
 
@@ -70,11 +70,11 @@ Update `check_round()` in `skills/triton-npu-optimize-submit-round/scripts/optim
 
 - [ ] **Step 4: Re-export the helper through the bridge module**
 
-Update `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py` to import and expose the new helper in `__all__` so `src/triton_agent/optimize/pt_cleanup.py` can reuse the same policy through `optimize_check_module()`.
+Update `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py` to import and expose the new helper in `__all__` so `src/helix/optimize/pt_cleanup.py` can reuse the same policy through `optimize_check_module()`.
 
 - [ ] **Step 5: Gate end-of-run runtime cleanup through the same helper**
 
-Update `src/triton_agent/optimize/pt_cleanup.py` so `cleanup_workspace_pt_files(workdir)` first checks the bridged helper and returns `[]` immediately when ordinary PT cleanup is disabled. Keep the existing root-directory and `opt-round-*` scan behavior unchanged when the helper returns `True`.
+Update `src/helix/optimize/pt_cleanup.py` so `cleanup_workspace_pt_files(workdir)` first checks the bridged helper and returns `[]` immediately when ordinary PT cleanup is disabled. Keep the existing root-directory and `opt-round-*` scan behavior unchanged when the helper returns `True`.
 
 - [ ] **Step 6: Run the focused tests and the strict skill-script pyright checks**
 
@@ -107,14 +107,14 @@ Call `cleanup_workspace_pt_files(workdir)` with the environment variable unset a
 
 - [ ] **Step 2: Add a failing runtime test for the opt-in delete behavior**
 
-Add a second focused test that sets `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1`, calls `cleanup_workspace_pt_files(workdir)`, and asserts:
+Add a second focused test that sets `HELIX_OPTIMIZE_DELETE_PT_FILES=1`, calls `cleanup_workspace_pt_files(workdir)`, and asserts:
 
 - the returned cleaned list includes both the root artifact name and the round-prefixed artifact name
 - both PT files are removed
 
 - [ ] **Step 3: Add reset coverage proving reset stays destructive**
 
-Add one focused test for `reset_optimize_workspace()` that writes a workspace-root `*_result.pt`, sets `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` to a falsey or unrelated value, runs reset, and asserts the workspace-root PT artifact is still deleted.
+Add one focused test for `reset_optimize_workspace()` that writes a workspace-root `*_result.pt`, sets `HELIX_OPTIMIZE_DELETE_PT_FILES` to a falsey or unrelated value, runs reset, and asserts the workspace-root PT artifact is still deleted.
 
 - [ ] **Step 4: Run the runtime-focused tests and confirm GREEN**
 
@@ -129,13 +129,13 @@ Expected: the new runtime and reset coverage passes.
 ### Task 4: Document The New Environment Variable And Finish Verification
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/cli.py`
 - Modify: `README.md`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Add the variable to CLI environment help**
 
-Update `src/triton_agent/cli.py` so the top-level environment-variable help includes `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` with wording that makes these semantics explicit:
+Update `src/helix/cli.py` so the top-level environment-variable help includes `HELIX_OPTIMIZE_DELETE_PT_FILES` with wording that makes these semantics explicit:
 
 - it only affects ordinary optimize PT cleanup
 - default behavior preserves PT files
@@ -152,7 +152,7 @@ Update `README.md` to describe:
 
 - [ ] **Step 3: Add CLI help coverage for the new variable**
 
-Update `tests/test_cli.py` so the existing environment-variable help assertions now include `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`.
+Update `tests/test_cli.py` so the existing environment-variable help assertions now include `HELIX_OPTIMIZE_DELETE_PT_FILES`.
 
 - [ ] **Step 4: Run the focused docs/help tests**
 

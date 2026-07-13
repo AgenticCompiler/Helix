@@ -9,25 +9,25 @@ from setuptools import Distribution
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent._setuptools_hooks import BuildPyWithMeta  # noqa: E402
+from helix._setuptools_hooks import BuildPyWithMeta  # noqa: E402
 
 
 class BuildPyWithMetaTests(unittest.TestCase):
     def test_run_cleans_stale_generated_package_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            src_pkg = root / "src" / "triton_agent"
+            src_pkg = root / "src" / "helix"
             src_pkg.mkdir(parents=True)
             (src_pkg / "__init__.py").write_text("", encoding="utf-8")
             (src_pkg / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
 
-            build_pkg = root / "build-lib" / "triton_agent"
+            build_pkg = root / "build-lib" / "helix"
             build_pkg.mkdir(parents=True)
             (build_pkg / "_build_cmd.py").write_text("STALE = True\n", encoding="utf-8")
 
             dist = Distribution(
                 {
-                    "packages": ["triton_agent"],
+                    "packages": ["helix"],
                     "package_dir": {"": str(root / "src")},
                 }
             )
@@ -39,7 +39,7 @@ class BuildPyWithMetaTests(unittest.TestCase):
 
             fake_commit = "a" * 40
             with patch(
-                "triton_agent._setuptools_hooks._resolve_build_commit",
+                "helix._setuptools_hooks._resolve_build_commit",
                 return_value=fake_commit,
             ):
                 command.run()

@@ -2,7 +2,7 @@
 
 ## Summary
 
-> **Superseded note:** The current supervised optimize flow still uses worker and supervisor roles, but it no longer stages `.triton-agent/roles/*` files and it no longer launches a dedicated `optimize-supervisor` skill. Supervisor behavior is prompt-driven.
+> **Superseded note:** The current supervised optimize flow still uses worker and supervisor roles, but it no longer stages `.helix/roles/*` files and it no longer launches a dedicated `optimize-supervisor` skill. Supervisor behavior is prompt-driven.
 
 - Add an explicit `--supervise {on,off}` option to `optimize` and `optimize-batch`.
 - Default `--supervise` to `off` so ordinary optimize runs continue using the existing single-agent flow.
@@ -88,16 +88,16 @@ The parser should expose `choices=["on", "off"]` instead of a boolean flag so th
 Single workspace:
 
 ```bash
-uv run triton-agent optimize --input operator.py
-uv run triton-agent optimize --input operator.py --supervise on
-uv run triton-agent optimize --input . --supervise on --min-rounds 10
+uv run helix optimize --input operator.py
+uv run helix optimize --input operator.py --supervise on
+uv run helix optimize --input . --supervise on --min-rounds 10
 ```
 
 Batch:
 
 ```bash
-uv run triton-agent optimize-batch --input operators_root
-uv run triton-agent optimize-batch --input operators_root --supervise on
+uv run helix optimize-batch --input operators_root
+uv run helix optimize-batch --input operators_root --supervise on
 ```
 
 ## Behavior By Mode
@@ -188,7 +188,7 @@ They should differ only in how the optimize agent is orchestrated after preparat
 
 When `--supervise off`:
 
-- Do not render `.triton-agent/roles/`
+- Do not render `.helix/roles/`
 - Do not render `round-brief.md` or `supervisor-report.md`
 - Do not launch the `optimize-supervisor` skill
 - Do not write shared role-neutral orchestration guidance unless the unsupervised flow still needs the older single-agent guidance file

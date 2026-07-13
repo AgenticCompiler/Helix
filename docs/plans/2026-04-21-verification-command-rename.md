@@ -42,9 +42,9 @@ Expected: PASS
 ### Task 2: Move verification runtime into a dedicated package
 
 **Files:**
-- Create: `src/triton_agent/verification/__init__.py`
-- Create: `src/triton_agent/verification/core.py`
-- Create: `src/triton_agent/verification/batch.py`
+- Create: `src/helix/verification/__init__.py`
+- Create: `src/helix/verification/core.py`
+- Create: `src/helix/verification/batch.py`
 - Modify: `tests/test_verify.py`
 - Modify: `tests/test_verify_batch.py`
 
@@ -74,8 +74,8 @@ Expected: PASS
 ### Task 3: Split command handlers out of optimize commands
 
 **Files:**
-- Create: `src/triton_agent/commands/verification.py`
-- Modify: `src/triton_agent/commands/optimize.py`
+- Create: `src/helix/commands/verification.py`
+- Modify: `src/helix/commands/optimize.py`
 - Modify: `tests/test_verify_batch.py`
 - Modify: `tests/test_cli.py`
 

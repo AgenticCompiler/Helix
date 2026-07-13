@@ -55,8 +55,8 @@ Expected: FAIL on the new cleanup assertions before implementation.
 
 **Files:**
 - Modify: `skills/common/ascend-npu-optimize-state/scripts/round/check.py`
-- Create: `src/triton_agent/optimize/profile_cleanup.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
+- Create: `src/helix/optimize/profile_cleanup.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
 
 - [ ] **Step 1: Add profile-pruning helpers to the round skill script**
 
@@ -72,7 +72,7 @@ pass.
 
 - [ ] **Step 3: Add a thin runtime bridge for session teardown**
 
-Expose the shared cleanup helpers through `src/triton_agent/optimize/` using
+Expose the shared cleanup helpers through `src/helix/optimize/` using
 the existing skill-loader bridge pattern.
 
 - [ ] **Step 4: Run the same cleanup during optimize session teardown**

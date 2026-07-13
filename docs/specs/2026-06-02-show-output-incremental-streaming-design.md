@@ -6,7 +6,7 @@ Change non-interactive `--show-output` runs so rendered agent output is appended
 
 ## Goals
 
-- Make the `triton-agent-logs/*.show-output.log` file durable during execution so unexpected agent or wrapper termination still leaves partial output behind.
+- Make the `helix-logs/*.show-output.log` file durable during execution so unexpected agent or wrapper termination still leaves partial output behind.
 - Keep the log file content identical to the rendered agent output stream.
 - Remove wrapper-added show-output markers, counters, and attempt summaries from the log file.
 - Stop treating `AgentResult.stdout` as the canonical storage for streamed `--show-output` output.

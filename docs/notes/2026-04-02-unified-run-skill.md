@@ -14,8 +14,8 @@
 
 ## Stable Boundary
 
-- `src/triton_agent/cli.py` owns argparse, path validation, prompt construction, and result printing.
+- `src/helix/cli.py` owns argparse, path validation, prompt construction, and result printing.
 - `skills/triton-npu-run-eval/scripts/*.py` own local execution, remote execution, metadata parsing, result archiving, and comparison behavior.
-- `skills/triton-npu-run-eval/scripts/run-command.py` is a standalone helper CLI, not a wrapper that imports `triton_agent.cli`.
-- `src/triton_agent/skill_loader.py` is the only bridge layer. It resolves skill script paths and dynamically loads them by file path.
-- The dependency direction is one-way only: `triton_agent` may import `skills/triton-npu-run-eval/scripts`, but the skill scripts must not import `triton_agent`.
+- `skills/triton-npu-run-eval/scripts/run-command.py` is a standalone helper CLI, not a wrapper that imports `helix.cli`.
+- `src/helix/skill_loader.py` is the only bridge layer. It resolves skill script paths and dynamically loads them by file path.
+- The dependency direction is one-way only: `helix` may import `skills/triton-npu-run-eval/scripts`, but the skill scripts must not import `helix`.

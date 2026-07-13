@@ -12,18 +12,18 @@
 
 ## File Map
 
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/commands/comparison.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/commands/comparison.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/memory_file.py`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-round/references/contract.json`
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
@@ -317,15 +317,15 @@ Expected: `FAIL` because optimize prompts and temporary guidance files do not ye
 ## Task 4: Implement The Optimize Target Field
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - [ ] **Step 1: Add the CLI enum and plumb it into optimize run options**
 
-Update `src/triton_agent/cli.py` to register the new option in the optimize-options block:
+Update `src/helix/cli.py` to register the new option in the optimize-options block:
 
 ```python
             subparser.add_argument(
@@ -335,13 +335,13 @@ Update `src/triton_agent/cli.py` to register the new option in the optimize-opti
             )
 ```
 
-Update `src/triton_agent/optimize/models.py`:
+Update `src/helix/optimize/models.py`:
 
 ```python
     optimize_target: Literal["kernel", "operator"] = "kernel"
 ```
 
-Update `src/triton_agent/commands/optimize.py`:
+Update `src/helix/commands/optimize.py`:
 
 ```python
     optimize_target = cast(
@@ -354,13 +354,13 @@ and pass it into `OptimizeRunOptions(...)`.
 
 - [ ] **Step 2: Add the field to `AgentRequest` and request construction**
 
-Update `src/triton_agent/models.py`:
+Update `src/helix/models.py`:
 
 ```python
     optimize_target: Literal["kernel", "operator"] = "kernel"
 ```
 
-Update `src/triton_agent/optimize/orchestration.py` so `build_optimize_request()` passes:
+Update `src/helix/optimize/orchestration.py` so `build_optimize_request()` passes:
 
 ```python
         optimize_target=options.optimize_target,
@@ -375,7 +375,7 @@ Expected: `PASS`
 ## Task 5: Adapt Compare-Perf Usage And Record Effective Metric Source
 
 **Files:**
-- Modify: `src/triton_agent/commands/comparison.py`
+- Modify: `src/helix/commands/comparison.py`
 - Modify: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
 - Modify: `skills/triton-npu-run-eval/references/compare-perf.md`
 - Modify: `README.md`
@@ -452,14 +452,14 @@ Expected: `PASS`
 ## Task 6: Switch Optimize Prompt Contracts By Target
 
 **Files:**
-- Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/optimize/prompts.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/optimize/run_loop.py`
 
 - [ ] **Step 1: Add explicit target-aware contract lines in optimize prompt helpers**
 
-In `src/triton_agent/optimize/prompts.py`, add a helper that renders the target-specific contract:
+In `src/helix/optimize/prompts.py`, add a helper that renders the target-specific contract:
 
 ```python
 def optimize_target_lines(*, optimize_target: str) -> list[str]:
@@ -496,7 +496,7 @@ In operator mode, supervisor wording should explicitly allow whole-operator rest
 
 - [ ] **Step 2: Propagate the new prompt parameter through callers**
 
-Update `src/triton_agent/prompts.py`, `src/triton_agent/backends/base.py`, and `src/triton_agent/optimize/run_loop.py` so resume and initial prompt construction always pass `optimize_target`.
+Update `src/helix/prompts.py`, `src/helix/backends/base.py`, and `src/helix/optimize/run_loop.py` so resume and initial prompt construction always pass `optimize_target`.
 
 - [ ] **Step 3: Run the prompt tests and make sure they pass**
 
@@ -507,15 +507,15 @@ Expected: `PASS`
 ## Task 7: Switch Optimize Workspace Guidance By Target
 
 **Files:**
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/orchestration.py`
 - Modify: `tests/test_optimize_guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Add target-aware guidance rendering**
 
-Update `src/triton_agent/optimize/memory_file.py` so unsupervised and shared guidance accept `optimize_target` and include target-aware lines such as:
+Update `src/helix/optimize/memory_file.py` so unsupervised and shared guidance accept `optimize_target` and include target-aware lines such as:
 
 ```python
 def optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:

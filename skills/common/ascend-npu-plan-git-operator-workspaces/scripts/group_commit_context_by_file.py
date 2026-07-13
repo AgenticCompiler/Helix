@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "JsonValue"]]
 
-DEFAULT_INPUT = ".triton-agent/git-operator-context.json"
-DEFAULT_OUTPUT = ".triton-agent/git-operator-file-groups.json"
+DEFAULT_INPUT = ".helix/git-operator-context.json"
+DEFAULT_OUTPUT = ".helix/git-operator-file-groups.json"
 
 CODE_EXTENSIONS = {
     ".py",

@@ -2,7 +2,7 @@
 
 ## Context
 
-当前 `triton-agent log-check` 命令通过 LLM agent 生成两个 markdown 文件：
+当前 `helix log-check` 命令通过 LLM agent 生成两个 markdown 文件：
 - `log_check_result.md` — 9 项优化质量检查结果
 - `pattern_analysis.md` — 优化策略模式分析（check-10）
 
@@ -111,7 +111,7 @@
 
 ### Step 1: 新增 JSON schema 定义与校验模块
 
-**新文件**: `src/triton_agent/log_check/check_json.py`
+**新文件**: `src/helix/log_check/check_json.py`
 
 职责：
 - 定义 `LOG_CHECK_JSON_SCHEMA` 和 `PATTERN_ANALYSIS_JSON_SCHEMA` 常量
@@ -121,7 +121,7 @@
 
 ### Step 2: 新增 markdown 渲染模块
 
-**新文件**: `src/triton_agent/log_check/check_markdown.py`
+**新文件**: `src/helix/log_check/check_markdown.py`
 
 职责：
 - `render_log_check_markdown(data: dict) -> str` — 从 JSON 渲染 `log_check_result.md`
@@ -130,7 +130,7 @@
 
 ### Step 3: 修改 agent prompt
 
-**修改文件**: `src/triton_agent/log_check/log_check_launcher.py`
+**修改文件**: `src/helix/log_check/log_check_launcher.py`
 
 - 修改 `build_log_check_prompt()`：
   - 将 check-1 ~ check-9 的输出指令改为写入 `log_check_result.json`（而非 `.md`）
@@ -140,7 +140,7 @@
 
 ### Step 4: 修改 launcher 后处理逻辑
 
-**修改文件**: `src/triton_agent/log_check/log_check_launcher.py`
+**修改文件**: `src/helix/log_check/log_check_launcher.py`
 
 在 `run_log_check()` 中 agent 执行完成后：
 1. 读取 agent 产出的 JSON 文件
@@ -152,7 +152,7 @@
 
 ### Step 5: 更新 batch.py 读取逻辑
 
-**修改文件**: `src/triton_agent/log_check/batch.py`
+**修改文件**: `src/helix/log_check/batch.py`
 
 - 修改 `summarize_log_check_output()`：
   - 优先读取 `log_check_result.json`，从中提取 `overall` 和 `failed_checks`
@@ -160,7 +160,7 @@
 
 ### Step 6: 更新 log_check_launcher.py 入口参数
 
-**修改文件**: `src/triton_agent/log_check/log_check_launcher.py`
+**修改文件**: `src/helix/log_check/log_check_launcher.py`
 
 - `build_log_check_request()` 和 `run_log_check()` 增加 `output_json` 参数
 - `build_parser()` 增加 `--output-json` CLI 选项
@@ -169,11 +169,11 @@
 
 | 文件 | 变更类型 | 说明 |
 |---|---|---|
-| `src/triton_agent/log_check/check_json.py` | **新增** | JSON schema 定义、校验、修复 |
-| `src/triton_agent/log_check/check_markdown.py` | **新增** | 从 JSON 渲染 markdown |
-| `src/triton_agent/log_check/log_check_launcher.py` | **修改** | prompt 改为输出 JSON；增加后处理逻辑 |
-| `src/triton_agent/log_check/batch.py` | **修改** | `summarize_log_check_output()` 优先读 JSON |
-| `src/triton_agent/log_check/__init__.py` | **修改** | 导出新模块的公开 API |
+| `src/helix/log_check/check_json.py` | **新增** | JSON schema 定义、校验、修复 |
+| `src/helix/log_check/check_markdown.py` | **新增** | 从 JSON 渲染 markdown |
+| `src/helix/log_check/log_check_launcher.py` | **修改** | prompt 改为输出 JSON；增加后处理逻辑 |
+| `src/helix/log_check/batch.py` | **修改** | `summarize_log_check_output()` 优先读 JSON |
+| `src/helix/log_check/__init__.py` | **修改** | 导出新模块的公开 API |
 | `tests/` | **新增** | JSON 校验、MD 渲染、batch 解析的单元测试 |
 
 ## 兼容性
@@ -186,6 +186,6 @@
 
 1. 单元测试：用 fixture JSON 数据验证 markdown 渲染输出与预期一致
 2. 单元测试：用合法/非法 JSON 验证校验和修复逻辑
-3. 集成测试：运行 `triton-agent log-check -i <fixture-workspace>` 验证端到端流程
+3. 集成测试：运行 `helix log-check -i <fixture-workspace>` 验证端到端流程
 4. 回归测试：用旧 workspace（只有 MD 无 JSON）验证 batch 回退逻辑
 5. 检查 `post-batch-state.json` 的 check/pattern 字段能从新 JSON 文件中正确读取

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TextIO
 
 from bench_runner import stream_target_for_verbosity
-from env_registry import TRITON_AGENT_PROFILE_TIMEOUT_SECONDS, TRITON_ALWAYS_COMPILE
+from env_registry import HELIX_PROFILE_TIMEOUT_SECONDS, TRITON_ALWAYS_COMPILE
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
@@ -25,7 +25,7 @@ from run_runtime import (
 
 
 def _profile_timeout() -> int:
-    return env_int(TRITON_AGENT_PROFILE_TIMEOUT_SECONDS, 900)
+    return env_int(HELIX_PROFILE_TIMEOUT_SECONDS, 900)
 
 
 def run_local_profile_bench(
@@ -254,7 +254,7 @@ def _bench_runtime_support_paths() -> list[Path]:
 
 def _load_bench_runtime_module():
     script_path = _bench_runtime_script_path()
-    module_name = f"triton_agent_bench_runtime_{script_path.stem}"
+    module_name = f"helix_bench_runtime_{script_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load bench runtime helper: {script_path}")

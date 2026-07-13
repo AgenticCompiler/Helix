@@ -6,8 +6,8 @@ Add `--supervisor` as a CLI alias for the existing `--supervise on|off` option.
 
 ## User-Visible Behavior
 
-- `triton-agent optimize ... --supervisor on` behaves the same as `--supervise on`.
-- `triton-agent optimize-batch ... --supervisor off` behaves the same as `--supervise off`.
+- `helix optimize ... --supervisor on` behaves the same as `--supervise on`.
+- `helix optimize-batch ... --supervisor off` behaves the same as `--supervise off`.
 - The parsed value still lands in `args.supervise`, so downstream runtime behavior and validation stay unchanged.
 - The default remains `off`.
 

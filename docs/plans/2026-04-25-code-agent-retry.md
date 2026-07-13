@@ -22,7 +22,7 @@
 ### Task 2: Implement shared retry in the backend base layer
 
 **Files:**
-- Modify: `src/triton_agent/backends/base.py`
+- Modify: `src/helix/backends/base.py`
 
 - [ ] **Step 1: Add env-var parsing and transient-failure detection helpers**
 - [ ] **Step 2: Wrap non-interactive `run()` execution in a shared retry loop with exponential backoff**
@@ -31,7 +31,7 @@
 ### Task 3: Remove optimize-owned 429 retry logic
 
 **Files:**
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/optimize/run_loop.py`
 - Modify: `tests/test_supervisor.py`
 
 - [ ] **Step 1: Write failing tests that reflect stall-only optimize recovery semantics**
@@ -43,9 +43,9 @@
 **Files:**
 - Modify: `tests/test_backends_base.py`
 - Modify: `tests/test_supervisor.py`
-- Modify: `src/triton_agent/backends/base.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/helix/backends/base.py`
+- Modify: `src/helix/optimize/run_loop.py`
 
 - [ ] **Step 1: Run `uv run python -m unittest tests.test_backends_base tests.test_supervisor -v`**
 - [ ] **Step 2: Inspect output and fix any regressions**
-- [ ] **Step 3: Report final behavior, including the new `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` semantics**
+- [ ] **Step 3: Report final behavior, including the new `HELIX_CODE_AGENT_MAX_RETRIES` semantics**

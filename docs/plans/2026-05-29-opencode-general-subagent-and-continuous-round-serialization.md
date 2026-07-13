@@ -34,7 +34,7 @@
 ### Task 3: Implement Prompt Serialization Guidance
 
 **Files:**
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Test: `tests/test_cli.py`
 
 - [ ] Add a shared continuous-round serialization rule block used by the initial continuous prompt and the continuous resume prompt path.
@@ -44,7 +44,7 @@
 ### Task 4: Implement OpenCode Workspace Config Staging
 
 **Files:**
-- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/helix/backends/opencode.py`
 - Test: `tests/test_opencode_runner.py`
 
 - [ ] Add a small OpenCode workspace config staging helper that writes `.opencode/opencode.json` with the schema URL and `permission.task.general = "deny"` for the built-in primary agents we launch.

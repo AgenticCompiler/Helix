@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from triton_agent.clean.core import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
+from helix.clean.core import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
 
 
 class WorkspaceCleaningTests(unittest.TestCase):
@@ -78,7 +78,7 @@ class WorkspaceCleaningTests(unittest.TestCase):
             real_logs = outside / "logs-real"
             real_logs.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
-            logs_link = workspace / "triton-agent-logs"
+            logs_link = workspace / "helix-logs"
             logs_link.symlink_to(real_logs, target_is_directory=True)
 
             clean_workspace(workspace, deep=False)

@@ -6,7 +6,7 @@ from typing import Optional
 from hook_runtime.optimize.compiler_source import (
     COMPILER_SOURCE_REPO_URL as HOOK_RUNTIME_COMPILER_SOURCE_REPO_URL,
 )
-from triton_agent.optimize.compiler_source import (
+from helix.optimize.compiler_source import (
     COMPILER_SOURCE_REPO_URL,
     CompilerSourceInfo,
     default_compiler_source_path,
@@ -40,7 +40,7 @@ class CompilerSourceTests(unittest.TestCase):
 
     def test_prepare_clones_missing_default_checkout_depth_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            home = Path(tmp) / ".triton-agent"
+            home = Path(tmp) / ".helix"
             calls: list[list[str]] = []
 
             def fake_run(args: list[str], cwd: Optional[Path] = None) -> str:

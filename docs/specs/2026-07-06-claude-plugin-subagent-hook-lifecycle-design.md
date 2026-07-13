@@ -4,14 +4,14 @@
 
 Keep Claude optimize-plugin runtime state ownership on both session-scoped and subagent-scoped hooks.
 
-Claude Code may run the optimize plugin agent directly as the active agent or may invoke it from the plugin `agents/` directory as a subagent. Therefore `.triton-agent/state.json` should be bootstrapped from either `SessionStart` or `SubagentStart`, and cleaned up from either `SessionEnd` or `SubagentStop`. Those lifecycle actions must be idempotent: when valid runtime state already exists, later bootstrap calls should reuse it instead of overwriting it, and later cleanup calls should safely no-op when the runtime tree is already gone. Missing workflow state should no longer block ordinary workspace edits by itself. When workflow state is absent, edit guards should skip workflow-phase gating while still protecting internal runtime paths such as `.triton-agent/`, staged hook files, staged skill scripts, and `triton-agent-logs/`.
+Claude Code may run the optimize plugin agent directly as the active agent or may invoke it from the plugin `agents/` directory as a subagent. Therefore `.helix/state.json` should be bootstrapped from either `SessionStart` or `SubagentStart`, and cleaned up from either `SessionEnd` or `SubagentStop`. Those lifecycle actions must be idempotent: when valid runtime state already exists, later bootstrap calls should reuse it instead of overwriting it, and later cleanup calls should safely no-op when the runtime tree is already gone. Missing workflow state should no longer block ordinary workspace edits by itself. When workflow state is absent, edit guards should skip workflow-phase gating while still protecting internal runtime paths such as `.helix/`, staged hook files, staged skill scripts, and `helix-logs/`.
 
 ## Goals
 
 - Make optimize runtime bootstrap line up with the actual Claude plugin agent lifecycle.
 - Support both direct optimize-agent startup and optimize-agent subagent startup.
-- Rename the optimize plugin agent identifier and file from `triton-agent-optimize` to `triton-agent-optimizer`.
-- Stop blocking baseline repair edits only because `.triton-agent/state.json` is missing.
+- Rename the optimize plugin agent identifier and file from `helix-optimize` to `helix-optimizer`.
+- Stop blocking baseline repair edits only because `.helix/state.json` is missing.
 - Keep internal runtime paths protected even when workflow state is absent.
 - Preserve existing baseline / round workflow-state gating once state exists.
 
@@ -20,13 +20,13 @@ Claude Code may run the optimize plugin agent directly as the active agent or ma
 - Do not redesign optimize phase names, round semantics, or `ascend-npu-optimize-state` command behavior.
 - Do not infer round state from durable artifacts inside edit guards.
 - Do not remove the shared tool-use guard layer.
-- Do not weaken protection for `.triton-agent/`, staged hook implementation files, staged skill `scripts/`, or `triton-agent-logs/`.
+- Do not weaken protection for `.helix/`, staged hook implementation files, staged skill `scripts/`, or `helix-logs/`.
 
 ## User-Visible Behavior
 
 ### Optimize worker startup
 
-- When Claude starts the optimize plugin agent directly, `SessionStart` should ensure the workspace-local `.triton-agent/` directory exists and bootstrap `.triton-agent/state.json`.
+- When Claude starts the optimize plugin agent directly, `SessionStart` should ensure the workspace-local `.helix/` directory exists and bootstrap `.helix/state.json`.
 - When the plugin optimize agent is spawned as a Claude subagent, `SubagentStart` should do the same.
 - For a fresh optimize workspace, bootstrap a `baseline` phase state.
 - For a resumable optimize workspace with a reusable canonical baseline, bootstrap the existing resumable state exactly as current shared bootstrap logic already defines.
@@ -34,20 +34,20 @@ Claude Code may run the optimize plugin agent directly as the active agent or ma
 
 ### Optimize worker shutdown
 
-- When a directly started optimize-agent session ends, `SessionEnd` should remove the live `.triton-agent/` runtime tree.
+- When a directly started optimize-agent session ends, `SessionEnd` should remove the live `.helix/` runtime tree.
 - When an optimize subagent finishes, `SubagentStop` should remove the same runtime tree when it owns it.
 - Cleanup should remain best-effort and must not delete durable optimize artifacts such as `baseline/`, `opt-round-*`, or `opt-note.md`.
 - Cleanup should be idempotent and must tolerate the runtime tree already being absent.
 
 ### Missing workflow state during editing
 
-- If `.triton-agent/state.json` is missing, malformed, or otherwise unavailable, plugin edit guards should not deny ordinary edits to workspace files only because workflow state is missing.
+- If `.helix/state.json` is missing, malformed, or otherwise unavailable, plugin edit guards should not deny ordinary edits to workspace files only because workflow state is missing.
 - The edit operation should continue through the normal shared path checks.
 - Internal runtime paths must still remain denied.
 
 ### Workflow gating when state exists
 
-- Once `.triton-agent/state.json` exists and is valid, the existing phase-based behavior remains in force:
+- Once `.helix/state.json` exists and is valid, the existing phase-based behavior remains in force:
   - `baseline` permits baseline repair edits.
   - `awaiting_round_start` denies round edits until `start-round`.
   - `round_active` restricts edits to the active `opt-round-N/` and allowed top-level narrative files.
@@ -70,11 +70,11 @@ Owns optimize runtime cleanup for the plugin optimize agent.
 
 - Resolve the workspace from the hook payload.
 - Ignore unrelated subagents.
-- Remove `.triton-agent/` only.
+- Remove `.helix/` only.
 
 ### `SessionStart` and `SessionEnd`
 
-Retain `.triton-agent/` lifecycle ownership for direct optimize-agent sessions.
+Retain `.helix/` lifecycle ownership for direct optimize-agent sessions.
 
 - `SessionStart` should continue to bootstrap optimize runtime state when the optimize plugin agent is started directly.
 - `SessionEnd` should continue to clean up runtime state for that direct-session path.
@@ -90,7 +90,7 @@ Remains the enforcement layer, but missing-state handling changes.
 
 ## Implementation Shape
 
-- Rename the generated optimize agent file and identifier from `agents/triton-agent-optimize.md` / `triton-agent-optimize` to `agents/triton-agent-optimizer.md` / `triton-agent-optimizer`.
+- Rename the generated optimize agent file and identifier from `agents/helix-optimize.md` / `helix-optimize` to `agents/helix-optimizer.md` / `helix-optimizer`.
 - Update `hooks/claude_plugin/hooks.json` to register `SessionStart`, `SessionEnd`, `SubagentStart`, and `SubagentStop`.
 - Add thin wrappers:
   - `hooks/claude_plugin/subagent_start.py`
@@ -108,7 +108,7 @@ Remains the enforcement layer, but missing-state handling changes.
 ## Testing Strategy
 
 - Add Claude plugin hook tests proving `SubagentStart` creates fresh baseline state for the optimize plugin subagent.
-- Add Claude plugin hook tests proving `SubagentStop` removes `.triton-agent/` and leaves durable artifacts alone.
+- Add Claude plugin hook tests proving `SubagentStop` removes `.helix/` and leaves durable artifacts alone.
 - Replace current plugin tests that assume `SessionStart` owns optimize bootstrap.
 - Add guard tests proving:
   - missing workflow state no longer blocks normal workspace edits

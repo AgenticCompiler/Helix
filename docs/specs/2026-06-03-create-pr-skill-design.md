@@ -32,7 +32,7 @@ This repository already treats skills as the primary place for workflow guidance
   - strict checking of all skill-side Python scripts
   - handoff to `managing-gitcode-prs` for actual PR creation
 - Out of scope:
-  - changes under `src/triton_agent/`
+  - changes under `src/helix/`
   - CLI subcommands for PR creation
   - generic Git tutorials
   - replacing or expanding the existing `managing-gitcode-prs` API skill
@@ -66,7 +66,7 @@ Do not pad the skill with generic git command templates or repeated PR API examp
 
 ## Implementation Notes
 
-- This is a repo-local skill only, so `src/triton_agent/skill_staging.py` should remain unchanged.
+- This is a repo-local skill only, so `src/helix/skill_staging.py` should remain unchanged.
 - The skill should reference `AGENTS.md` for the static-analysis command expectations and for the repository rule that agent-run pytest commands must use `-q --tb=short --no-header -p no:warnings`.
 - The final PR step should explicitly point readers to the existing `.codex/skills/managing-gitcode-prs/` workflow for GitCode-specific flags such as `--draft`, `--fill`, or explicit repo and branch overrides.
 

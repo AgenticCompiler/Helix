@@ -2,7 +2,7 @@
 
 ## Goal
 
-Fix the OpenCode interactive backend command so `triton-agent ... --agent opencode --interact` launches the installed `opencode` CLI successfully.
+Fix the OpenCode interactive backend command so `helix ... --agent opencode --interact` launches the installed `opencode` CLI successfully.
 
 ## Problem
 
@@ -29,7 +29,7 @@ This means the interactive runner currently mixes top-level project mode with a 
 
 ## Design
 
-Update only the interactive branch in `src/triton_agent/backends/opencode.py`:
+Update only the interactive branch in `src/helix/backends/opencode.py`:
 
 - keep the top-level project positional workspace argument
 - keep `--prompt <prompt>`

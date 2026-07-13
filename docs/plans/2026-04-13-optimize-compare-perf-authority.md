@@ -14,15 +14,15 @@
 
 **Modify**
 
-- `src/triton_agent/prompts.py`
+- `src/helix/prompts.py`
   Add explicit `compare-perf` authority wording to optimize worker, unsupervised, and resume prompts.
-- `src/triton_agent/optimize/guidance.py`
+- `src/helix/optimize/guidance.py`
   Add the same authority wording to worker and supervisor role briefs.
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   Extend `RoundState` with `perf_summary_source`.
-- `src/triton_agent/optimize/round_contract.py`
+- `src/helix/optimize/round_contract.py`
   Require the new round-state field.
-- `src/triton_agent/optimize/gate.py`
+- `src/helix/optimize/gate.py`
   Reject benchmark-passing rounds whose performance summary source is not `compare-perf`.
 - `tests/test_optimize/guidance.py`
   Pin the new guidance wording.
@@ -57,11 +57,11 @@ Expected: FAIL because current prompts and round-state parsing do not require th
 ### Task 2: Implement The Minimal Contract And Guidance Changes
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/round_contract.py`
-- Modify: `src/triton_agent/optimize/gate.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/guidance.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/round_contract.py`
+- Modify: `src/helix/optimize/gate.py`
 
 - [ ] **Step 1: Add the new round-state field**
 

@@ -26,7 +26,7 @@ That blurs the ownership boundary between conversion and generation, and it enco
 
 ## Design
 
-- Add `ConvertOptions` under `src/triton_agent/convert/models.py`.
+- Add `ConvertOptions` under `src/helix/convert/models.py`.
 - Move `convert` and `convert-batch` command parsing, batch execution, and request building to that type.
 - Keep only convert-owned fields in `ConvertOptions`: interaction, verbosity, output controls, agent and remote settings, test mode, output path, and optional user prompt.
 - Remove the temporary convert-specific `prompt` extension from `GenerationOptions` so generation models return to serving only generation commands.

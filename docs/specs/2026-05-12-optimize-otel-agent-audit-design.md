@@ -6,16 +6,16 @@ Optimize runs should create a per-run OTEL-style trace directory alongside the e
 
 ## Context
 
-The current optimize workflow already writes readable agent output to `triton-agent-logs/optimize.show-output.log` when `--show-output` is enabled and records worker or supervisor session ids under `triton-agent-logs/triton-agent/<run-id>/agent-sessions.jsonl`. Those files are useful for manual diagnosis, but they do not provide stable structured facts for repeated file reads, staged skill script reads, repeated commands, or time attribution.
+The current optimize workflow already writes readable agent output to `helix-logs/optimize.show-output.log` when `--show-output` is enabled and records worker or supervisor session ids under `helix-logs/helix/<run-id>/agent-sessions.jsonl`. Those files are useful for manual diagnosis, but they do not provide stable structured facts for repeated file reads, staged skill script reads, repeated commands, or time attribution.
 
 ## Decision
 
-Reuse the existing optimize run id from `triton-agent-logs/triton-agent/<run-id>/` as the OTEL run id and add:
+Reuse the existing optimize run id from `helix-logs/helix/<run-id>/` as the OTEL run id and add:
 
 ```text
-triton-agent-logs/otel/<run-id>/trace.jsonl
-triton-agent-logs/otel/<run-id>/summary.json
-triton-agent-logs/otel/<run-id>/agent-audit.md
+helix-logs/otel/<run-id>/trace.jsonl
+helix-logs/otel/<run-id>/summary.json
+helix-logs/otel/<run-id>/agent-audit.md
 ```
 
 The first implementation records wrapper-level code-agent invocation events for every optimize worker, supervisor, and resume process. When backend hooks are enabled, Codex pre-tool hooks also append structured events for Bash tool calls, command classification, and file-read access visible through shell commands.

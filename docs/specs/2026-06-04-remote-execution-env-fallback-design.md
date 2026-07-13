@@ -8,8 +8,8 @@ When an outer agent-driven command is launched with `--remote`, the CLI should a
 
 - Agent-driven commands that already accept `--remote` and `--remote-workdir` keep the same prompt guidance.
 - In addition, they export:
-  - `TRITON_AGENT_REMOTE`
-  - `TRITON_AGENT_REMOTE_WORKDIR`
+  - `HELIX_REMOTE`
+  - `HELIX_REMOTE_WORKDIR`
 - Remote-aware helper commands resolve execution context with this precedence:
   1. explicit CLI flags
   2. injected environment variables

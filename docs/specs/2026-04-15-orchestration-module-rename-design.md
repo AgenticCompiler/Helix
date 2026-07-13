@@ -2,8 +2,8 @@
 
 ## Summary
 
-- Rename `src/triton_agent/optimize/orchestration.py` to `src/triton_agent/optimize/orchestration.py`.
-- Rename `src/triton_agent/generation/orchestration.py` to `src/triton_agent/generation/orchestration.py`.
+- Rename `src/helix/optimize/orchestration.py` to `src/helix/optimize/orchestration.py`.
+- Rename `src/helix/generation/orchestration.py` to `src/helix/generation/orchestration.py`.
 - Update in-repo imports and tests so package names describe orchestration responsibilities more clearly.
 
 ## Goals

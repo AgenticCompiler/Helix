@@ -12,7 +12,7 @@ Also simplify Claude human-readable `show-output` rendering by removing redundan
 
 For one optimize run, the run archive root remains:
 
-`triton-agent-logs/<run-id>/`
+`helix-logs/<run-id>/`
 
 Within that directory, each agent launch owns its own files:
 
@@ -66,9 +66,9 @@ Optimize should derive trace and session file names from the same launch label a
 
 When a launch has label `<label>`:
 
-- trace path: `triton-agent-logs/<run-id>/trace-<label>.jsonl`
-- trace summary path: `triton-agent-logs/<run-id>/trace-<label>.summary.json`
-- agent session path: `triton-agent-logs/<run-id>/agent-session-<label>.json`
+- trace path: `helix-logs/<run-id>/trace-<label>.jsonl`
+- trace summary path: `helix-logs/<run-id>/trace-<label>.summary.json`
+- agent session path: `helix-logs/<run-id>/agent-session-<label>.json`
 
 There is no optimize `otel/` directory after this change.
 
@@ -131,7 +131,7 @@ Optimize upload already excludes `agent-sessions.jsonl`.
 
 After this change, upload should exclude any `agent-session-*.json` files as the optimize-session metadata equivalent.
 
-Trace files remain excluded because upload only includes `show-output*.log` from `triton-agent-logs/`.
+Trace files remain excluded because upload only includes `show-output*.log` from `helix-logs/`.
 
 ## Compatibility Notes
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.distill.knowledge_workspace import (
+from helix.distill.knowledge_workspace import (
     ensure_editable_knowledge_skill,
     export_changed_pattern_cards,
     optimize_knowledge_skill_name,

@@ -12,14 +12,14 @@ That makes the Claude hook staging path less symmetric with Codex, which already
 
 Add a checked-in template file at `hooks/claude/settings.json` that uses stable workspace-relative hook paths:
 
-- `.claude/triton-agent-hooks/pretooluse_guard.py`
-- `.claude/triton-agent-hooks/policy.json`
+- `.claude/helix-hooks/pretooluse_guard.py`
+- `.claude/helix-hooks/policy.json`
 
 Update `prepare_claude_hooks()` to copy that template into the staged hook directory instead of synthesizing JSON in code.
 
 ## Constraints
 
-- Keep the staged settings path unchanged: `.claude/triton-agent-hooks/settings.json`
+- Keep the staged settings path unchanged: `.claude/helix-hooks/settings.json`
 - Keep the staged hook command contract unchanged apart from replacing absolute paths with stable relative paths
 - Do not change guard or policy semantics
 

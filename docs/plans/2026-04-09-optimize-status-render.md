@@ -4,7 +4,7 @@
 
 **Goal:** Reorder `optimize-status` output to show `NO-SESSION` first and add TTY-only color styling that distinguishes titles, content, and warning detail.
 
-**Architecture:** Keep the change isolated to the optimize render layer. Add a deterministic state-priority sort key plus TTY-aware ANSI styling helpers in `src/triton_agent/optimize/render.py`, then cover them with focused render tests and a light CLI regression check.
+**Architecture:** Keep the change isolated to the optimize render layer. Add a deterministic state-priority sort key plus TTY-aware ANSI styling helpers in `src/helix/optimize/render.py`, then cover them with focused render tests and a light CLI regression check.
 
 **Tech Stack:** Python 3.11, `unittest`, `io.StringIO`, existing optimize render helpers
 
@@ -14,7 +14,7 @@
 
 **Files:**
 - Create: `tests/test_optimize_render.py`
-- Modify: `src/triton_agent/optimize/render.py`
+- Modify: `src/helix/optimize/render.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -41,7 +41,7 @@ Expected: PASS
 
 **Files:**
 - Create: `tests/test_optimize_render.py`
-- Modify: `src/triton_agent/optimize/render.py`
+- Modify: `src/helix/optimize/render.py`
 
 - [ ] **Step 1: Write the failing tests**
 

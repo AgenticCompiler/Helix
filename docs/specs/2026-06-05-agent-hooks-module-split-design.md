@@ -14,7 +14,7 @@ Finish the backend hook ownership refactor by removing the mixed shared/backend-
 - Move Codex hook staging implementation into a Codex-local module.
 - Move OpenCode hook staging implementation into an OpenCode-local module.
 - Update tests to import the new backend-local helpers instead of the old mixed module.
-- Remove `src/triton_agent/agent_hooks.py`.
+- Remove `src/helix/agent_hooks.py`.
 
 ## Constraints
 

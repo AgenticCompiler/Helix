@@ -2,16 +2,16 @@
 
 ## Summary
 
-- Record optimize round timing as append-only JSONL files under `.triton-agent/round-timings/`.
+- Record optimize round timing as append-only JSONL files under `.helix/round-timings/`.
 - Use one file per round, named `opt-round-N.jsonl`.
-- Stop storing round start and end timestamps in `.triton-agent/state.json`.
+- Stop storing round start and end timestamps in `.helix/state.json`.
 - Archive the full `round-timings/` directory into each optimize run archive instead of flattening timing data into one JSON file.
 
 ## Goals
 
 - Make round timing easy to inspect without reading workflow state snapshots.
 - Record round lifecycle timing and validation-command timing in one per-round event stream.
-- Keep `.triton-agent/state.json` focused on workflow coordination state, not historical timing data.
+- Keep `.helix/state.json` focused on workflow coordination state, not historical timing data.
 - Preserve compatibility with legacy temporary workflow state that still contains `started_at` or `ended_at`.
 
 ## Non-Goals
@@ -26,8 +26,8 @@
 ### Runtime timing directory
 
 - When optimize workflow state is active, round timing files live under:
-  - `.triton-agent/round-timings/opt-round-1.jsonl`
-  - `.triton-agent/round-timings/opt-round-2.jsonl`
+  - `.helix/round-timings/opt-round-1.jsonl`
+  - `.helix/round-timings/opt-round-2.jsonl`
 - Each line is one JSON object.
 - Files are append-only and created on demand.
 
@@ -80,8 +80,8 @@ Example:
 
 ## Archival Behavior
 
-- Optimize session archival should copy `.triton-agent/round-timings/` into:
-  - `triton-agent-logs/<run_id>/round-timings/`
+- Optimize session archival should copy `.helix/round-timings/` into:
+  - `helix-logs/<run_id>/round-timings/`
 - No synthesized `round-timings.json` file should be generated anymore.
 - If the runtime timing directory does not exist, archival should skip it without failing the session cleanup.
 
@@ -93,7 +93,7 @@ Example:
 - `submit-round` should still complete the round even if timing-log append fails.
 - `run-test-optimize` and `run-bench` should treat timing logging as best effort:
   - no active optimize round: skip logging
-  - malformed or missing `.triton-agent/state.json`: skip logging
+  - malformed or missing `.helix/state.json`: skip logging
   - append failure: skip logging and keep command exit behavior unchanged
 
 ## Testing Strategy

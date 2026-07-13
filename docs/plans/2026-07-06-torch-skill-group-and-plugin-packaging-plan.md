@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_generation_contracts.py`
-- Modify: `src/triton_agent/skills/catalog.py`
+- Modify: `src/helix/skills/catalog.py`
 - Modify: `scripts/update-optimize-knowledge-indices.sh`
 - Modify: `.codex/skills/create-optimize-pattern/SKILL.md`
 - Create: `skills/torch/torch-npu-optimize-knowledge/`
@@ -63,7 +63,7 @@ Expected: FAIL because the repository still uses `skills/triton/torch-npu-optimi
 
 - [ ] **Step 3: Move the skill and update the physical catalog path**
 
-Move the directory from `skills/triton/torch-npu-optimize-knowledge/` to `skills/torch/torch-npu-optimize-knowledge/`, then update `src/triton_agent/skills/catalog.py` so the logical skill still resolves but now points at the Torch group.
+Move the directory from `skills/triton/torch-npu-optimize-knowledge/` to `skills/torch/torch-npu-optimize-knowledge/`, then update `src/helix/skills/catalog.py` so the logical skill still resolves but now points at the Torch group.
 
 Use a catalog entry shaped like:
 
@@ -81,7 +81,7 @@ SKILL_CATALOG: tuple[SkillCatalogEntry, ...] = (
 )
 ```
 
-Keep `src/triton_agent/skills/selection.py` unchanged in this task.
+Keep `src/helix/skills/selection.py` unchanged in this task.
 
 - [ ] **Step 4: Update path-based repository references**
 
@@ -93,7 +93,7 @@ Update:
 with the new path:
 
 ```bash
-uv run python -m triton_agent.optimize_knowledge.pattern_index \
+uv run python -m helix.optimize_knowledge.pattern_index \
   --patterns-dir skills/torch/torch-npu-optimize-knowledge/references/patterns \
   --output skills/torch/torch-npu-optimize-knowledge/references/pattern_index.md \
   --style default
@@ -120,7 +120,7 @@ Expected: command exits `0` and prints `Update optimize knowledge indices done.`
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/test_generation_contracts.py src/triton_agent/skills/catalog.py scripts/update-optimize-knowledge-indices.sh .codex/skills/create-optimize-pattern/SKILL.md skills/torch/torch-npu-optimize-knowledge
+git add tests/test_generation_contracts.py src/helix/skills/catalog.py scripts/update-optimize-knowledge-indices.sh .codex/skills/create-optimize-pattern/SKILL.md skills/torch/torch-npu-optimize-knowledge
 git commit -m "refact: move torch optimize knowledge into torch group"
 ```
 
@@ -129,7 +129,7 @@ git commit -m "refact: move torch optimize knowledge into torch group"
 **Files:**
 - Modify: `tests/test_skill_staging.py`
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/skills/catalog.py`
+- Modify: `src/helix/skills/catalog.py`
 
 - [ ] **Step 1: Add a regression test that the moved skill still resolves through the catalog**
 
@@ -169,7 +169,7 @@ Expected: PASS. This confirms the physical move did not change main CLI behavior
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/test_skill_staging.py tests/test_optimize_runtime.py src/triton_agent/skills/catalog.py
+git add tests/test_skill_staging.py tests/test_optimize_runtime.py src/helix/skills/catalog.py
 git commit -m "test: preserve operator staging for torch optimize knowledge"
 ```
 

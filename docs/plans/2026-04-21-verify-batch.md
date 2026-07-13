@@ -14,8 +14,8 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/cli.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/cli.py`
 
 - [ ] **Step 1: Write the failing parser tests**
 
@@ -35,10 +35,10 @@ Expected: FAIL because the command kind and parser arguments do not exist yet.
 - [ ] **Step 3: Write minimal implementation**
 
 Update:
-- `src/triton_agent/models.py`
+- `src/helix/models.py`
   - add `CommandKind.VERIFY_BATCH = "verify-batch"`
   - add an empty `COMMAND_TO_SKILL` mapping entry
-- `src/triton_agent/cli.py`
+- `src/helix/cli.py`
   - register the new command in `_COMMAND_SPECS`
   - add `--force-verify` support for that command only
   - include snake_case alias normalization
@@ -52,7 +52,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_cli.py src/triton_agent/models.py src/triton_agent/cli.py
+git add tests/test_cli.py src/helix/models.py src/helix/cli.py
 git commit -m "feat: add optimize verify batch cli"
 ```
 
@@ -61,9 +61,9 @@ git commit -m "feat: add optimize verify batch cli"
 **Files:**
 - Modify: `tests/test_optimize_status.py`
 - Modify: `tests/test_optimize_render.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/status.py`
-- Modify: `src/triton_agent/optimize/render.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/status.py`
+- Modify: `src/helix/optimize/render.py`
 
 - [ ] **Step 1: Write the failing status and render tests**
 
@@ -82,16 +82,16 @@ Expected: FAIL because optimize status results do not yet expose latest verify m
 - [ ] **Step 3: Write minimal implementation**
 
 Update:
-- `src/triton_agent/optimize/models.py`
+- `src/helix/optimize/models.py`
   - extend `OptimizeStatusWorkspace` with:
     - `latest_verify_state: Path | None`
     - `verified: bool`
-- `src/triton_agent/optimize/status.py`
+- `src/helix/optimize/status.py`
   - add helpers to find the latest `opt-verify/verify-*/verify-state.json`
   - parse the latest state file defensively
   - compute `verified` from the latest full successful verify result
   - include the new fields in every `OptimizeStatusWorkspace`
-- `src/triton_agent/optimize/render.py`
+- `src/helix/optimize/render.py`
   - add `Verified` to markdown output
   - render `Verified` only when `item.verified` is `True`
   - optionally print the latest verify state path in text output when present
@@ -105,17 +105,17 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_optimize_status.py tests/test_optimize_render.py src/triton_agent/optimize/models.py src/triton_agent/optimize/status.py src/triton_agent/optimize/render.py
+git add tests/test_optimize_status.py tests/test_optimize_render.py src/helix/optimize/models.py src/helix/optimize/status.py src/helix/optimize/render.py
 git commit -m "feat: surface latest optimize verify status"
 ```
 
 ### Task 3: Add batch verify orchestration with reuse and force-rerun behavior
 
 **Files:**
-- Create: `src/triton_agent/verification/batch.py`
+- Create: `src/helix/verification/batch.py`
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/render.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/render.py`
 
 - [ ] **Step 1: Write the failing batch verify behavior tests**
 
@@ -135,7 +135,7 @@ Expected: FAIL because the batch command handler and orchestration module do not
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add `src/triton_agent/verification/batch.py` with focused helpers to:
+Add `src/helix/verification/batch.py` with focused helpers to:
 - scan child workspace directories under a root
 - discover the latest verify state
 - decide reuse vs rerun
@@ -144,9 +144,9 @@ Add `src/triton_agent/verification/batch.py` with focused helpers to:
 - produce an exit code for the batch command
 
 Update:
-- `src/triton_agent/commands/optimize.py`
+- `src/helix/commands/optimize.py`
   - add `handle_verify_batch`
-- `src/triton_agent/optimize/render.py`
+- `src/helix/optimize/render.py`
   - add a renderer for batch verify outcomes if the new command needs explicit summary output
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -158,7 +158,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/verification/batch.py src/triton_agent/commands/verification.py src/triton_agent/optimize/render.py tests/test_cli.py tests/test_verify_batch.py
+git add src/helix/verification/batch.py src/helix/commands/verification.py src/helix/optimize/render.py tests/test_cli.py tests/test_verify_batch.py
 git commit -m "feat: add verify batch orchestration"
 ```
 

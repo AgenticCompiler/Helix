@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a repository build script that produces a self-contained Claude Code plugin directory for the optimize hook workflow, including one optimize agent, the minimum optimize skills, and plugin-managed `.triton-agent/` lifecycle hooks.
+**Goal:** Add a repository build script that produces a self-contained Claude Code plugin directory for the optimize hook workflow, including one optimize agent, the minimum optimize skills, and plugin-managed `.helix/` lifecycle hooks.
 
-**Architecture:** Reuse the repository's existing optimize guidance and skill staging contracts to render one plugin-scoped optimize agent and copy only the required optimize skills into a generated plugin tree. Move Claude optimize runtime bootstrap from CLI request-scoped staging into plugin-local `SessionStart`, `SessionEnd`, and `PreToolUse` hooks that create `.triton-agent/`, validate existing workflow state when present, and otherwise direct the agent back through optimize-state commands instead of inferring workflow state from durable artifacts.
+**Architecture:** Reuse the repository's existing optimize guidance and skill staging contracts to render one plugin-scoped optimize agent and copy only the required optimize skills into a generated plugin tree. Move Claude optimize runtime bootstrap from CLI request-scoped staging into plugin-local `SessionStart`, `SessionEnd`, and `PreToolUse` hooks that create `.helix/`, validate existing workflow state when present, and otherwise direct the agent back through optimize-state commands instead of inferring workflow state from durable artifacts.
 
-**Tech Stack:** Python 3.12, existing `triton_agent` prompt/guidance modules, Claude plugin manifest + hooks, `unittest`, `claude plugin validate`
+**Tech Stack:** Python 3.12, existing `helix` prompt/guidance modules, Claude plugin manifest + hooks, `unittest`, `claude plugin validate`
 
-**Workflow-state command semantics update:** `submit-baseline` should auto-bootstrap missing `.triton-agent/state.json` before marking the baseline accepted. `start-round` and `set-current-round-state` should keep treating missing workflow state as a structured failure that the agent must repair through workflow commands rather than direct internal state-file edits, while `start-round` should create a missing `opt-round-N/` directory. `submit-round` should fail with structured JSON when either the workflow state or the round directory is missing instead of silently skipping completion or raising an uncaught exception.
+**Workflow-state command semantics update:** `submit-baseline` should auto-bootstrap missing `.helix/state.json` before marking the baseline accepted. `start-round` and `set-current-round-state` should keep treating missing workflow state as a structured failure that the agent must repair through workflow commands rather than direct internal state-file edits, while `start-round` should create a missing `opt-round-N/` directory. `submit-round` should fail with structured JSON when either the workflow state or the round directory is missing instead of silently skipping completion or raising an uncaught exception.
 
-**Builder placement update:** Keep the Claude optimize plugin builder implementation directly inside `scripts/build-claude-optimize-plugin.py`; do not maintain a separate `src/triton_agent/claude_optimize_plugin.py` module for this packaging-only flow.
+**Builder placement update:** Keep the Claude optimize plugin builder implementation directly inside `scripts/build-claude-optimize-plugin.py`; do not maintain a separate `src/helix/claude_optimize_plugin.py` module for this packaging-only flow.
 
 ---
 
@@ -18,8 +18,8 @@
 
 **Files:**
 - Modify: `scripts/build-claude-optimize-plugin.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Test: `tests/test_claude_optimize_plugin.py`
 
 - [ ] **Step 1: Write failing tests for plugin guidance rendering and optimize skill resolution**
@@ -36,10 +36,10 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
     def test_plugin_builder_renders_single_optimize_agent_without_standalone_claude_md(self) -> None:
         asset = build_claude_optimize_plugin_assets()
 
-        self.assertIn("agents/triton-agent-optimize.md", asset.text_files)
+        self.assertIn("agents/helix-optimize.md", asset.text_files)
         self.assertNotIn("CLAUDE.md", asset.text_files)
         self.assertNotIn("prompts.md", asset.text_files)
-        agent_text = asset.text_files["agents/triton-agent-optimize.md"]
+        agent_text = asset.text_files["agents/helix-optimize.md"]
         self.assertIn("Complete optimize rounds strictly one at a time in sequence.", agent_text)
         self.assertIn("Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand", agent_text)
 ```
@@ -53,7 +53,7 @@ Expected: FAIL because `build-claude-optimize-plugin.py` does not yet expose the
 - [ ] **Step 3: Expose reusable optimize-guidance rendering helpers from the existing prompt/guidance modules**
 
 ```python
-# src/triton_agent/optimize/memory_file.py
+# src/helix/optimize/memory_file.py
 class MemoryFileManager:
     def render_round_gated_guidance(
         self,
@@ -83,7 +83,7 @@ class MemoryFileManager:
 ```
 
 ```python
-# src/triton_agent/optimize/prompts.py
+# src/helix/optimize/prompts.py
 def build_optimize_plugin_prompt(
     *,
     language: str = "triton",
@@ -148,7 +148,7 @@ def build_claude_optimize_plugin_assets(
     )
     agent_text = render_claude_optimize_agent(guidance_text=guidance_text, prompt_text=prompt_text)
     return ClaudeOptimizePluginAssets(
-        text_files={"agents/triton-agent-optimize.md": agent_text},
+        text_files={"agents/helix-optimize.md": agent_text},
         skill_names=skill_names,
         skill_sources=skill_sources,
     )
@@ -163,7 +163,7 @@ Expected: PASS for guidance rendering, single-agent packaging, and optimize skil
 - [ ] **Step 6: Commit the helper-layer change**
 
 ```bash
-git add docs/plans/2026-06-30-claude-optimize-plugin-hook.md tests/test_claude_optimize_plugin.py scripts/build-claude-optimize-plugin.py src/triton_agent/optimize/memory_file.py src/triton_agent/optimize/prompts.py
+git add docs/plans/2026-06-30-claude-optimize-plugin-hook.md tests/test_claude_optimize_plugin.py scripts/build-claude-optimize-plugin.py src/helix/optimize/memory_file.py src/helix/optimize/prompts.py
 git commit -m "feat: add claude optimize plugin builder helpers"
 ```
 
@@ -184,24 +184,24 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
     def test_session_start_creates_runtime_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            result = run_session_start(workspace, agent_name="triton-agent-optimize")
+            result = run_session_start(workspace, agent_name="helix-optimize")
             self.assertEqual(result.returncode, 0)
-            self.assertTrue((workspace / ".triton-agent").is_dir())
+            self.assertTrue((workspace / ".helix").is_dir())
 
     def test_session_start_creates_runtime_dir_without_inferred_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            run_session_start(workspace, agent_name="triton-agent-optimize:triton-agent-optimize")
-            self.assertTrue((workspace / ".triton-agent").is_dir())
-            self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
+            run_session_start(workspace, agent_name="helix-optimize:helix-optimize")
+            self.assertTrue((workspace / ".helix").is_dir())
+            self.assertFalse((workspace / ".helix" / "state.json").exists())
 
     def test_session_end_removes_runtime_dir_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / ".triton-agent").mkdir()
+            (workspace / ".helix").mkdir()
             (workspace / "baseline").mkdir()
-            run_session_end(workspace, agent_name="triton-agent-optimize:triton-agent-optimize")
-            self.assertFalse((workspace / ".triton-agent").exists())
+            run_session_end(workspace, agent_name="helix-optimize:helix-optimize")
+            self.assertFalse((workspace / ".helix").exists())
             self.assertTrue((workspace / "baseline").exists())
 ```
 
@@ -211,12 +211,12 @@ Run: `uv run python -m unittest tests.test_claude_optimize_plugin_hooks -v`
 
 Expected: FAIL because `hooks/claude_plugin/` files and test helpers are missing.
 
-- [ ] **Step 3: Add a self-contained plugin bootstrap helper that creates `.triton-agent/`, validates existing state, and otherwise returns command-based repair guidance**
+- [ ] **Step 3: Add a self-contained plugin bootstrap helper that creates `.helix/`, validates existing state, and otherwise returns command-based repair guidance**
 
 ```python
 # hooks/claude_plugin/state_bootstrap.py
 def bootstrap_runtime_state(workspace: Path) -> BootstrapResult:
-    runtime_dir = workspace / ".triton-agent"
+    runtime_dir = workspace / ".helix"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "state.json"
     if state_path.exists():
@@ -224,7 +224,7 @@ def bootstrap_runtime_state(workspace: Path) -> BootstrapResult:
 
     return BootstrapResult(
         additional_context=(
-            "Created `.triton-agent/`. Workflow state is still missing. "
+            "Created `.helix/`. Workflow state is still missing. "
             "Use `ascend-npu-optimize-state` `submit-baseline` to repair session state, "
             "then `start-round` before round edits."
         )
@@ -259,7 +259,7 @@ def main() -> int:
     payload = json.load(sys.stdin)
     if not should_manage_payload(payload):
         return 0
-    cleanup_runtime_tree(Path(payload["cwd"]) / ".triton-agent")
+    cleanup_runtime_tree(Path(payload["cwd"]) / ".helix")
     return 0
 ```
 
@@ -348,7 +348,7 @@ def test_build_script_writes_valid_plugin_tree(self) -> None:
         build_claude_optimize_plugin(output_dir)
 
         self.assertTrue((output_dir / ".claude-plugin" / "plugin.json").exists())
-        self.assertTrue((output_dir / "agents" / "triton-agent-optimize.md").exists())
+        self.assertTrue((output_dir / "agents" / "helix-optimize.md").exists())
         self.assertTrue((output_dir / "hooks" / "hooks.json").exists())
         self.assertTrue((output_dir / "skills").is_dir())
         self.assertFalse((output_dir / "CLAUDE.md").exists())

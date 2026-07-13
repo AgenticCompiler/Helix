@@ -18,7 +18,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
      ```
    - Remote:
      ```bash
-     python3 ./scripts/capture_ir.py --ir-dir ir --bench-file bench_matmul.py --operator-file matmul.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+     python3 ./scripts/capture_ir.py --ir-dir ir --bench-file bench_matmul.py --operator-file matmul.py --remote user@host:2222 --remote-workdir /tmp/helix
      ```
 
 2. Inspect the resulting archive:

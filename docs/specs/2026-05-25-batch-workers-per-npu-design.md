@@ -2,26 +2,26 @@
 
 ## Summary
 
-Extend the existing batch NPU affinity model with an opt-in environment variable that allows more than one concurrent batch workspace to share the same configured NPU device. The new control must compose with `TRITON_AGENT_BATCH_NPU_DEVICES`, stay batch-only, and apply consistently everywhere the existing batch NPU device list is already supported.
+Extend the existing batch NPU affinity model with an opt-in environment variable that allows more than one concurrent batch workspace to share the same configured NPU device. The new control must compose with `HELIX_BATCH_NPU_DEVICES`, stay batch-only, and apply consistently everywhere the existing batch NPU device list is already supported.
 
 ## Goal
 
-- Preserve the current `TRITON_AGENT_BATCH_NPU_DEVICES` contract as the source of truth for which NPUs may be used by batch commands.
+- Preserve the current `HELIX_BATCH_NPU_DEVICES` contract as the source of truth for which NPUs may be used by batch commands.
 - Let users opt into bounded sharing by declaring how many concurrent batch workers each configured NPU may host.
 - Keep the runtime affinity mechanism unchanged at the process boundary by continuing to inject `ASCEND_RT_VISIBLE_DEVICES=<device>`.
-- Apply the same behavior to every current batch command that already supports `TRITON_AGENT_BATCH_NPU_DEVICES`.
+- Apply the same behavior to every current batch command that already supports `HELIX_BATCH_NPU_DEVICES`.
 
 ## Non-Goals
 
 - Changing single-workspace commands such as `optimize`, `convert`, or `gen-eval`.
-- Enabling any NPU-sharing behavior when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
+- Enabling any NPU-sharing behavior when `HELIX_BATCH_NPU_DEVICES` is unset.
 - Adding per-device custom capacities such as `0:1,1:2`.
 - Detecting device capacity automatically from hardware state.
 - Introducing different sharing semantics for different batch commands.
 
 ## Current Behavior
 
-Today, `TRITON_AGENT_BATCH_NPU_DEVICES` enables a one-device-per-workspace lease model for:
+Today, `HELIX_BATCH_NPU_DEVICES` enables a one-device-per-workspace lease model for:
 
 - `optimize-batch`
 - `convert-batch`
@@ -33,31 +33,31 @@ The current affinity pool treats each configured device as one leaseable slot. A
 - No two concurrently running batch workspaces may receive the same device.
 - Each workspace receives one `ASCEND_RT_VISIBLE_DEVICES` value for the lifetime of its request.
 
-This behavior is implemented centrally in `src/triton_agent/npu_affinity.py` and reused by the batch command modules.
+This behavior is implemented centrally in `src/helix/npu_affinity.py` and reused by the batch command modules.
 
 ## User-Facing Controls
 
 Keep the existing device-list variable:
 
-- `TRITON_AGENT_BATCH_NPU_DEVICES`
+- `HELIX_BATCH_NPU_DEVICES`
 
 Add one new environment variable:
 
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`
+- `HELIX_BATCH_WORKERS_PER_NPU`
 
 Example:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
-export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+export HELIX_BATCH_NPU_DEVICES=0,1
+export HELIX_BATCH_WORKERS_PER_NPU=2
+uv run helix optimize-batch --input operators_root --max-concurrency 4
 ```
 
 Semantics:
 
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is unset, `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is ignored.
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is set and `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is unset, the effective value is `1`.
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU` must be a positive integer.
+- If `HELIX_BATCH_NPU_DEVICES` is unset, `HELIX_BATCH_WORKERS_PER_NPU` is ignored.
+- If `HELIX_BATCH_NPU_DEVICES` is set and `HELIX_BATCH_WORKERS_PER_NPU` is unset, the effective value is `1`.
+- `HELIX_BATCH_WORKERS_PER_NPU` must be a positive integer.
 - `0`, negative values, empty values, and non-integer values fail explicitly with actionable validation errors.
 
 ## Desired Behavior
@@ -81,8 +81,8 @@ The slot expansion above is descriptive, not a user-visible API. It explains the
 
 Implement the feature by extending the shared batch affinity layer rather than special-casing individual commands:
 
-1. Parse `TRITON_AGENT_BATCH_NPU_DEVICES` exactly as today.
-2. Parse `TRITON_AGENT_BATCH_WORKERS_PER_NPU` as a positive integer, but only when the device list is enabled.
+1. Parse `HELIX_BATCH_NPU_DEVICES` exactly as today.
+2. Parse `HELIX_BATCH_WORKERS_PER_NPU` as a positive integer, but only when the device list is enabled.
 3. Expand the configured device tuple into a slot tuple that repeats each device `workers_per_npu` times.
 4. Reuse the existing lease-pool pattern on top of those expanded slots.
 5. Keep downstream command modules unchanged apart from calling the shared helper APIs.
@@ -110,7 +110,7 @@ Expanding each configured device into multiple identical slots lets the project 
 
 ## Parsing And Validation
 
-Add shared parsing and validation in `src/triton_agent/npu_affinity.py` for:
+Add shared parsing and validation in `src/helix/npu_affinity.py` for:
 
 - the existing device list
 - the new workers-per-device integer
@@ -125,20 +125,20 @@ Recommended helper shape:
 Behavior:
 
 - `configured_batch_workers_per_npu()` returns `1` when the env var is unset.
-- `configured_batch_npu_slots()` returns `None` when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
+- `configured_batch_npu_slots()` returns `None` when `HELIX_BATCH_NPU_DEVICES` is unset.
 - `configured_batch_npu_slots()` returns the expanded slot tuple when devices are configured.
 
 This keeps batch callers from having to duplicate the “ignore workers-per-npu unless devices are configured” rule.
 
 ## Capacity Rules
 
-When `TRITON_AGENT_BATCH_NPU_DEVICES` is unset:
+When `HELIX_BATCH_NPU_DEVICES` is unset:
 
 - preserve current behavior
-- do not validate `TRITON_AGENT_BATCH_WORKERS_PER_NPU`
+- do not validate `HELIX_BATCH_WORKERS_PER_NPU`
 - do not inject any affinity env override
 
-When `TRITON_AGENT_BATCH_NPU_DEVICES` is set:
+When `HELIX_BATCH_NPU_DEVICES` is set:
 
 - effective affinity capacity is `len(devices) * workers_per_npu`
 - `--max-concurrency` must not exceed that effective capacity
@@ -146,8 +146,8 @@ When `TRITON_AGENT_BATCH_NPU_DEVICES` is set:
 
 Example:
 
-- `TRITON_AGENT_BATCH_NPU_DEVICES=0,1`
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU=2`
+- `HELIX_BATCH_NPU_DEVICES=0,1`
+- `HELIX_BATCH_WORKERS_PER_NPU=2`
 - maximum legal `--max-concurrency` is `4`
 
 ## Command Coverage
@@ -171,8 +171,8 @@ This keeps the feature compatible with existing backend launch, local subprocess
 
 ## Failure Semantics
 
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is unset, batch commands behave exactly as they do today, regardless of whether `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set.
-- If `TRITON_AGENT_BATCH_NPU_DEVICES` is set and `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is malformed, fail before launching any workspace tasks.
+- If `HELIX_BATCH_NPU_DEVICES` is unset, batch commands behave exactly as they do today, regardless of whether `HELIX_BATCH_WORKERS_PER_NPU` is set.
+- If `HELIX_BATCH_NPU_DEVICES` is set and `HELIX_BATCH_WORKERS_PER_NPU` is malformed, fail before launching any workspace tasks.
 - If `--max-concurrency` exceeds effective capacity, fail before launching any workspace tasks.
 - If a workspace run fails after acquiring a slot, release the slot and continue existing batch result handling.
 
@@ -181,7 +181,7 @@ This keeps the feature compatible with existing backend launch, local subprocess
 Update user-facing docs to explain:
 
 - the new variable name
-- that it only matters when `TRITON_AGENT_BATCH_NPU_DEVICES` is set
+- that it only matters when `HELIX_BATCH_NPU_DEVICES` is set
 - that effective capacity is `device_count * workers_per_npu`
 - that all current batch-affinity commands share the same behavior
 
@@ -213,11 +213,11 @@ Repository verification should include:
 
 ## Files Expected To Change
 
-- `src/triton_agent/npu_affinity.py`
-- `src/triton_agent/optimize/batch.py`
-- `src/triton_agent/convert/batch.py`
-- `src/triton_agent/generation/batch.py`
-- `src/triton_agent/cli.py`
+- `src/helix/npu_affinity.py`
+- `src/helix/optimize/batch.py`
+- `src/helix/convert/batch.py`
+- `src/helix/generation/batch.py`
+- `src/helix/cli.py`
 - `README.md`
 - `tests/test_npu_affinity.py`
 - `tests/test_optimize_runtime.py`

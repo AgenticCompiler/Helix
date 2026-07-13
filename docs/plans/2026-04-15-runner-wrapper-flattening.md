@@ -4,7 +4,7 @@
 
 **Goal:** Remove the top-level `test_runner.py` and `bench_runner.py` wrappers while preserving execution behavior.
 
-**Architecture:** Keep execution-specific normalization and metadata helpers in `src/triton_agent/execution.py`, and move optimize-only perf parsing to optimize-local code so no top-level wrapper module is needed for skill passthroughs.
+**Architecture:** Keep execution-specific normalization and metadata helpers in `src/helix/execution.py`, and move optimize-only perf parsing to optimize-local code so no top-level wrapper module is needed for skill passthroughs.
 
 **Tech Stack:** Python, unittest, ruff, pyright, uv
 
@@ -15,18 +15,18 @@
 **Files:**
 - Modify: `tests/test_run_skill_loader.py`
 
-- [x] **Step 1: Add a failing test asserting `triton_agent.test_runner` is removed**
-- [x] **Step 2: Add a failing test asserting `triton_agent.bench_runner` is removed**
+- [x] **Step 1: Add a failing test asserting `helix.test_runner` is removed**
+- [x] **Step 2: Add a failing test asserting `helix.bench_runner` is removed**
 - [x] **Step 3: Run `uv run python -m unittest tests.test_run_skill_loader -v` and confirm the new assertions fail before implementation**
 
 ### Task 2: Remove The Wrapper Modules
 
 **Files:**
-- Modify: `src/triton_agent/execution.py`
-- Modify: `src/triton_agent/optimize/status.py`
-- Modify: `src/triton_agent/optimize/resume.py`
-- Delete: `src/triton_agent/test_runner.py`
-- Delete: `src/triton_agent/bench_runner.py`
+- Modify: `src/helix/execution.py`
+- Modify: `src/helix/optimize/status.py`
+- Modify: `src/helix/optimize/resume.py`
+- Delete: `src/helix/test_runner.py`
+- Delete: `src/helix/bench_runner.py`
 
 - [x] **Step 1: Repoint optimize resume metadata parsing to `execution.py`**
 - [x] **Step 2: Move optimize status perf parsing behind optimize-local helpers**

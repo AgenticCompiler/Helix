@@ -26,9 +26,9 @@
 
 The following commands accept the new option:
 
-- `triton-agent optimize-batch`
-- `triton-agent gen-eval-batch`
-- `triton-agent convert-batch`
+- `helix optimize-batch`
+- `helix gen-eval-batch`
+- `helix convert-batch`
 
 The new flag shape is:
 
@@ -112,7 +112,7 @@ Recommended failure wording:
 
 ### Shared helper changes
 
-- Extend `resolve_batch_operator_file(...)` in `src/triton_agent/batch_utils.py` with an optional basename glob filter argument.
+- Extend `resolve_batch_operator_file(...)` in `src/helix/batch_utils.py` with an optional basename glob filter argument.
 - Keep the existing command-specific `is_operator_candidate(...)` callback unchanged.
 - Apply the user filter after the built-in candidate filtering and before the final `0 / 1 / many` check.
 

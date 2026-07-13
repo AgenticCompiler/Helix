@@ -7,22 +7,22 @@ This document reflects the current status after fixing the confirmed regressions
 ### 1. Stall timeout default trap
 **Status:** Fixed
 
-`src/triton_agent/process_runner.py` now treats `stall_timeout_seconds <= 0` as "stall timeout disabled" instead of immediately reporting a stall on the first idle poll.
+`src/helix/process_runner.py` now treats `stall_timeout_seconds <= 0` as "stall timeout disabled" instead of immediately reporting a stall on the first idle poll.
 
 ### 2. `returncode or 0` fallback
 **Status:** Fixed defensively
 
-Both `src/triton_agent/process_runner.py` and `skills/triton-npu-run-eval/scripts/run_runtime.py` now turn a missing `returncode` into `1` instead of silently reporting success.
+Both `src/helix/process_runner.py` and `skills/triton-npu-run-eval/scripts/run_runtime.py` now turn a missing `returncode` into `1` instead of silently reporting success.
 
 ### 3. Supervisor re-ran after repeated stalls
 **Status:** Fixed
 
-`src/triton_agent/optimize/run_loop.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
+`src/helix/optimize/run_loop.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
 
 ### 4. Diff filter swallowed normal indented output
 **Status:** Fixed
 
-`src/triton_agent/backends/codex.py` now keeps normal indented output that appears after a diff block instead of treating every space-prefixed line as diff content forever.
+`src/helix/backends/codex.py` now keeps normal indented output that appears after a diff block instead of treating every space-prefixed line as diff content forever.
 
 ### 5. Remote command quoting
 **Status:** Fixed
@@ -32,7 +32,7 @@ Both `src/triton_agent/process_runner.py` and `skills/triton-npu-run-eval/script
 ### 6. `_normalize_agent_result` raw `KeyError`
 **Status:** Fixed
 
-`src/triton_agent/cli.py` now raises a short `ValueError` that explains which required keys are missing from a run-skill payload.
+`src/helix/cli.py` now raises a short `ValueError` that explains which required keys are missing from a run-skill payload.
 
 ## Re-Triaged Items
 
@@ -44,17 +44,17 @@ Both `src/triton_agent/process_runner.py` and `skills/triton-npu-run-eval/script
 ### 8. Unbounded `lru_cache` on run-skill loading
 **Status:** Still a design tradeoff
 
-`src/triton_agent/skill_loader.py` intentionally caches dynamically loaded skill-script modules for the lifetime of the current CLI process. That behavior may be worth documenting more explicitly, but it is not a newly confirmed functional regression.
+`src/helix/skill_loader.py` intentionally caches dynamically loaded skill-script modules for the lifetime of the current CLI process. That behavior may be worth documenting more explicitly, but it is not a newly confirmed functional regression.
 
 ### 9. `remote_workspace` local variable scoping
 **Status:** Low-risk code smell only
 
-`src/triton_agent/cli.py` only reads `remote_workspace` in branches where the remote execution path has already assigned it. Initializing it to `None` would be harmless, but current control flow does not expose an `UnboundLocalError`.
+`src/helix/cli.py` only reads `remote_workspace` in branches where the remote execution path has already assigned it. Initializing it to `None` would be harmless, but current control flow does not expose an `UnboundLocalError`.
 
 ### 10. Missing `agents` color category
 **Status:** Cosmetic only
 
-`src/triton_agent/verbose.py` still renders the `agents` prefix without a dedicated color entry. Output remains readable and functional.
+`src/helix/verbose.py` still renders the `agents` prefix without a dedicated color entry. Output remains readable and functional.
 
 ## Verification
 

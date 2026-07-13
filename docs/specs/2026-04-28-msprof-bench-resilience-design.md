@@ -81,7 +81,7 @@
 - If no kernel names can be resolved from the combined metadata/operator process, fail explicitly before running cases.
 - If operator kernel discovery fails because the operator file cannot be parsed as Python, fail explicitly before running cases.
 - If a case-level failure happens after iteration has started, continue to later cases and write that case's `latency-error` comment.
-- Temporary local and remote profiler directories must still be cleaned up for failed and successful cases, except when local artifact retention is explicitly enabled through `TRITON_AGENT_BENCH_OUTPUT_DIR`.
+- Temporary local and remote profiler directories must still be cleaned up for failed and successful cases, except when local artifact retention is explicitly enabled through `HELIX_BENCH_OUTPUT_DIR`.
 
 ## Verification
 

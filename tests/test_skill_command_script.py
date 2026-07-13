@@ -44,8 +44,8 @@ _OPTIMIZE_STATE_SCRIPT = (
 if str(_RUN_EVAL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_RUN_EVAL_SCRIPT_DIR))
 
-_REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
-_REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
+_REMOTE_TARGET_ENV = "HELIX_REMOTE"
+_REMOTE_WORKDIR_ENV = "HELIX_REMOTE_WORKDIR"
 
 
 def _load_jsonl(path: Path) -> list[dict[str, object]]:
@@ -74,7 +74,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         finally:
             sys.path[:] = before
 
-        with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP": "1.20"}, clear=False):
+        with patch.dict(os.environ, {"HELIX_OPTIMIZE_MIN_SPEEDUP": "1.20"}, clear=False):
             self.assertEqual(module._resolve_min_speedup(), 1.2)
 
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
@@ -769,14 +769,14 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "session_id": None,
                     },
                     None,
-                    "/tmp/triton-agent-123",
+                    "/tmp/helix-123",
                 )
 
             with patch.dict(
                 os.environ,
                 {
                     _REMOTE_TARGET_ENV: "alice@example.com",
-                    _REMOTE_WORKDIR_ENV: "/tmp/triton-agent",
+                    _REMOTE_WORKDIR_ENV: "/tmp/helix",
                 },
                 clear=False,
             ):
@@ -807,7 +807,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator.resolve(),
                 "torch-npu-profiler",
                 "alice@example.com",
-                "/tmp/triton-agent",
+                "/tmp/helix",
                 None,
             ],
         )
@@ -1367,7 +1367,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = stderr
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"},
                     clear=False,
                 ), patch.object(
                     module,
@@ -1450,7 +1450,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = stderr
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"},
                     clear=False,
                 ), patch.object(
                     module,
@@ -1537,7 +1537,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = stderr
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "run-test"},
+                    {"HELIX_OPTIMIZE_DELETE_PT_FILES": "run-test"},
                     clear=False,
                 ), patch.object(
                     module,
@@ -1772,8 +1772,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-3"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -1793,7 +1793,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             test_file = workspace / "differential_test_kernel.py"
             operator_file = round_dir / "opt_kernel.py"
-            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-3.jsonl"
+            timing_path = workspace / ".helix" / "round-timings" / "opt-round-3.jsonl"
             test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
             operator_file.write_text("print('kernel')\n", encoding="utf-8")
 
@@ -1872,8 +1872,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-2"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -1893,7 +1893,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             test_file = workspace / "differential_test_kernel.py"
             operator_file = round_dir / "triton_kernel.py"
-            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-2.jsonl"
+            timing_path = workspace / ".helix" / "round-timings" / "opt-round-2.jsonl"
             baseline_result = workspace / "kernel_result.pt"
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
             operator_file.write_text("print('kernel')\n", encoding="utf-8")
@@ -1973,8 +1973,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-4"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -1995,7 +1995,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             bench_file = workspace / "bench_kernel.py"
             operator_file = round_dir / "opt_kernel.py"
             perf_path = round_dir / "opt_kernel_perf.txt"
-            timing_path = workspace / ".triton-agent" / "round-timings" / "opt-round-4.jsonl"
+            timing_path = workspace / ".helix" / "round-timings" / "opt-round-4.jsonl"
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
             operator_file.write_text("print('kernel')\n", encoding="utf-8")
             perf_path.write_text("latency-a: 1.0\n", encoding="utf-8")
@@ -3000,7 +3000,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 self.assertEqual(operator_path, operator.resolve())
                 self.assertEqual(test_mode, "differential")
                 self.assertEqual(remote, "alice@example.com")
-                self.assertEqual(remote_workdir, "/tmp/triton-agent")
+                self.assertEqual(remote_workdir, "/tmp/helix")
                 self.assertIsNone(case_id)
                 self.assertFalse(keep_remote_workdir)
                 self.assertFalse(verbose)
@@ -3014,7 +3014,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "session_id": None,
                     },
                     archive,
-                    "/tmp/triton-agent-123",
+                    "/tmp/helix-123",
                 )
 
             def fake_compare_remote_result(
@@ -3071,7 +3071,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 "--remote",
                                 "alice@example.com",
                                 "--remote-workdir",
-                                "/tmp/triton-agent",
+                                "/tmp/helix",
                             ]
                         )
             finally:
@@ -3086,7 +3086,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     baseline_result.resolve(),
                     archive,
                     "alice@example.com",
-                    "/tmp/triton-agent",
+                    "/tmp/helix",
                     False,
                     stderr,
                 )
@@ -3406,7 +3406,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0)
         self.assertIn("cli.py", completed.stdout)
-        self.assertNotIn("usage: triton-agent", completed.stdout)
+        self.assertNotIn("usage: helix", completed.stdout)
         self.assertNotRegex(completed.stdout, r"(?<![-\w])run-test(?![-\w])")
         self.assertIn("run-test-baseline", completed.stdout)
         self.assertIn("run-test-optimize", completed.stdout)
@@ -3886,11 +3886,11 @@ class SkillCommandScriptTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
         self.assertIn("workflow state", payload["issues"][0])
-        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertNotIn(".helix/state.json", payload["issues"][0])
         self.assertIn("ascend-npu-optimize-state", payload["guideline"])
         self.assertIn("submit-baseline", payload["guideline"])
         self.assertIn("start-round", payload["guideline"])
-        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertNotIn(".helix/state.json", payload["guideline"])
         self.assertIn("hard_rules", payload)
         self.assertIn("Only one optimize round may be active at a time.", payload["hard_rules"])
         self.assertEqual(completed.stderr, "")
@@ -3905,8 +3905,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-1"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -3958,8 +3958,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-1"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4027,8 +4027,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-9"
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4079,8 +4079,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-2"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4126,7 +4126,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 cwd=workspace,
                 env=env,
             )
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
             attempts_text = (round_dir / "attempts.md").read_text(encoding="utf-8")
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -4157,8 +4157,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             round_dir.mkdir()
             nested_cwd = round_dir / "notes"
             nested_cwd.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4202,7 +4202,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 cwd=nested_cwd,
                 env=env,
             )
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(
@@ -4282,8 +4282,8 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4349,12 +4349,12 @@ class SkillCommandScriptTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
         self.assertIn("workflow state", payload["issues"][0])
-        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertNotIn(".helix/state.json", payload["issues"][0])
         self.assertIn("ascend-npu-optimize-state", payload["guideline"])
         self.assertIn("submit-baseline", payload["guideline"])
         self.assertIn("start-round", payload["guideline"])
         self.assertIn("set-current-round-state", payload["guideline"])
-        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertNotIn(".helix/state.json", payload["guideline"])
         self.assertEqual(completed.stderr, "")
 
     def test_optimize_state_set_current_round_state_returns_json_hint_for_noop_update(self) -> None:
@@ -4367,8 +4367,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-3"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4431,8 +4431,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp)
             round_dir = workspace / "opt-round-4"
             round_dir.mkdir()
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4489,7 +4489,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             tmpdir = Path(tmp)
             workspace = tmpdir / "workspace"
             runtime_root = tmpdir / "runtime"
-            optimize_dir = runtime_root / "triton_agent" / "optimize"
+            optimize_dir = runtime_root / "helix" / "optimize"
             workspace.mkdir()
             (workspace / "baseline").mkdir()
             optimize_dir.mkdir(parents=True)
@@ -4516,7 +4516,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             (workspace / "baseline" / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (workspace / "baseline" / "test_result.pt").write_text("stub\n", encoding="utf-8")
 
-            (runtime_root / "triton_agent" / "__init__.py").write_text("", encoding="utf-8")
+            (runtime_root / "helix" / "__init__.py").write_text("", encoding="utf-8")
             (optimize_dir / "__init__.py").write_text("", encoding="utf-8")
             (optimize_dir / "naming.py").write_text(
                 "from pathlib import Path\n\n"
@@ -4595,8 +4595,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4625,7 +4625,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
 
         self.assertEqual(state_payload["phase"], "awaiting_round_start")
         self.assertEqual(state_payload["baseline"]["status"], "passed")
@@ -4678,7 +4678,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 cwd=workspace,
                 env=env,
             )
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(state_payload["phase"], "awaiting_round_start")
@@ -4718,8 +4718,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text("{", encoding="utf-8")
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text("{", encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -4802,8 +4802,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (workdir / ".triton-agent").mkdir()
-            (workdir / ".triton-agent" / "state.json").write_text(
+            (workdir / ".helix").mkdir()
+            (workdir / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -4872,7 +4872,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
         )
-        env["TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP"] = "1.20"
+        env["HELIX_OPTIMIZE_MIN_SPEEDUP"] = "1.20"
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -4925,8 +4925,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (workdir / ".triton-agent").mkdir()
-            (workdir / ".triton-agent" / "state.json").write_text(
+            (workdir / ".helix").mkdir()
+            (workdir / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -5103,8 +5103,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
             (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -5229,12 +5229,12 @@ class SkillCommandScriptTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
         self.assertIn("workflow state", payload["issues"][0])
-        self.assertNotIn(".triton-agent/state.json", payload["issues"][0])
+        self.assertNotIn(".helix/state.json", payload["issues"][0])
         self.assertIn("ascend-npu-optimize-state", payload["guideline"])
         self.assertIn("submit-baseline", payload["guideline"])
         self.assertIn("start-round", payload["guideline"])
         self.assertIn("submit-round", payload["guideline"])
-        self.assertNotIn(".triton-agent/state.json", payload["guideline"])
+        self.assertNotIn(".helix/state.json", payload["guideline"])
         self.assertEqual(completed.stderr, "")
 
     def test_optimize_state_submit_round_returns_structured_json_when_round_dir_is_missing(self) -> None:
@@ -5248,8 +5248,8 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -5364,8 +5364,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -5407,7 +5407,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
 
         self.assertEqual(state_payload["phase"], "awaiting_round_start")
         self.assertIsNone(state_payload["current_round"])
@@ -5469,8 +5469,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (workspace / ".triton-agent").mkdir()
-            (workspace / ".triton-agent" / "state.json").write_text(
+            (workspace / ".helix").mkdir()
+            (workspace / ".helix" / "state.json").write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
@@ -5511,7 +5511,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 env=env,
             )
             payload = json.loads(completed.stdout)
-            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            state_payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
 
         self.assertEqual(completed.returncode, 1)
         self.assertEqual(payload["status"], "fail")

@@ -9,18 +9,18 @@
 
 ## User-Visible Behavior
 
-- `uv run triton-agent optimize ... --min-speedup 1.20` means the session may end as soon as the workspace reaches at least `1.20x` geomean speedup over the baseline.
+- `uv run helix optimize ... --min-speedup 1.20` means the session may end as soon as the workspace reaches at least `1.20x` geomean speedup over the baseline.
 - When `--min-speedup` is not passed, optimize behavior stays unchanged.
 - `--min-speedup` takes precedence over `--min-rounds` for success. If the speedup target is reached early, the optimize command exits successfully even when the minimum round count has not been reached yet.
 - When `--min-speedup` is active in checked or supervised round-loop mode, the CLI dispatches one round per worker invocation so the agent can stop immediately after `submit-round` reports that the target is satisfied.
-- The optimize runner injects the requested target into worker child processes as `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP`, and `submit-round` uses that injected value as the authoritative session target.
+- The optimize runner injects the requested target into worker child processes as `HELIX_OPTIMIZE_MIN_SPEEDUP`, and `submit-round` uses that injected value as the authoritative session target.
 
 ## Guidance Contract
 
 - Worker prompts must state the minimum speedup target and say that the session may stop immediately once `submit-round` reports the target is satisfied.
 - Worker prompts must tell the agent that the runner injects the target into `submit-round` automatically so the agent should not guess or override the target value.
 - The round-loop memory file must repeat that same target so resume and longer sessions do not lose the stopping condition.
-- `ascend-npu-optimize-state submit-round` must read `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP` when present and include an explicit stop-now guideline when the current session best speedup already satisfies the target.
+- `ascend-npu-optimize-state submit-round` must read `HELIX_OPTIMIZE_MIN_SPEEDUP` when present and include an explicit stop-now guideline when the current session best speedup already satisfies the target.
 
 ## Implementation Notes
 
@@ -28,7 +28,7 @@
   - optimize CLI parsing
   - `OptimizeRunOptions`
   - `AgentRequest`
-  - request-scoped `extra_env` as `TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP`
+  - request-scoped `extra_env` as `HELIX_OPTIMIZE_MIN_SPEEDUP`
   - prompt builders
   - optimize session artifact guidance rendering
 - Add one shared skill-side helper that computes the best completed-round geomean speedup for a workspace using the existing baseline-relative comparison basis recorded in each round.

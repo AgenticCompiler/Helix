@@ -4,7 +4,7 @@
 
 **Goal:** Add generated high-priority optimize-pattern reminders to optimize memory files, keep pattern cards as the single source of truth for both pattern indexes and reminder text, support `v1`/`v2`/`v3` generic optimize knowledge selection at runtime, and promote `grid-flatten-and-ub-buffering` with task-kind-aware core-count guidance and explicit cube/vector fallback defaults.
 
-**Architecture:** Refactor each selected generic optimize knowledge tree so a new skill-side `pattern_catalog.py` helper owns pattern-card parsing, priority filtering, index generation, and reminder-line generation. Then add a runtime adapter in `src/triton_agent/optimize/` that resolves the actually selected generic optimize knowledge source from staged-skill metadata, loads the selected helper through the existing skill-loader bridge, and injects a compact generated reminder block into temporary optimize memory files without hardcoding a second pattern list.
+**Architecture:** Refactor each selected generic optimize knowledge tree so a new skill-side `pattern_catalog.py` helper owns pattern-card parsing, priority filtering, index generation, and reminder-line generation. Then add a runtime adapter in `src/helix/optimize/` that resolves the actually selected generic optimize knowledge source from staged-skill metadata, loads the selected helper through the existing skill-loader bridge, and injects a compact generated reminder block into temporary optimize memory files without hardcoding a second pattern list.
 
 **Tech Stack:** Python 3, `unittest`, existing skill-loader/resource helpers, optimize session-artifact rendering, checked-in skill Markdown under `skills/`, and generated pattern indexes
 
@@ -15,7 +15,7 @@
 - Create: `skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
 - Create: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
 - Create: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
-- Create: `src/triton_agent/optimize/pattern_reminders.py`
+- Create: `src/helix/optimize/pattern_reminders.py`
 - Modify: `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
 - Modify: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py`
 - Modify: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py`
@@ -27,9 +27,9 @@
 - Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
 - Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/pattern_index.md`
 - Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/pattern_index.md`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/execution.py`
 - Modify: `tests/test_optimize_pattern_tools.py`
 - Modify: `tests/test_generation_contracts.py`
 - Modify: `tests/test_optimize_guidance.py`
@@ -517,7 +517,7 @@ git commit -m "feat: add shared high-priority pattern catalog helpers"
 Add runtime-adapter coverage to `tests/test_optimize_guidance.py`:
 
 ```python
-from triton_agent.optimize.pattern_reminders import (
+from helix.optimize.pattern_reminders import (
     resolve_generic_optimize_knowledge_source,
 )
 
@@ -574,7 +574,7 @@ Still in `tests/test_optimize_guidance.py`, add:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
             with patch(
-                "triton_agent.optimize.memory_file.render_high_priority_pattern_reminder_block",
+                "helix.optimize.memory_file.render_high_priority_pattern_reminder_block",
                 return_value="",
             ):
                 state = manager.prepare_supervised_session(
@@ -638,22 +638,22 @@ Expected: `FAIL` because there is no runtime reminder adapter yet, memory-file p
 ## Task 4: Implement Runtime Reminder Adapter And Wire It Into Optimize Memory-File Rendering
 
 **Files:**
-- Create: `src/triton_agent/optimize/pattern_reminders.py`
-- Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `src/triton_agent/optimize/session_artifacts.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Create: `src/helix/optimize/pattern_reminders.py`
+- Modify: `src/helix/optimize/memory_file.py`
+- Modify: `src/helix/optimize/session_artifacts.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] **Step 1: Create the runtime reminder adapter**
 
-Create `src/triton_agent/optimize/pattern_reminders.py` with:
+Create `src/helix/optimize/pattern_reminders.py` with:
 
 ```python
 from __future__ import annotations
 
 from pathlib import Path
 
-from triton_agent.resources import skills_root
-from triton_agent.skill_loader import load_skill_script_module
+from helix.resources import skills_root
+from helix.skill_loader import load_skill_script_module
 
 _GENERIC_OPTIMIZE_KNOWLEDGE_SKILL = "triton-npu-optimize-knowledge"
 
@@ -698,10 +698,10 @@ def render_high_priority_pattern_reminder_block(skill_name: str | None) -> str:
 
 - [ ] **Step 2: Inject reminder-block rendering into the memory-file templates**
 
-Modify `src/triton_agent/optimize/memory_file.py`:
+Modify `src/helix/optimize/memory_file.py`:
 
 ```python
-from triton_agent.optimize.pattern_reminders import (
+from helix.optimize.pattern_reminders import (
     render_high_priority_pattern_reminder_block,
 )
 ```
@@ -734,7 +734,7 @@ Populate it with:
 
 - [ ] **Step 3: Thread the selected generic knowledge source through session-artifact preparation**
 
-Modify `src/triton_agent/optimize/session_artifacts.py` so both session-preparation entrypoints accept and forward:
+Modify `src/helix/optimize/session_artifacts.py` so both session-preparation entrypoints accept and forward:
 
 ```python
         generic_optimize_knowledge_source: str | None = None,
@@ -744,10 +744,10 @@ and pass it to `MemoryFileManager.prepare_unsupervised()` / `prepare_shared()`.
 
 - [ ] **Step 4: Resolve and pass the selected source from optimize execution**
 
-Modify `src/triton_agent/optimize/execution.py`:
+Modify `src/helix/optimize/execution.py`:
 
 ```python
-from triton_agent.optimize.pattern_reminders import (
+from helix.optimize.pattern_reminders import (
     resolve_generic_optimize_knowledge_source,
 )
 ```
@@ -788,10 +788,10 @@ Run:
 
 ```bash
 git add \
-  src/triton_agent/optimize/pattern_reminders.py \
-  src/triton_agent/optimize/memory_file.py \
-  src/triton_agent/optimize/session_artifacts.py \
-  src/triton_agent/optimize/execution.py \
+  src/helix/optimize/pattern_reminders.py \
+  src/helix/optimize/memory_file.py \
+  src/helix/optimize/session_artifacts.py \
+  src/helix/optimize/execution.py \
   tests/test_optimize_guidance.py \
   tests/test_optimize_runtime.py
 git commit -m "feat: render optimize high-priority pattern reminders"

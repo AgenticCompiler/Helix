@@ -10,7 +10,7 @@ from shared.cli import build_check_payload, build_workflow_failure_payload
 from shared.results import build_check_result
 from state_manage.state_machine import complete_round
 
-_MIN_SPEEDUP_ENV = "TRITON_AGENT_OPTIMIZE_MIN_SPEEDUP"
+_MIN_SPEEDUP_ENV = "HELIX_OPTIMIZE_MIN_SPEEDUP"
 
 
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
@@ -47,7 +47,7 @@ def _resolve_min_speedup() -> float | None:
 def _workflow_failure_guideline(message: str) -> str:
     if (
         "workflow state is not available" in message
-        or ".triton-agent/state.json" in message
+        or ".helix/state.json" in message
     ):
         return (
             "Optimize workflow state is unavailable. Use the staged "
@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
         optimize_target=args.optimize_target,
         min_speedup=min_speedup,
     )
-    state_path = round_dir.parent / ".triton-agent" / "state.json"
+    state_path = round_dir.parent / ".helix" / "state.json"
     if result.status == "pass":
         if not state_path.exists():
             print(

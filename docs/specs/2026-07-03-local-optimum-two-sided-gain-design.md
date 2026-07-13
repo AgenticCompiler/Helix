@@ -20,7 +20,7 @@ Observed in `workspace/NPUKernelBench` agent logs, real emitted warnings include
 
 - A genuinely flat sequence (every adjacent gain within a small band around zero, e.g. `+0.00x, +0.01x` or `+0.01x, -0.01x`) still triggers the local-optimum warning.
 - A sequence containing a large speedup drop (e.g. `-26.21x`) no longer triggers the local-optimum warning, because such a drop is not a plateau.
-- The warning still uses the same window size, threshold default, and the same two tuning environment variables (`TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW`, `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`), but the threshold now means the maximum absolute adjacent baseline-relative geomean speedup change that still counts as nearly flat, and the warning text now describes marginal speedup changes rather than gains.
+- The warning still uses the same window size, threshold default, and the same two tuning environment variables (`HELIX_OPTIMIZE_LOCAL_OPTIMUM_WINDOW`, `HELIX_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN`), but the threshold now means the maximum absolute adjacent baseline-relative geomean speedup change that still counts as nearly flat, and the warning text now describes marginal speedup changes rather than gains.
 - Only the emission condition narrows; nothing else about round evaluation, parent selection, or artifact contracts changes. This check is advisory only; it does not itself pick parents or alter which round is promoted.
 
 ## Approach

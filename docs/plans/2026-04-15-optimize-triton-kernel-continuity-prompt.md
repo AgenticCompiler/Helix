@@ -4,7 +4,7 @@
 
 **Goal:** Tighten optimize prompt wording so worker and supervisor roles treat pure PyTorch substitution as an invalid optimize outcome while still allowing a PyTorch-facing wrapper API.
 
-**Architecture:** Keep the first rollout prompt-only. Add failing prompt tests first, then update optimize worker, unsupervised, and supervisor prompt builders in `src/triton_agent/prompts.py` with explicit Triton-kernel continuity language. Do not change optimize contracts, metadata, or runtime gate logic in this iteration.
+**Architecture:** Keep the first rollout prompt-only. Add failing prompt tests first, then update optimize worker, unsupervised, and supervisor prompt builders in `src/helix/prompts.py` with explicit Triton-kernel continuity language. Do not change optimize contracts, metadata, or runtime gate logic in this iteration.
 
 **Tech Stack:** Python, existing optimize prompt helpers, Python `unittest`
 
@@ -70,7 +70,7 @@ git commit -m "test: cover optimize kernel continuity prompt policy"
 ### Task 2: Add Kernel Continuity Language To Optimize Prompt Builders
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
+- Modify: `src/helix/prompts.py`
 - Test: `tests/test_optimize_guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 
@@ -110,7 +110,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the prompt-builder change**
 
 ```bash
-git add src/triton_agent/prompts.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
+git add src/helix/prompts.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
 git commit -m "fix: forbid pure pytorch optimize substitutions in prompts"
 ```
 

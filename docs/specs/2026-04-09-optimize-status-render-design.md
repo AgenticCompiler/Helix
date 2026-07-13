@@ -40,10 +40,10 @@
 
 ## Implementation Shape
 
-- Keep sorting and color decisions inside `src/triton_agent/optimize/render.py`.
+- Keep sorting and color decisions inside `src/helix/optimize/render.py`.
 - Add a small helper for text ordering that prioritizes `NO-SESSION` only.
 - Add a small helper for TTY-aware styling instead of embedding escape codes directly in each `print`.
-- Leave `src/triton_agent/optimize/status.py` untouched unless tests reveal a coupling issue.
+- Leave `src/helix/optimize/status.py` untouched unless tests reveal a coupling issue.
 
 ## Testing
 

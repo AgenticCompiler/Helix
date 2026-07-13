@@ -69,7 +69,7 @@ class SimulatorRunnerTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_SIMULATOR_SOC_VERSION": "Ascend910B_TEST"}, clear=False):
+            with patch.dict(os.environ, {"HELIX_SIMULATOR_SOC_VERSION": "Ascend910B_TEST"}, clear=False):
                 with patch.object(module, "_load_bench_runtime_module") as load_runtime, patch.object(
                     module,
                     "resolve_bench_kernel_resolution",

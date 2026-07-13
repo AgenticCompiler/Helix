@@ -1,6 +1,6 @@
 # Optimize Supervisor Round Gate Design
 
-> **Superseded note:** The current implementation no longer creates `.triton-agent/roles/*` files and no longer uses a dedicated `optimize-supervisor` skill. Supervisor behavior now comes from the launch prompt plus `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md`.
+> **Superseded note:** The current implementation no longer creates `.helix/roles/*` files and no longer uses a dedicated `optimize-supervisor` skill. Supervisor behavior now comes from the launch prompt plus `.helix/round-brief.md` and `.helix/supervisor-report.md`.
 
 ## Summary
 
@@ -29,7 +29,7 @@
 ## Problem
 
 - The current optimize flow launches one code agent with staged skills plus a temporary optimize guidance file and expects the agent to follow the workflow on its own.
-- Existing orchestration only supervises liveness concerns such as stalled runs and minimum round count, as implemented in [supervisor.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/run_loop.py).
+- Existing orchestration only supervises liveness concerns such as stalled runs and minimum round count, as implemented in [supervisor.py](/Users/cdj/Projects/helix/src/helix/optimize/run_loop.py).
 - The optimize skill and guidance already require concrete artifacts and workflow steps, but the CLI does not currently gate on those requirements.
 - As a result, agents may:
   - skip or under-specify round hypotheses and supporting evidence
@@ -221,10 +221,10 @@ The shared guidance must stay role-neutral. Do not put worker-only or supervisor
 
 Add separate role-specific documents under a temporary orchestration area, for example:
 
-- `.triton-agent/roles/optimize-worker.md`
-- `.triton-agent/roles/optimize-supervisor.md`
-- `.triton-agent/round-brief.md`
-- `.triton-agent/supervisor-report.md`
+- `.helix/roles/optimize-worker.md`
+- `.helix/roles/optimize-supervisor.md`
+- `.helix/round-brief.md`
+- `.helix/supervisor-report.md`
 
 The worker prompt must point to the worker role brief and current round brief.
 The supervisor prompt must point to the supervisor role brief and current round artifacts.
@@ -297,13 +297,13 @@ The CLI should use this structured output as the source of truth and treat accom
 
 Likely implementation areas:
 
-- [src/triton_agent/optimize/run_loop.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/run_loop.py)
+- [src/helix/optimize/run_loop.py](/Users/cdj/Projects/helix/src/helix/optimize/run_loop.py)
   - expand from stall/min-round recovery into round gate orchestration
-- [src/triton_agent/prompts.py](/Users/cdj/Projects/triton-agent/src/triton_agent/prompts.py)
+- [src/helix/prompts.py](/Users/cdj/Projects/helix/src/helix/prompts.py)
   - split worker and supervisor prompt builders
-- [src/triton_agent/optimize/guidance.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/guidance.py)
+- [src/helix/optimize/guidance.py](/Users/cdj/Projects/helix/src/helix/optimize/guidance.py)
   - render shared guidance plus role briefs instead of one worker-only guidance file
-- `src/triton_agent/optimize/`
+- `src/helix/optimize/`
   - add round contract parsing, gate result models, and artifact inspection helpers
 - `skills/`
   - add an audit-oriented optimize supervisor skill

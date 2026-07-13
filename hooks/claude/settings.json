@@ -8,9 +8,9 @@
             "type": "command",
             "command": "python3",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/triton-agent-hooks/pretooluse_guard.py",
+              "${CLAUDE_PROJECT_DIR}/.claude/helix-hooks/pretooluse_guard.py",
               "--policy",
-              "${CLAUDE_PROJECT_DIR}/.claude/triton-agent-hooks/policy.json"
+              "${CLAUDE_PROJECT_DIR}/.claude/helix-hooks/policy.json"
             ]
           }
         ]

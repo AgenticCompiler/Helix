@@ -96,7 +96,7 @@ Expected: `0 errors`.
 Run:
 
 ```bash
-uv run python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/triton-agent/.codex/skills/managing-gitcode-prs
+uv run python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py /Users/cdj/Projects/helix/.codex/skills/managing-gitcode-prs
 ```
 
 Expected: `Skill is valid!`

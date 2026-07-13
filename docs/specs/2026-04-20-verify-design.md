@@ -27,9 +27,9 @@ The command selects the numeric best round using the same performance ranking as
 Run:
 
 ```bash
-uv run triton-agent verify --input .
-uv run triton-agent verify --input . --phase test
-uv run triton-agent verify --input . --phase bench
+uv run helix verify --input .
+uv run helix verify --input . --phase test
+uv run helix verify --input . --phase bench
 ```
 
 `--input` must point to one operator workspace with optimize artifacts.

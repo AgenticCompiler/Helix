@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from triton_agent.backends.claude_trace import (
+from helix.backends.claude_trace import (
     ClaudeJsonLineParser,
     ClaudeJsonOutputFilter,
     _parse_timestamp,
@@ -430,8 +430,8 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
     def test_feed_writes_trace_and_returns_human(self) -> None:
         _, trace_path = self._make_trace_path()
         extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
+            "HELIX_OTEL_RUN_ID": "test-run",
+            "HELIX_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = ClaudeJsonOutputFilter(trace_path, extra_env)
         result = filter_obj.feed(json.dumps({
@@ -469,8 +469,8 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
     def test_non_json_lines_pass_through(self) -> None:
         _, trace_path = self._make_trace_path()
         extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
+            "HELIX_OTEL_RUN_ID": "test-run",
+            "HELIX_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = ClaudeJsonOutputFilter(trace_path, extra_env)
         result = filter_obj.feed("Hello world\n", flush=True)
@@ -486,8 +486,8 @@ class TestBuildClaudeTraceEnv(unittest.TestCase):
             run_id="run-123",
             workspace_root=Path(tempfile.gettempdir()),
         )
-        self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
-        self.assertEqual(env["TRITON_AGENT_OTEL_RUN_ID"], "run-123")
+        self.assertEqual(env["HELIX_OTEL_TRACE_PATH"], str(trace_path))
+        self.assertEqual(env["HELIX_OTEL_RUN_ID"], "run-123")
 
     def test_existing_env_preserved(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
@@ -499,7 +499,7 @@ class TestBuildClaudeTraceEnv(unittest.TestCase):
             workspace_root=Path(tempfile.gettempdir()),
         )
         self.assertEqual(env["MY_VAR"], "my_value")
-        self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
+        self.assertEqual(env["HELIX_OTEL_TRACE_PATH"], str(trace_path))
 
 
 if __name__ == "__main__":

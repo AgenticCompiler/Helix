@@ -49,7 +49,7 @@ This is the most important direct signal for `continuous` mode because the agent
 
 ### 2. CLI follow-up summary
 
-Update `src/triton_agent/optimize/execution.py` so the CLI-generated follow-up summary includes:
+Update `src/helix/optimize/execution.py` so the CLI-generated follow-up summary includes:
 
 - `Latest round: opt-round-N`
 - `Next round: opt-round-N+1`
@@ -59,7 +59,7 @@ This makes the next-round identity explicit when the CLI launches a fresh worker
 
 ### 3. Continue prompt guidance
 
-Update `src/triton_agent/optimize/prompts.py` so the shared continue prompt requires the next round to begin with a short reflection step before editing code.
+Update `src/helix/optimize/prompts.py` so the shared continue prompt requires the next round to begin with a short reflection step before editing code.
 
 That reflection should require the agent to decide:
 
@@ -75,8 +75,8 @@ This keeps the optimize loop deliberate instead of reactive.
 ## Files
 
 - Modify `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
-- Modify `src/triton_agent/optimize/execution.py`
-- Modify `src/triton_agent/optimize/prompts.py`
+- Modify `src/helix/optimize/execution.py`
+- Modify `src/helix/optimize/prompts.py`
 - Modify targeted tests under `tests/`
 
 ## Verification

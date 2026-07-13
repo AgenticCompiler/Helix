@@ -23,10 +23,10 @@
 ### Task 2: Rename loop and adapter types
 
 **Files:**
-- Create: `src/triton_agent/optimize/run_loop.py`
-- Create: `src/triton_agent/optimize/execution.py`
-- Delete: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Create: `src/helix/optimize/run_loop.py`
+- Create: `src/helix/optimize/execution.py`
+- Delete: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - [ ] Move `OptimizeRunLoop` into `run_loop.py` and remove `supervisor.py`.
 - [ ] Move adapter and execution helpers into `execution.py`.

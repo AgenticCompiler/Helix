@@ -2,7 +2,7 @@
 
 > **Execution mode:** Implement this plan inline in the current session. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Support both session and subagent lifecycle bootstrap/cleanup for the Claude optimize plugin, and stop missing `.triton-agent/state.json` from blocking ordinary workspace edits.
+**Goal:** Support both session and subagent lifecycle bootstrap/cleanup for the Claude optimize plugin, and stop missing `.helix/state.json` from blocking ordinary workspace edits.
 
 **Architecture:** Keep the existing session lifecycle wrappers for direct optimize-agent startup, add plugin-local `SubagentStart` / `SubagentStop` wrappers for subagent startup, make bootstrap/cleanup idempotent across both entrypoints, record an owner marker keyed by Claude `agent_id` so subagent cleanup is precise even when later stop payloads are sparse, and relax missing-state edit handling so `PreToolUse` and the shared Python guard skip workflow-phase gating when state is absent while still denying protected runtime paths.
 
@@ -29,21 +29,21 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             first = _run_hook(
                 "session_start.py",
                 {
-                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
+                    "agent_type": "helix-optimizer:helix-optimizer",
                     "cwd": str(workspace),
                 },
             )
             second = _run_hook(
                 "session_start.py",
                 {
-                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
+                    "agent_type": "helix-optimizer:helix-optimizer",
                     "cwd": str(workspace),
                 },
             )
 
             self.assertEqual(first.returncode, 0)
             self.assertEqual(second.returncode, 0)
-            payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            payload = json.loads((workspace / ".helix" / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["phase"], "baseline")
 
     def test_subagent_start_bootstraps_baseline_state_for_optimize_agent(self) -> None:
@@ -54,7 +54,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
                 "subagent_start.py",
                 {
                     "hook_event_name": "SubagentStart",
-                    "subagent_type": "triton-agent-optimizer",
+                    "subagent_type": "helix-optimizer",
                     "agent_id": "agent-opt-1",
                     "cwd": str(workspace),
                 },
@@ -62,13 +62,13 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0)
             state_payload = json.loads(
-                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "state.json").read_text(encoding="utf-8")
             )
             owner_payload = json.loads(
-                (workspace / ".triton-agent" / "plugin-owner.json").read_text(encoding="utf-8")
+                (workspace / ".helix" / "plugin-owner.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state_payload["phase"], "baseline")
-            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"})
+            self.assertEqual(owner_payload, {"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"})
 
     def test_subagent_start_ignores_unrelated_subagent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,7 +85,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0)
-            self.assertFalse((workspace / ".triton-agent").exists())
+            self.assertFalse((workspace / ".helix").exists())
 ```
 
 ```python
@@ -102,7 +102,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
                 input=json.dumps(
                     {
                         "hook_event_name": "SubagentStart",
-                        "subagent_type": "triton-agent-optimizer",
+                        "subagent_type": "helix-optimizer",
                         "agent_id": "agent-opt-1",
                         "cwd": str(workspace),
                     }
@@ -113,7 +113,7 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertTrue((workspace / ".triton-agent" / "state.json").exists())
+            self.assertTrue((workspace / ".helix" / "state.json").exists())
 ```
 
 - [ ] **Step 2: Run the focused tests and verify they fail**
@@ -177,7 +177,7 @@ def bootstrap_runtime_state(
     run_git: RunGit | None = None,
 ) -> BootstrapResult:
     contexts: list[str] = []
-    runtime_dir = workspace / ".triton-agent"
+    runtime_dir = workspace / ".helix"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "state.json"
     try:
@@ -215,7 +215,7 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001
-        print(f"triton-agent claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict) or not should_manage_subagent_payload(payload):
         return 0
@@ -228,9 +228,9 @@ def main() -> int:
         return 0
     try:
         result = bootstrap_runtime_state(workspace)
-        record_runtime_owner(workspace / ".triton-agent", agent_id=agent_id, agent_type=agent_type)
+        record_runtime_owner(workspace / ".helix", agent_id=agent_id, agent_type=agent_type)
     except Exception as exc:  # noqa: BLE001
-        print(f"triton-agent claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStart failed open: {exc}", file=sys.stderr)
         return 0
     if not result.additional_context:
         return 0
@@ -270,11 +270,11 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
     def test_subagent_stop_removes_runtime_dir_only_for_matching_owner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            runtime_dir = workspace / ".triton-agent"
+            runtime_dir = workspace / ".helix"
             runtime_dir.mkdir()
             (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
             (runtime_dir / "plugin-owner.json").write_text(
-                json.dumps({"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"}),
+                json.dumps({"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"}),
                 encoding="utf-8",
             )
             (workspace / "baseline").mkdir()
@@ -295,11 +295,11 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
     def test_subagent_stop_ignores_non_owner_agent_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            runtime_dir = workspace / ".triton-agent"
+            runtime_dir = workspace / ".helix"
             runtime_dir.mkdir()
             (runtime_dir / "state.json").write_text("{}", encoding="utf-8")
             (runtime_dir / "plugin-owner.json").write_text(
-                json.dumps({"agent_id": "agent-opt-1", "agent_type": "triton-agent-optimizer"}),
+                json.dumps({"agent_id": "agent-opt-1", "agent_type": "helix-optimizer"}),
                 encoding="utf-8",
             )
 
@@ -371,20 +371,20 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001
-        print(f"triton-agent claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
         return 0
     workspace = resolve_workspace(payload)
     if workspace is None:
         return 0
-    runtime_dir = workspace / ".triton-agent"
+    runtime_dir = workspace / ".helix"
     if not should_cleanup_for_subagent(payload, runtime_dir):
         return 0
     try:
         cleanup_runtime_tree(runtime_dir)
     except Exception as exc:  # noqa: BLE001
-        print(f"triton-agent claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
+        print(f"helix claude plugin SubagentStop failed open: {exc}", file=sys.stderr)
     return 0
 ```
 
@@ -480,7 +480,7 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             result = _run_hook(
                 "pretooluse_guard.py",
                 {
-                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
+                    "agent_type": "helix-optimizer:helix-optimizer",
                     "cwd": str(workspace),
                     "tool_name": "Edit",
                     "tool_input": {"file_path": str(workspace / "kernel.py")},
@@ -493,12 +493,12 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
     def test_pretooluse_guard_still_denies_protected_runtime_edit_when_state_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            protected_path = workspace / ".triton-agent" / "state.json"
+            protected_path = workspace / ".helix" / "state.json"
 
             result = _run_hook(
                 "pretooluse_guard.py",
                 {
-                    "agent_type": "triton-agent-optimizer:triton-agent-optimizer",
+                    "agent_type": "helix-optimizer:helix-optimizer",
                     "cwd": str(workspace),
                     "tool_name": "Edit",
                     "tool_input": {"file_path": str(protected_path)},
@@ -531,7 +531,7 @@ def main() -> int:
     return run_with_policy(
         policy=_policy(workspace),
         payload=payload,
-        failure_prefix="triton-agent claude plugin PreToolUse",
+        failure_prefix="helix claude plugin PreToolUse",
     )
 ```
 
@@ -574,7 +574,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
-            protected_path = workspace / ".triton-agent" / "state.json"
+            protected_path = workspace / ".helix" / "state.json"
             guard = _load_guard_module()
 
             reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(protected_path))

@@ -13,8 +13,8 @@ The new flow should let users run verification across a root directory of operat
 Add a new CLI command:
 
 ```bash
-uv run triton-agent verify-batch -i operators_root
-uv run triton-agent verify-batch -i operators_root --force-verify
+uv run helix verify-batch -i operators_root
+uv run helix verify-batch -i operators_root --force-verify
 ```
 
 Behavior:
@@ -63,7 +63,7 @@ This keeps the batch command automation-friendly without forcing a heavy rerun o
 
 Do not create a separate set of batch-only validation rules.
 
-Reuse the existing `prepare_verify_target()` contract from `src/triton_agent/verification/core.py`. A workspace is verifiable only when the existing single-workspace verify path can prepare successfully, which means the workspace has enough data to run the same verification flow:
+Reuse the existing `prepare_verify_target()` contract from `src/helix/verification/core.py`. A workspace is verifiable only when the existing single-workspace verify path can prepare successfully, which means the workspace has enough data to run the same verification flow:
 
 - baseline metadata and artifacts
 - a numeric best round
@@ -117,17 +117,17 @@ Keep execution behavior separate from status reporting.
 
 ### CLI and command entrypoints
 
-- `src/triton_agent/cli.py`
+- `src/helix/cli.py`
   - register `verify-batch`
   - add `--force-verify`
-- `src/triton_agent/commands/verification.py`
+- `src/helix/commands/verification.py`
   - add `handle_verify_batch`
 
 ### Batch verification logic
 
 Add a feature-local module:
 
-- `src/triton_agent/verification/batch.py`
+- `src/helix/verification/batch.py`
 
 Responsibilities:
 

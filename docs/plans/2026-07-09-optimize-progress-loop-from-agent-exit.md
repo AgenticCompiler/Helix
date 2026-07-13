@@ -12,13 +12,13 @@
 
 ## File Structure
 
-- `src/triton_agent/optimize/execution.py`
+- `src/helix/optimize/execution.py`
   Owns checked/supervised multi-invocation control flow. This is where the optimize-only recovery loop must be replaced with post-exit progress accounting and controller trace events.
-- `src/triton_agent/optimize/orchestration.py`
+- `src/helix/optimize/orchestration.py`
   Owns initial batch scheduling and currently derives the next round from accepted-round count. It must align with attempted-round semantics.
-- `src/triton_agent/optimize/checks.py`
+- `src/helix/optimize/checks.py`
   Owns the bridge into skill-side round helpers. It may need new exported helpers for attempted versus accepted round accounting.
-- `src/triton_agent/optimize/contract.py`
+- `src/helix/optimize/contract.py`
   Loads optimize contract JSON and exposes shared contract lines to prompts/runtime.
 - `skills/common/ascend-npu-optimize-state/references/round-contract.json`
   Source of truth for round-state required fields and new machine-readable status enums.
@@ -186,9 +186,9 @@ Expected: PASS.
 
 **Files:**
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/checks.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/checks.py`
 
 - [ ] **Step 1: Add failing runtime tests for post-exit continuation behavior**
 
@@ -205,7 +205,7 @@ Run the exact new `unittest` selectors and confirm the current controller still 
 
 - [ ] **Step 3: Add controller-visible attempted-round helpers**
 
-Update `src/triton_agent/optimize/checks.py` and related loader bridges so runtime code can ask for:
+Update `src/helix/optimize/checks.py` and related loader bridges so runtime code can ask for:
 
 - attempted/terminal round directories or counts
 - accepted/completed round directories or counts
@@ -213,7 +213,7 @@ Update `src/triton_agent/optimize/checks.py` and related loader bridges so runti
 
 - [ ] **Step 4: Rewrite `run_round_loop()` around post-exit progress**
 
-In `src/triton_agent/optimize/execution.py`, replace optimize-only `_run_worker_with_recovery()` flow with:
+In `src/helix/optimize/execution.py`, replace optimize-only `_run_worker_with_recovery()` flow with:
 
 - pre-launch progress snapshot
 - one worker launch
@@ -238,7 +238,7 @@ Run the exact runtime selectors added in Step 1.
 
 **Files:**
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/execution.py`
+- Modify: `src/helix/optimize/execution.py`
 
 - [ ] **Step 1: Add a failing test for the new optimize controller trace events**
 
@@ -268,7 +268,7 @@ Use the same exact selector from Step 2.
 Run:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/Users/cdj/Projects/triton-agent/.venv uv run --group dev ruff check
+UV_PROJECT_ENVIRONMENT=/Users/cdj/Projects/helix/.venv uv run --group dev ruff check
 uv run pyright
 uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/
 ```

@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.codex import CodexRunner, _extract_session_id
-from triton_agent.backends.codex_trace import CodexJsonOutputFilter
-from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.prompts import build_prompt
+from helix.backends.codex import CodexRunner, _extract_session_id
+from helix.backends.codex_trace import CodexJsonOutputFilter
+from helix.models import AgentRequest, AgentResult, CommandKind
+from helix.prompts import build_prompt
 
 
 class CodexRunnerTests(unittest.TestCase):
@@ -242,7 +242,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Continue work",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
 
             self.assertIsNotNone(mocked.call_args.kwargs["interrupt_policy"])
@@ -267,7 +267,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Continue work",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -292,7 +292,7 @@ class CodexRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             stderr = StringIO()
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
+            with patch("helix.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
             self.assertIn("[command]", stderr.getvalue())
@@ -323,7 +323,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 result = runner.run(request)
             self.assertEqual(result.return_code, 0)
             mocked.assert_called_once()
@@ -348,7 +348,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -371,7 +371,7 @@ class CodexRunnerTests(unittest.TestCase):
                 skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
-                mcp_servers=("triton-agent-run-eval",),
+                mcp_servers=("helix-run-eval",),
             )
 
             def _inspect_config(*args, **kwargs):
@@ -379,9 +379,9 @@ class CodexRunnerTests(unittest.TestCase):
                 config_path = workspace / ".codex" / "config.toml"
                 self.assertTrue(config_path.exists())
                 content = config_path.read_text(encoding="utf-8")
-                self.assertIn("[mcp_servers.triton-agent-run-eval]", content)
+                self.assertIn("[mcp_servers.helix-run-eval]", content)
                 parsed = tomllib.loads(content)
-                server = parsed["mcp_servers"]["triton-agent-run-eval"]
+                server = parsed["mcp_servers"]["helix-run-eval"]
                 self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
                 self.assertIn("/mcp?workspace=", server["url"])
                 self.assertIn(str(workspace), server["url"])
@@ -390,12 +390,12 @@ class CodexRunnerTests(unittest.TestCase):
             with patch.dict(
                 "os.environ",
                 {
-                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
-                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                    "HELIX_BATCH_NPU_DEVICES": "0,1",
+                    "HELIX_BATCH_WORKERS_PER_NPU": "2",
                 },
                 clear=False,
             ):
-                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                with patch("helix.backends.base.run_process", side_effect=_inspect_config):
                     result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
@@ -426,19 +426,19 @@ class CodexRunnerTests(unittest.TestCase):
             def _inspect_hooks(*args, **kwargs):
                 del args, kwargs
                 hooks_json = workspace / ".codex" / "hooks.json"
-                hook_dir = workspace / ".codex" / "triton-agent-hooks"
+                hook_dir = workspace / ".codex" / "helix-hooks"
                 self.assertTrue(hooks_json.exists())
                 self.assertTrue((hook_dir / "policy.json").exists())
                 self.assertTrue((hook_dir / "pretooluse_guard.py").exists())
                 self.assertTrue((hook_dir / "tool_trace_hook.py").exists())
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+            with patch("helix.backends.base.run_process", side_effect=_inspect_hooks):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
             self.assertFalse((workspace / ".codex" / "hooks.json").exists())
-            self.assertFalse((workspace / ".codex" / "triton-agent-hooks").exists())
+            self.assertFalse((workspace / ".codex" / "helix-hooks").exists())
 
     def test_buffered_output_filters_bare_hunk_fragments_from_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -513,7 +513,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -550,7 +550,7 @@ class CodexRunnerTests(unittest.TestCase):
                 min_rounds=3,
                 round_mode="checked",
             )
-            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+            with patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]

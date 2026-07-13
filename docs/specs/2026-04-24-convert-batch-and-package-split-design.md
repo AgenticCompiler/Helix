@@ -97,7 +97,7 @@ It should not support:
 
 Create a new package:
 
-- `src/triton_agent/convert/`
+- `src/helix/convert/`
 
 Its responsibilities should include:
 
@@ -110,21 +110,21 @@ This package should become the owner of convert runtime behavior instead of `gen
 
 ### Proposed Modules
 
-- `src/triton_agent/convert/orchestration.py`
+- `src/helix/convert/orchestration.py`
   - single-workspace convert request building
   - convert staged-skill allowlist
   - convert runner invocation
-- `src/triton_agent/convert/batch.py`
+- `src/helix/convert/batch.py`
   - `convert-batch` workspace discovery
   - concurrent convert execution
   - summary rendering
-- `src/triton_agent/convert/outputs.py`
+- `src/helix/convert/outputs.py`
   - convert output path resolution
   - overwrite checks and cleanup for converted artifacts
 
 If convert-specific dataclasses become useful, add:
 
-- `src/triton_agent/convert/models.py`
+- `src/helix/convert/models.py`
 
 Otherwise, keep shared option models only where the boundary remains genuinely shared.
 
@@ -134,8 +134,8 @@ After this change, `generation/` should no longer own convert behavior.
 
 That means removing convert-specific handling from:
 
-- `src/triton_agent/generation/orchestration.py`
-- `src/triton_agent/generation/outputs.py`
+- `src/helix/generation/orchestration.py`
+- `src/helix/generation/outputs.py`
 - any convert-specific code paths in generation-facing command handlers
 
 `generation/` should remain the home for generation-only workflows:
@@ -149,14 +149,14 @@ That means removing convert-specific handling from:
 
 Introduce a dedicated command module:
 
-- `src/triton_agent/commands/convert.py`
+- `src/helix/commands/convert.py`
 
 It should own:
 
 - `handle_convert`
 - `handle_convert_batch`
 
-`src/triton_agent/commands/generation.py` should stop routing convert requests.
+`src/helix/commands/generation.py` should stop routing convert requests.
 
 ## Batch Workspace Semantics
 

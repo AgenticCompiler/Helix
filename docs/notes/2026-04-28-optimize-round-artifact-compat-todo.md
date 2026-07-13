@@ -25,10 +25,10 @@ Newly produced round artifacts should continue to use only the canonical `opt_..
 
 When the repository is ready to drop legacy workspace support, remove the fallback readers and restore strict canonical-name enforcement in these areas:
 
-- [src/triton_agent/optimize/naming.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/naming.py)
-- [skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py](/Users/cdj/Projects/triton-agent/skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py)
-- [src/triton_agent/status/core.py](/Users/cdj/Projects/triton-agent/src/triton_agent/status/core.py)
-- [src/triton_agent/verification/core.py](/Users/cdj/Projects/triton-agent/src/triton_agent/verification/core.py)
+- [src/helix/optimize/naming.py](/Users/cdj/Projects/helix/src/helix/optimize/naming.py)
+- [skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py](/Users/cdj/Projects/helix/skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py)
+- [src/helix/status/core.py](/Users/cdj/Projects/helix/src/helix/status/core.py)
+- [src/helix/verification/core.py](/Users/cdj/Projects/helix/src/helix/verification/core.py)
 
 ## Exit Criteria
 

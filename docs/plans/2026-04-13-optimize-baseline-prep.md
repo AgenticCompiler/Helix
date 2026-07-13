@@ -13,8 +13,8 @@
 ### Task 1: Add The Canonical Baseline Contract
 
 **Files:**
-- Create: `src/triton_agent/optimize/baseline.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Create: `src/helix/optimize/baseline.py`
+- Modify: `src/helix/optimize/models.py`
 - Create: `tests/test_optimize_baseline.py`
 
 - [ ] Add strict helpers for `baseline/state.json`, `baseline/perf.txt`, and the baseline operator snapshot.
@@ -23,7 +23,7 @@
 ### Task 2: Make Optimize Recognize Baseline Session State
 
 **Files:**
-- Modify: `src/triton_agent/optimize/resume.py`
+- Modify: `src/helix/optimize/resume.py`
 - Modify: `tests/test_cli.py`
 
 - [ ] Let baseline-only prepared sessions count as resumable optimize state.
@@ -32,8 +32,8 @@
 ### Task 3: Teach Prompts And Guidance About `baseline/`
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/guidance.py`
 - Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 
@@ -43,9 +43,9 @@
 ### Task 4: Enforce Canonical Baseline Usage
 
 **Files:**
-- Modify: `src/triton_agent/optimize/round_contract.py`
-- Modify: `src/triton_agent/optimize/gate.py`
-- Modify: `src/triton_agent/optimize/status.py`
+- Modify: `src/helix/optimize/round_contract.py`
+- Modify: `src/helix/optimize/gate.py`
+- Modify: `src/helix/optimize/status.py`
 - Modify: `tests/test_optimize_round_contract.py`
 - Modify: `tests/test_optimize_gate.py`
 - Modify: `tests/test_optimize_status.py`

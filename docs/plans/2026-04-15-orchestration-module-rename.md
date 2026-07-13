@@ -16,15 +16,15 @@
 - Modify: `tests/test_generation_commands.py`
 - Modify: `tests/test_optimize_runtime.py`
 
-- [ ] **Step 1: Add a failing test asserting `triton_agent.generation.orchestration` exists and `triton_agent.generation.orchestration` does not**
-- [ ] **Step 2: Add a failing test asserting `triton_agent.optimize.orchestration` exists and `triton_agent.optimize.orchestration` does not**
+- [ ] **Step 1: Add a failing test asserting `helix.generation.orchestration` exists and `helix.generation.orchestration` does not**
+- [ ] **Step 2: Add a failing test asserting `helix.optimize.orchestration` exists and `helix.optimize.orchestration` does not**
 - [ ] **Step 3: Run `uv run python -m unittest tests.test_generation_commands tests.test_optimize_runtime -v` and confirm the new assertions fail before implementation**
 
 ### Task 2: Rename The Modules
 
 **Files:**
-- Move: `src/triton_agent/generation/orchestration.py` to `src/triton_agent/generation/orchestration.py`
-- Move: `src/triton_agent/optimize/orchestration.py` to `src/triton_agent/optimize/orchestration.py`
+- Move: `src/helix/generation/orchestration.py` to `src/helix/generation/orchestration.py`
+- Move: `src/helix/optimize/orchestration.py` to `src/helix/optimize/orchestration.py`
 - Modify: imports under `src/`
 - Modify: imports and patch targets under `tests/`
 

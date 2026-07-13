@@ -17,12 +17,12 @@ prompt explicitly authorizes compiler-source analysis.
 ## Design
 
 - Keep the allowlist narrow: add only the resolved `request.compiler_source_path`
-  for the current run, not the entire `~/.triton-agent/compiler-sources/` parent.
+  for the current run, not the entire `~/.helix/compiler-sources/` parent.
 - Extend `AgentHookManager.prepare_hooks()` with an optional list of extra allowed
   read roots and thread those roots into both Codex and OpenCode policy rendering.
 - Update the shared runner hook staging call to pass the current request's compiler
   source checkout when present.
-- Leave deny globs unchanged so `triton-agent-logs/` and staged skill scripts stay
+- Leave deny globs unchanged so `helix-logs/` and staged skill scripts stay
   protected even if extra allow roots are present.
 
 ## Verification

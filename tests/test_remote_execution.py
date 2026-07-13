@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.remote import env as remote_env_module
-from triton_agent.skills.loader import load_operator_eval_script_module
+from helix.remote import env as remote_env_module
+from helix.skills.loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
     load_bench_runner_module,
@@ -68,7 +68,7 @@ class RemoteExecutionTests(unittest.TestCase):
         cls._monotonic_patcher.stop()
 
     def test_app_remote_execution_module_has_been_removed(self) -> None:
-        remote_execution = Path(__file__).resolve().parents[1] / "src" / "triton_agent" / "remote_execution.py"
+        remote_execution = Path(__file__).resolve().parents[1] / "src" / "helix" / "remote_execution.py"
 
         self.assertFalse(remote_execution.exists())
 
@@ -178,12 +178,12 @@ class RemoteExecutionTests(unittest.TestCase):
 
         remote_env_module.apply_remote_execution_env(
             "alice@example.com",
-            "/tmp/triton-agent",
+            "/tmp/helix",
             env,
         )
 
         self.assertEqual(env[remote_env_module.remote_target_env_name()], "alice@example.com")
-        self.assertEqual(env[remote_env_module.remote_workdir_env_name()], "/tmp/triton-agent")
+        self.assertEqual(env[remote_env_module.remote_workdir_env_name()], "/tmp/helix")
 
     def test_apply_remote_execution_env_clears_missing_workdir_and_remote(self) -> None:
         env = {
@@ -231,7 +231,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path.cwd() / "src"))
-from triton_agent.skills.loader import load_operator_eval_script_module
+from helix.skills.loader import load_operator_eval_script_module
 module = load_operator_eval_script_module("bench_runner")
 result = {
     "return_code": 0,
@@ -509,7 +509,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
     def test_eval_timeout_env_rejects_negative_values(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
-        with patch.dict(module.os.environ, {"TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
+        with patch.dict(module.os.environ, {"HELIX_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
             with self.assertRaises(ValueError):
                 module.eval_stall_timeout_seconds()
 

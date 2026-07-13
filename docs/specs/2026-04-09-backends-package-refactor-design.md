@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Replace the flat backend runner modules with a `triton_agent/backends/` package.
+- Replace the flat backend runner modules with a `helix/backends/` package.
 - Keep backend behavior, CLI flags, skill staging behavior, and optimize resume semantics unchanged.
 - Do not introduce a plugin registry or runtime backend discovery in this refactor.
 
@@ -23,20 +23,20 @@
 
 ## Proposed Package Shape
 
-- `src/triton_agent/backends/__init__.py`
+- `src/helix/backends/__init__.py`
   - stable export surface for backend runner types and factory helpers
-- `src/triton_agent/backends/base.py`
+- `src/helix/backends/base.py`
   - `AgentRunner`
-- `src/triton_agent/backends/factory.py`
+- `src/helix/backends/factory.py`
   - `create_runner()`
-- `src/triton_agent/backends/codex.py`
+- `src/helix/backends/codex.py`
   - `CodexRunner`
   - `_UnifiedDiffFilter`
-- `src/triton_agent/backends/opencode.py`
+- `src/helix/backends/opencode.py`
   - `OpenCodeRunner`
-- `src/triton_agent/backends/pi.py`
+- `src/helix/backends/pi.py`
   - `PiRunner`
-- `src/triton_agent/backends/claude.py`
+- `src/helix/backends/claude.py`
   - `ClaudeRunner`
 
 ## Why This Shape
@@ -48,13 +48,13 @@
 ## Import Migration
 
 - Update repository imports from:
-  - `triton_agent.agent`
-  - `triton_agent.runner_factory`
-  - `triton_agent.codex_runner`
-  - `triton_agent.opencode_runner`
-  - `triton_agent.pi_runner`
-  - `triton_agent.claude_runner`
-- Replace them with imports from `triton_agent.backends` or the focused package modules.
+  - `helix.agent`
+  - `helix.runner_factory`
+  - `helix.codex_runner`
+  - `helix.opencode_runner`
+  - `helix.pi_runner`
+  - `helix.claude_runner`
+- Replace them with imports from `helix.backends` or the focused package modules.
 - Delete the old flat modules after the package migration is complete.
 
 ## Testing

@@ -35,8 +35,8 @@ hooks/opencode/
 The staged workspace should receive:
 
 ```text
-.opencode/plugins/triton-agent-hook-guard.js
-.opencode/triton-agent-hooks/policy.json
+.opencode/plugins/helix-hook-guard.js
+.opencode/helix-hooks/policy.json
 ```
 
 The plugin source is static and copied from the template directory. The policy is rendered for the current workspace so absolute path checks are deterministic.
@@ -50,7 +50,7 @@ The policy shape should mirror the Codex policy while using OpenCode paths:
   "deny_read_globs": [
     "/absolute/path/to/workspace/.opencode/skills/*/scripts/**"
   ],
-  "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. Use the skill instructions and documented command interface instead."
+  "deny_message": "This read is blocked by helix workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. Use the skill instructions and documented command interface instead."
 }
 ```
 
@@ -60,8 +60,8 @@ The policy shape should mirror the Codex policy while using OpenCode paths:
 
 The OpenCode branch should:
 
-- Refuse to overwrite `.opencode/plugins/triton-agent-hook-guard.js`.
-- Refuse to overwrite `.opencode/triton-agent-hooks/`.
+- Refuse to overwrite `.opencode/plugins/helix-hook-guard.js`.
+- Refuse to overwrite `.opencode/helix-hooks/`.
 - Create parent directories as needed.
 - Copy the plugin template.
 - Render `policy.json`.

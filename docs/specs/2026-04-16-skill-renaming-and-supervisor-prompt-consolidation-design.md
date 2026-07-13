@@ -42,7 +42,7 @@ The optimize supervisor role currently gets behavior from both:
 - the built-in `build_optimize_supervisor_prompt()` prompt text
 - `skills/optimize-supervisor/SKILL.md`
 
-That duplication makes the supervisor workflow harder to reason about and conflicts with the current implementation direction, where role behavior already comes from launch prompts plus `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md`.
+That duplication makes the supervisor workflow harder to reason about and conflicts with the current implementation direction, where role behavior already comes from launch prompts plus `.helix/round-brief.md` and `.helix/supervisor-report.md`.
 
 After this change:
 
@@ -67,7 +67,7 @@ Update current-facing docs to describe the new skill names and the current super
 
 Keep historical design documents, but add small corrective notes where they would otherwise mislead readers about current runtime behavior, especially around:
 
-- `.triton-agent/roles/*`
+- `.helix/roles/*`
 - `optimize-supervisor`
 - old skill directory names referenced as current behavior
 

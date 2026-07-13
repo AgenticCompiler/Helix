@@ -9,12 +9,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.cli import build_parser
-from triton_agent.commands.report import handle_report
-from triton_agent.report.workspace import generate_workspace_report
-from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.terminal.logs import show_output_log_path
-from triton_agent.skills.staging import SkillLinkSet
+from helix.cli import build_parser
+from helix.commands.report import handle_report
+from helix.report.workspace import generate_workspace_report
+from helix.models import AgentRequest, AgentResult
+from helix.terminal.logs import show_output_log_path
+from helix.skills.staging import SkillLinkSet
 
 
 def _dummy_resolve_staged_skills(*args, **kwargs):
@@ -55,13 +55,13 @@ class ReportCommandTests(unittest.TestCase):
             captured: dict[str, AgentRequest] = {}
 
             with patch(
-                "triton_agent.commands.report.resolve_staged_skills",
+                "helix.commands.report.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.commands.report.SkillLinkManager",
+                "helix.commands.report.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.commands.report.create_runner",
+                "helix.commands.report.create_runner",
                 return_value=_DummyRunner(captured, workspace),
             ):
                 exit_code = handle_report(parser, args)
@@ -72,7 +72,7 @@ class ReportCommandTests(unittest.TestCase):
             self.assertEqual(request.workdir, workspace)
             self.assertEqual(
                 show_output_log_path(request),
-                workspace / "triton-agent-logs" / request.run_id / "show-output.log",
+                workspace / "helix-logs" / request.run_id / "show-output.log",
             )
 
     def test_generate_workspace_report_uses_run_id_scoped_show_output_path(self) -> None:
@@ -81,13 +81,13 @@ class ReportCommandTests(unittest.TestCase):
             captured: dict[str, AgentRequest] = {}
 
             with patch(
-                "triton_agent.report.workspace.resolve_staged_skills",
+                "helix.report.workspace.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.report.workspace.SkillLinkManager",
+                "helix.report.workspace.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.report.workspace.create_runner",
+                "helix.report.workspace.create_runner",
                 return_value=_DummyRunner(captured, workspace),
             ):
                 ok, message = generate_workspace_report(workspace, "codex", show_output=True)
@@ -97,7 +97,7 @@ class ReportCommandTests(unittest.TestCase):
             self.assertTrue(request.run_id.startswith("report-"))
             self.assertEqual(
                 show_output_log_path(request),
-                workspace / "triton-agent-logs" / request.run_id / "show-output.log",
+                workspace / "helix-logs" / request.run_id / "show-output.log",
             )
 
     def test_handle_report_failure_with_show_output_uses_log_hint(self) -> None:
@@ -114,13 +114,13 @@ class ReportCommandTests(unittest.TestCase):
                     return AgentResult(return_code=1, stdout="", stderr="")
 
             with patch(
-                "triton_agent.commands.report.resolve_staged_skills",
+                "helix.commands.report.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.commands.report.SkillLinkManager",
+                "helix.commands.report.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.commands.report.create_runner",
+                "helix.commands.report.create_runner",
                 return_value=FailingRunner(),
             ), patch("sys.stderr", stderr):
                 exit_code = handle_report(parser, args)
@@ -143,13 +143,13 @@ class ReportCommandTests(unittest.TestCase):
                     return AgentResult(return_code=1, stdout="", stderr="")
 
             with patch(
-                "triton_agent.report.workspace.resolve_staged_skills",
+                "helix.report.workspace.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.report.workspace.SkillLinkManager",
+                "helix.report.workspace.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.report.workspace.create_runner",
+                "helix.report.workspace.create_runner",
                 return_value=FailingRunner(),
             ):
                 ok, message = generate_workspace_report(workspace, "codex", show_output=True)

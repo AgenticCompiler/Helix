@@ -92,8 +92,8 @@ Expected: FAIL because the skill-local parser and dispatcher do not support base
 ### Task 3: Implement top-level `run-bench` baseline orchestration
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/execution.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/execution.py`
 
 - [ ] **Step 1: Extend parser and path resolution**
 
@@ -132,7 +132,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `skills/common/ascend-npu-run-eval/scripts/run-command.py`
-- Modify: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/run_eval_mcp_server.py`
 
 - [ ] **Step 1: Add `--baseline-operator-file` to the skill-local `run-bench` parser**
 

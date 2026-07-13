@@ -4,7 +4,7 @@
 
 **Goal:** Add an explicit-`--remote` SSH key preflight that fails early with an `ssh-copy-id` hint when public-key access is not ready, without changing environment-only remote fallback behavior.
 
-**Architecture:** Add one small `src/triton_agent/remote_ssh_preflight.py` helper that reuses the existing `user@host[:port]` parser from the staged run-eval runtime, builds a non-interactive SSH probe command, and classifies authentication failures separately from transport failures. Wire the helper into `src/triton_agent/cli.py` before remote env injection and handler dispatch, then lock the behavior with new helper tests, CLI integration tests, and a short README note.
+**Architecture:** Add one small `src/helix/remote_ssh_preflight.py` helper that reuses the existing `user@host[:port]` parser from the staged run-eval runtime, builds a non-interactive SSH probe command, and classifies authentication failures separately from transport failures. Wire the helper into `src/helix/cli.py` before remote env injection and handler dispatch, then lock the behavior with new helper tests, CLI integration tests, and a short README note.
 
 **Tech Stack:** Python 3, `subprocess`, `argparse`, `unittest`, README docs
 
@@ -12,11 +12,11 @@
 
 ## File Structure
 
-- Create: `src/triton_agent/remote_ssh_preflight.py`
+- Create: `src/helix/remote_ssh_preflight.py`
   Responsibility: Parse the existing remote target syntax through the staged runtime parser, build the non-interactive SSH probe command, and raise short actionable failures.
 - Create: `tests/test_remote_ssh_preflight.py`
   Responsibility: Lock helper behavior for command construction, auth-failure mapping, and non-auth failure passthrough.
-- Modify: `src/triton_agent/cli.py:640-653`
+- Modify: `src/helix/cli.py:640-653`
   Responsibility: Run the explicit `--remote` preflight before remote env injection and handler dispatch, and convert helper failures into a clean exit code `1`.
 - Modify: `tests/test_cli.py:2589-2668,3791-4047`
   Responsibility: Lock top-level CLI behavior for explicit remote preflight, preflight failure short-circuiting, and local-command skip behavior.
@@ -40,7 +40,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.remote_ssh_preflight as module
+import helix.remote_ssh_preflight as module
 
 
 class RemoteSshPreflightTests(unittest.TestCase):
@@ -99,7 +99,7 @@ class RemoteSshPreflightTests(unittest.TestCase):
 
 Run: `uv run python -m unittest tests.test_remote_ssh_preflight -v`
 
-Expected: FAIL with `ModuleNotFoundError: No module named 'triton_agent.remote_ssh_preflight'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'helix.remote_ssh_preflight'`.
 
 - [ ] **Step 3: Commit the failing helper tests**
 
@@ -111,7 +111,7 @@ git commit -m "test: add remote ssh preflight helper coverage"
 ### Task 2: Implement the shared SSH preflight helper
 
 **Files:**
-- Create: `src/triton_agent/remote_ssh_preflight.py`
+- Create: `src/helix/remote_ssh_preflight.py`
 - Test: `tests/test_remote_ssh_preflight.py`
 
 - [ ] **Step 1: Write the minimal helper implementation**
@@ -122,7 +122,7 @@ from __future__ import annotations
 import subprocess
 from typing import Protocol, TypedDict, cast
 
-from triton_agent.skill_loader import load_operator_eval_script_module
+from helix.skill_loader import load_operator_eval_script_module
 
 
 class RemoteSpec(TypedDict):
@@ -214,7 +214,7 @@ Expected: PASS with 4 passing tests.
 - [ ] **Step 3: Commit the helper implementation**
 
 ```bash
-git add src/triton_agent/remote_ssh_preflight.py tests/test_remote_ssh_preflight.py
+git add src/helix/remote_ssh_preflight.py tests/test_remote_ssh_preflight.py
 git commit -m "feat: add remote ssh preflight helper"
 ```
 
@@ -236,9 +236,9 @@ git commit -m "feat: add remote ssh preflight helper"
             test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_remote_test",
-                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+            with patch("helix.cli.ensure_remote_ssh_ready") as preflight, patch(
+                "helix.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/helix-abc"),
             ) as mocked:
                 exit_code = main(
                     [
@@ -266,9 +266,9 @@ git commit -m "feat: add remote ssh preflight helper"
 
             stderr = StringIO()
             with patch(
-                "triton_agent.cli.ensure_remote_ssh_ready",
+                "helix.cli.ensure_remote_ssh_ready",
                 side_effect=RuntimeError("Run `ssh-copy-id alice@example.com` and enter the remote login password."),
-            ), patch("triton_agent.commands.execution.run_remote_test") as mocked:
+            ), patch("helix.commands.execution.run_remote_test") as mocked:
                 with redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -295,8 +295,8 @@ git commit -m "feat: add remote ssh preflight helper"
             test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.ensure_remote_ssh_ready") as preflight, patch(
-                "triton_agent.commands.execution.run_local_test",
+            with patch("helix.cli.ensure_remote_ssh_ready") as preflight, patch(
+                "helix.commands.execution.run_local_test",
                 return_value=(fake_result, None),
             ) as mocked:
                 exit_code = main(
@@ -331,12 +331,12 @@ git commit -m "test: lock explicit remote ssh preflight behavior"
 ### Task 4: Wire the CLI preflight, update docs, and verify the full change
 
 **Files:**
-- Modify: `src/triton_agent/cli.py:1-30,640-653`
+- Modify: `src/helix/cli.py:1-30,640-653`
 - Modify: `README.md:736-742`
 - Test: `tests/test_remote_ssh_preflight.py`
 - Test: `tests/test_cli.py`
 
-- [ ] **Step 1: Update `src/triton_agent/cli.py` to run the explicit remote preflight before env injection**
+- [ ] **Step 1: Update `src/helix/cli.py` to run the explicit remote preflight before env injection**
 
 ```python
 from __future__ import annotations
@@ -348,12 +348,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
 
-from triton_agent.remote_execution_env import (
+from helix.remote_execution_env import (
     apply_remote_execution_env,
     remote_target_env_name,
     remote_workdir_env_name,
 )
-from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
+from helix.remote_ssh_preflight import ensure_remote_ssh_ready
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -402,6 +402,6 @@ Expected: PASS with the full test suite green.
 - [ ] **Step 5: Commit the integrated change**
 
 ```bash
-git add src/triton_agent/remote_ssh_preflight.py src/triton_agent/cli.py tests/test_remote_ssh_preflight.py tests/test_cli.py README.md
+git add src/helix/remote_ssh_preflight.py src/helix/cli.py tests/test_remote_ssh_preflight.py tests/test_cli.py README.md
 git commit -m "feat: add remote ssh preflight"
 ```

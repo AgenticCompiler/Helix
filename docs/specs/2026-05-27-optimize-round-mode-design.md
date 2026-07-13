@@ -81,15 +81,15 @@ Default:
 ### Examples
 
 ```bash
-uv run triton-agent optimize --input operator.py
-uv run triton-agent optimize --input operator.py --round-mode checked
-uv run triton-agent optimize --input operator.py --round-mode supervised
-uv run triton-agent optimize-batch --input operators_root --round-mode checked
+uv run helix optimize --input operator.py
+uv run helix optimize --input operator.py --round-mode checked
+uv run helix optimize --input operator.py --round-mode supervised
+uv run helix optimize-batch --input operators_root --round-mode checked
 ```
 
 ## Baseline Preflight
 
-Before the CLI launches the first optimize agent invocation, it should run a baseline preflight through `triton_agent.optimize.checks.check_baseline(...)`.
+Before the CLI launches the first optimize agent invocation, it should run a baseline preflight through `helix.optimize.checks.check_baseline(...)`.
 
 The preflight result should be normalized into three runtime states:
 
@@ -131,9 +131,9 @@ The CLI owns round-to-round continuation context for `checked` and `supervised`.
 `supervised`
 
 - the CLI runs technical validation first
-- the supervisor still writes `.triton-agent/supervisor-report.md`
+- the supervisor still writes `.helix/supervisor-report.md`
 - when another round is needed, the CLI reads `supervisor-report.md` and injects its content into the next worker prompt
-- the worker does not read a separate `.triton-agent/round-brief.md`
+- the worker does not read a separate `.helix/round-brief.md`
 
 This removes the extra "CLI writes a handoff file, then the worker reads that file" protocol. The worker only receives the current invocation prompt.
 
@@ -228,7 +228,7 @@ Add one CLI-owned helper that performs round acceptance after a round agent exit
 Responsibilities:
 
 1. resolve the latest `opt-round-*` directory
-2. run `triton_agent.optimize.checks.check_round(...)`
+2. run `helix.optimize.checks.check_round(...)`
 3. interpret the returned decision:
    - `pass` -> accepted
    - `revise-required` -> repair required
@@ -346,13 +346,13 @@ It should no longer mean simple artifact incompleteness.
 `checked`
 
 - use a shared round-gated guidance file
-- include `.triton-agent/round-brief.md` as the live handoff file
+- include `.helix/round-brief.md` as the live handoff file
 - do not mention supervisor-specific runtime files
 
 `supervised`
 
 - use the same shared round-gated guidance baseline
-- include both `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md`
+- include both `.helix/round-brief.md` and `.helix/supervisor-report.md`
 
 The checked shared guidance should not mention "worker and supervisor roles" because that would overfit the checked mode to a supervisor-driven model it does not use.
 
@@ -390,7 +390,7 @@ Keep the current unsupervised session artifact shape:
 Prepare a round-gated artifact set containing:
 
 - shared guidance
-- `.triton-agent/round-brief.md`
+- `.helix/round-brief.md`
 - archive/session logging
 
 Do not create a live `supervisor-report.md` in checked mode.
@@ -400,8 +400,8 @@ Do not create a live `supervisor-report.md` in checked mode.
 Prepare the round-gated artifact set plus supervisor-specific live files:
 
 - shared guidance
-- `.triton-agent/round-brief.md`
-- `.triton-agent/supervisor-report.md`
+- `.helix/round-brief.md`
+- `.helix/supervisor-report.md`
 - archive/session logging
 - supervisor history snapshots
 

@@ -8,14 +8,14 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.generation.batch import (
+from helix.generation.batch import (
     is_batch_gen_eval_operator_candidate,
     run_gen_eval_batch,
     resolve_batch_gen_eval_operator_file,
     summarize_batch_gen_eval_failure,
 )
-from triton_agent.generation.models import GenerationOptions
-from triton_agent.models import AgentResult
+from helix.generation.models import GenerationOptions
+from helix.models import AgentResult
 
 
 class GenerationBatchHelpersTests(unittest.TestCase):
@@ -192,7 +192,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(
@@ -233,8 +233,8 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             env_vars = {
-                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
-                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                "HELIX_BATCH_NPU_DEVICES": "0",
+                "HELIX_BATCH_WORKERS_PER_NPU": "2",
             }
             with patch.dict(environ, env_vars, clear=False):
                 exit_code = run_gen_eval_batch(
@@ -277,7 +277,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+            with patch.dict(environ, {"HELIX_BATCH_NPU_DEVICES": "0,1"}, clear=False):
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(
@@ -317,7 +317,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 def __exit__(self, exc_type, exc, tb):
                     return False
 
-            with patch("triton_agent.generation.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
+            with patch("helix.generation.batch.managed_mcp_scope", return_value=_DummyScope()) as mocked:
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(
@@ -356,7 +356,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-            with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+            with patch("helix.generation.batch.validate_batch_affinity_capacity") as mocked:
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(
@@ -393,7 +393,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-            with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+            with patch("helix.generation.batch.validate_batch_affinity_capacity") as mocked:
                 exit_code = run_gen_eval_batch(
                     root,
                     GenerationOptions(

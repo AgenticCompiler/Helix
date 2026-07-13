@@ -14,9 +14,9 @@
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/optimize/models.py`
 
 - [ ] **Step 1: Write the failing parser test**
 
@@ -51,7 +51,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_optimize_runtime.py`
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/optimize/batch.py`
 
 - [ ] **Step 1: Write the failing runtime tests**
 
@@ -89,7 +89,7 @@ Expected: PASS
 - [ ] **Step 1: Document the new batch option**
 
 ```text
-uv run triton-agent optimize-batch --input operators_root --post-optimize-command "..."
+uv run helix optimize-batch --input operators_root --post-optimize-command "..."
 ```
 
 - [ ] **Step 2: Run the focused verification set**

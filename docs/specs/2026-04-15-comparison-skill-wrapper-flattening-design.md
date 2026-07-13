@@ -3,30 +3,30 @@
 ## Summary
 
 - Remove the redundant `compare_result.py` and `compare_perf.py` skill wrappers under `skills/triton-npu-run-eval/scripts/`.
-- Remove the redundant `src/triton_agent/comparison.py` package bridge and let the comparison command module load skill implementations directly.
-- Preserve the current CLI surface, exit codes, and `triton_agent -> skills` dependency direction.
+- Remove the redundant `src/helix/comparison.py` package bridge and let the comparison command module load skill implementations directly.
+- Preserve the current CLI surface, exit codes, and `helix -> skills` dependency direction.
 
 ## Goals
 
 - Eliminate one-hop forwarding modules that add no behavior.
 - Keep comparison logic in the executable command path instead of preserving a fake package API layer.
-- Keep skill scripts free of `triton_agent` imports.
+- Keep skill scripts free of `helix` imports.
 
 ## Non-Goals
 
-- Do not refactor `src/triton_agent/test_runner.py` or `src/triton_agent/bench_runner.py` in this change.
+- Do not refactor `src/helix/test_runner.py` or `src/helix/bench_runner.py` in this change.
 - Do not change local or remote comparison semantics.
 
 ## Design
 
-- Update `src/triton_agent/commands/comparison.py` so it:
+- Update `src/helix/commands/comparison.py` so it:
   - loads the `test_runner` skill module for result comparisons
   - loads the `bench_runner` skill module for perf comparisons
   - keeps argument validation and error presentation in the same file
 - Delete `skills/triton-npu-run-eval/scripts/compare_result.py`.
 - Delete `skills/triton-npu-run-eval/scripts/compare_perf.py`.
-- Delete `src/triton_agent/comparison.py`.
-- Adjust focused tests to target `triton_agent.commands.comparison` directly instead of a package bridge.
+- Delete `src/helix/comparison.py`.
+- Adjust focused tests to target `helix.commands.comparison` directly instead of a package bridge.
 
 ## Verification
 

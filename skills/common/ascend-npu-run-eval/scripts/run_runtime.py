@@ -13,10 +13,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Optional, TextIO, TypedDict, cast
 
 from env_registry import (
-    TRITON_AGENT_EVAL_TIMEOUT_SECONDS,
-    TRITON_AGENT_PYTHON,
-    TRITON_AGENT_SCP_TIMEOUT_SECONDS,
-    TRITON_AGENT_SSH_TIMEOUT_SECONDS,
+    HELIX_EVAL_TIMEOUT_SECONDS,
+    HELIX_PYTHON,
+    HELIX_SCP_TIMEOUT_SECONDS,
+    HELIX_SSH_TIMEOUT_SECONDS,
     TRITON_ALL_BLOCKS_PARALLEL,
 )
 from result_payload import ResultPayload, make_result
@@ -45,7 +45,7 @@ class RemoteSpec(TypedDict):
 
 
 def local_python_executable() -> str:
-    configured = os.environ.get(TRITON_AGENT_PYTHON, "").strip()
+    configured = os.environ.get(HELIX_PYTHON, "").strip()
     if configured:
         return configured
     if getattr(sys, "frozen", False):
@@ -66,15 +66,15 @@ def env_int(name: str, default: int) -> int:
 
 
 def _ssh_timeout() -> int:
-    return env_int(TRITON_AGENT_SSH_TIMEOUT_SECONDS, 120)
+    return env_int(HELIX_SSH_TIMEOUT_SECONDS, 120)
 
 
 def _scp_timeout() -> int:
-    return env_int(TRITON_AGENT_SCP_TIMEOUT_SECONDS, 300)
+    return env_int(HELIX_SCP_TIMEOUT_SECONDS, 300)
 
 
 def eval_stall_timeout_seconds() -> int:
-    return env_int(TRITON_AGENT_EVAL_TIMEOUT_SECONDS, 300)
+    return env_int(HELIX_EVAL_TIMEOUT_SECONDS, 300)
 
 
 def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
@@ -316,7 +316,7 @@ def create_remote_workspace(
     spec = parse_remote_spec(remote)
     if remote_workdir:
         root = shlex.quote(remote_workdir)
-        pattern = shlex.quote(str(PurePosixPath(remote_workdir) / "triton-agent-XXXXXX"))
+        pattern = shlex.quote(str(PurePosixPath(remote_workdir) / "helix-XXXXXX"))
         remote_command = f"mkdir -p {root} && mktemp -d {pattern}"
     else:
         remote_command = "mktemp -d"
@@ -532,7 +532,7 @@ def _shell_env_prefix(extra_env: dict[str, str] | None) -> str:
 
 def _coerce_output_text(data: bytes | str) -> str:
     # Keep this decoder local to the skill helper instead of importing a shared
-    # triton_agent utility: skill-side scripts must stay self-contained.
+    # helix utility: skill-side scripts must stay self-contained.
     if isinstance(data, str):
         return data
     try:

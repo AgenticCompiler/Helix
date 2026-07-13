@@ -28,7 +28,7 @@
 ## Implementation Boundaries
 
 - Keep the thin CLI boundary: the new loop belongs in convert command/orchestration code, not in the convert skill scripts.
-- Reuse the existing `triton_agent.execution` and comparison helpers instead of shelling out through the CLI.
+- Reuse the existing `helix.execution` and comparison helpers instead of shelling out through the CLI.
 - Preserve current batch-convert behavior in this change; only single-workspace `convert` gains the extra CLI-owned repair loop.
 
 ## Non-Goals

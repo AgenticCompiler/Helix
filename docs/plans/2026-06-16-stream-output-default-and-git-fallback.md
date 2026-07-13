@@ -49,7 +49,7 @@ Expected: FAIL because the parser still exposes `--show-output`, defaults `show_
 Add coverage similar to:
 
 ```python
-with mock.patch("triton_agent.skills.shutil.which", return_value=None):
+with mock.patch("helix.skills.shutil.which", return_value=None):
     links = manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
 ```
 
@@ -70,17 +70,17 @@ Expected: FAIL because the current implementation still calls `git init`.
 ### Task 3: Implement CLI And Default Changes
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/generation.py`
-- Modify: `src/triton_agent/commands/convert.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/commands/report.py`
-- Modify: `src/triton_agent/commands/report_batch.py`
-- Modify: `src/triton_agent/commands/log_check.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/generation.py`
+- Modify: `src/helix/commands/convert.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/commands/report.py`
+- Modify: `src/helix/commands/report_batch.py`
+- Modify: `src/helix/commands/log_check.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 
 - [ ] **Step 1: Rename the CLI flag and flip the default mapping**
 
@@ -124,7 +124,7 @@ Expected: PASS for the renamed flag, default streaming behavior, and round batch
 ### Task 4: Implement Missing-Git Fallback And Refresh Docs
 
 **Files:**
-- Modify: `src/triton_agent/skills.py`
+- Modify: `src/helix/skills.py`
 - Modify: `README.md`
 
 - [ ] **Step 1: Guard temporary git initialization behind a git executable check**

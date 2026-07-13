@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
-from triton_agent.optimize.subagents import SubagentManager
+from helix.optimize.subagents import perf_diagnosis_subagent_definition
+from helix.optimize.subagents import SubagentManager
 
 
 class SubagentManagerTests(unittest.TestCase):
@@ -26,11 +26,11 @@ class SubagentManagerTests(unittest.TestCase):
                 workspace
                 / ".codex"
                 / "agents"
-                / "triton-agent-perf-diagnosis-advisor.toml"
+                / "helix-perf-diagnosis-advisor.toml"
             )
             self.assertTrue(agent_path.exists())
             content = agent_path.read_text(encoding="utf-8")
-            self.assertIn("triton-agent-perf-diagnosis-advisor", content)
+            self.assertIn("helix-perf-diagnosis-advisor", content)
             self.assertIn("Start with skill `triton-npu-optimize-knowledge`", content)
             self.assertIn("Read its `pattern_index.md` before detailed pattern cards.", content)
             self.assertIn(
@@ -57,7 +57,7 @@ class SubagentManagerTests(unittest.TestCase):
 
             state = manager.prepare("claude", workspace, (definition,))
 
-            agent_path = agent_dir / "triton-agent-perf-diagnosis-advisor.md"
+            agent_path = agent_dir / "helix-perf-diagnosis-advisor.md"
             self.assertTrue(agent_path.exists())
             content = agent_path.read_text(encoding="utf-8")
             self.assertIn("Start with skill `triton-npu-optimize-knowledge`", content)
@@ -93,7 +93,7 @@ class SubagentManagerTests(unittest.TestCase):
                 workspace
                 / ".opencode"
                 / "agents"
-                / "triton-agent-perf-diagnosis-advisor.md"
+                / "helix-perf-diagnosis-advisor.md"
             )
             self.assertTrue(agent_path.exists())
             content = agent_path.read_text(encoding="utf-8")
@@ -124,7 +124,7 @@ class SubagentManagerTests(unittest.TestCase):
                 workspace
                 / ".opencode"
                 / "agents"
-                / "triton-agent-perf-diagnosis-advisor.md"
+                / "helix-perf-diagnosis-advisor.md"
             )
             self.assertTrue(agent_path.exists())
             content = agent_path.read_text(encoding="utf-8")
@@ -143,7 +143,7 @@ class SubagentManagerTests(unittest.TestCase):
             workspace = Path(tmp) / "workspace"
             agent_dir = workspace / ".codex" / "agents"
             agent_dir.mkdir(parents=True)
-            (agent_dir / "triton-agent-perf-diagnosis-advisor.toml").write_text(
+            (agent_dir / "helix-perf-diagnosis-advisor.toml").write_text(
                 "user owned\n",
                 encoding="utf-8",
             )

@@ -1,6 +1,6 @@
 ---
 name: create-optimize-pattern
-description: Create new optimization pattern cards or symptom cards for the triton-agent optimize knowledge base. Use when adding a new pattern card under skills/triton/triton-npu-optimize-knowledge/references/patterns/, skills/torch/torch-npu-optimize-knowledge/references/patterns/, skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/, or a new symptom card under skills/triton/triton-npu-optimize-knowledge/references/symptoms/.
+description: Create new optimization pattern cards or symptom cards for the helix optimize knowledge base. Use when adding a new pattern card under skills/triton/triton-npu-optimize-knowledge/references/patterns/, skills/torch/torch-npu-optimize-knowledge/references/patterns/, skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/, or a new symptom card under skills/triton/triton-npu-optimize-knowledge/references/symptoms/.
 ---
 
 # Create Optimize Pattern / Symptom Card

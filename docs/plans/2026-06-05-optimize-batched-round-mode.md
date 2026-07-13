@@ -13,11 +13,11 @@
 ### Task 1: Update CLI And Request Models For Batched Round Mode
 
 **Files:**
-- Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/commands/optimize.py`
-- Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/models.py`
-- Modify: `src/triton_agent/optimize/validation.py`
+- Modify: `src/helix/cli.py`
+- Modify: `src/helix/commands/optimize.py`
+- Modify: `src/helix/models.py`
+- Modify: `src/helix/optimize/models.py`
+- Modify: `src/helix/optimize/validation.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_models.py`
 - Test: `tests/test_optimize_commands.py`
@@ -108,7 +108,7 @@ Expected: FAIL because optimize still defaults to `continuous`, does not expose 
 
 - [ ] **Step 3: Implement the new CLI and model surface**
 
-Update `src/triton_agent/cli.py` so optimize commands expose:
+Update `src/helix/cli.py` so optimize commands expose:
 
 ```python
 _ROUND_MODE_CHOICES = ("checked", "supervised")
@@ -120,7 +120,7 @@ and:
 subparser.add_argument("--round-batch-size", type=int, default=10)
 ```
 
-Update `src/triton_agent/optimize/models.py`:
+Update `src/helix/optimize/models.py`:
 
 ```python
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ class OptimizeRunOptions:
     round_batch_size: int = 10
 ```
 
-Update `src/triton_agent/models.py`:
+Update `src/helix/models.py`:
 
 ```python
 @dataclass
@@ -140,9 +140,9 @@ class AgentRequest:
     round_batch_size: int = 10
 ```
 
-Update `src/triton_agent/commands/optimize.py` so `_validate_round_mode()` only accepts `checked` and `supervised`, `optimize_run_options_from_args()` maps `round_batch_size`, and `_validate_agent_options()` rejects all optimize `--interact` usage with a batched-mode error.
+Update `src/helix/commands/optimize.py` so `_validate_round_mode()` only accepts `checked` and `supervised`, `optimize_run_options_from_args()` maps `round_batch_size`, and `_validate_agent_options()` rejects all optimize `--interact` usage with a batched-mode error.
 
-Update `src/triton_agent/optimize/validation.py`:
+Update `src/helix/optimize/validation.py`:
 
 ```python
 def validate_optimize_options(..., round_batch_size: int) -> None:
@@ -169,15 +169,15 @@ Expected: PASS for the updated round-mode defaults, round-batch-size mapping, an
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/models.py src/triton_agent/optimize/models.py src/triton_agent/optimize/validation.py tests/test_cli.py tests/test_models.py tests/test_optimize_commands.py
+git add src/helix/cli.py src/helix/commands/optimize.py src/helix/models.py src/helix/optimize/models.py src/helix/optimize/validation.py tests/test_cli.py tests/test_models.py tests/test_optimize_commands.py
 git commit -m "feat: add optimize batched round mode options"
 ```
 
 ### Task 2: Replace Continuous Prompting With Batched Worker Prompt Contracts
 
 **Files:**
-- Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/prompts.py`
+- Modify: `src/helix/prompts.py`
+- Modify: `src/helix/optimize/prompts.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_codex_runner.py`
 - Test: `tests/test_opencode_runner.py`
@@ -250,7 +250,7 @@ Expected: FAIL because prompt builders still split between continuous and one-ro
 
 - [ ] **Step 3: Update optimize prompt builders for batched workers and batch supervisors**
 
-In `src/triton_agent/optimize/prompts.py`, replace the optimize prompt split so `build_optimize_round_prompt()` accepts:
+In `src/helix/optimize/prompts.py`, replace the optimize prompt split so `build_optimize_round_prompt()` accepts:
 
 ```python
 def build_optimize_round_prompt(
@@ -279,7 +279,7 @@ Keep `build_optimize_resume_prompt()` for checked/supervised continuation, but r
 
 Update `build_optimize_supervisor_prompt()` so it can describe the last completed batch rather than only the last completed round.
 
-In `src/triton_agent/prompts.py`, remove optimize's dependency on `build_optimize_continuous_prompt()` and always route optimize prompt generation through the batched worker prompt path for checked/supervised.
+In `src/helix/prompts.py`, remove optimize's dependency on `build_optimize_continuous_prompt()` and always route optimize prompt generation through the batched worker prompt path for checked/supervised.
 
 - [ ] **Step 4: Run the focused prompt tests to verify they pass**
 
@@ -302,14 +302,14 @@ Expected: PASS with batched worker wording and preserved continuation-context be
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/prompts.py src/triton_agent/optimize/prompts.py tests/test_cli.py tests/test_backends_base.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_claude_runner.py tests/test_pi_runner.py tests/test_traecli_runner.py
+git add src/helix/prompts.py src/helix/optimize/prompts.py tests/test_cli.py tests/test_backends_base.py tests/test_codex_runner.py tests/test_opencode_runner.py tests/test_claude_runner.py tests/test_pi_runner.py tests/test_traecli_runner.py
 git commit -m "feat: add optimize batched worker prompts"
 ```
 
 ### Task 3: Change The Round Checker Contract From `min_rounds` To `current_round` / `final_round`
 
 **Files:**
-- Modify: `src/triton_agent/optimize/checks.py`
+- Modify: `src/helix/optimize/checks.py`
 - Modify: `skills/triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py`
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
@@ -443,7 +443,7 @@ elif current_round is not None and final_round is not None:
     )
 ```
 
-Update `src/triton_agent/optimize/checks.py` to pass through the new keyword arguments and keep the wrapper types aligned.
+Update `src/helix/optimize/checks.py` to pass through the new keyword arguments and keep the wrapper types aligned.
 
 Update `skills/triton-npu-optimize-submit-round/SKILL.md` examples and prose so it documents `--current-round` and `--final-round`.
 
@@ -470,17 +470,17 @@ Expected: PASS because AGENTS.md requires strict pyright for modified skill-side
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/triton_agent/optimize/checks.py skills/triton-npu-optimize-submit-round/SKILL.md skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py tests/test_optimize_checks.py
+git add src/helix/optimize/checks.py skills/triton-npu-optimize-submit-round/SKILL.md skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py tests/test_optimize_checks.py
 git commit -m "feat: switch optimize round checker to batch range contract"
 ```
 
 ### Task 4: Replace Continuous Runtime With A Batched Optimize Controller
 
 **Files:**
-- Modify: `src/triton_agent/optimize/orchestration.py`
-- Modify: `src/triton_agent/optimize/execution.py`
-- Modify: `src/triton_agent/optimize/run_loop.py`
-- Modify: `src/triton_agent/optimize/batch.py`
+- Modify: `src/helix/optimize/orchestration.py`
+- Modify: `src/helix/optimize/execution.py`
+- Modify: `src/helix/optimize/run_loop.py`
+- Modify: `src/helix/optimize/batch.py`
 - Test: `tests/test_optimize_runtime.py`
 - Test: `tests/test_supervisor.py`
 
@@ -546,14 +546,14 @@ Expected: FAIL because runtime still routes `continuous` separately and checked/
 
 - [ ] **Step 3: Implement the batched controller and remove optimize's continuous path**
 
-In `src/triton_agent/optimize/orchestration.py`:
+In `src/helix/optimize/orchestration.py`:
 
 - remove optimize's special dispatch to `execute_continuous_optimize()`
 - always route optimize through the batched multi-invocation flow
 - pass `round_batch_size` into `AgentRequest`
 - stop setting `optimize_role=None` based on `continuous`
 
-In `src/triton_agent/optimize/execution.py`, replace the old round loop with a batched controller shape:
+In `src/helix/optimize/execution.py`, replace the old round loop with a batched controller shape:
 
 ```python
 def _next_batch_bounds(self, request: AgentRequest) -> tuple[int, int]:
@@ -590,9 +590,9 @@ Advance accepted progress only through the longest passing prefix. If an interme
 
 For supervised mode, run one supervisor pass after the CLI has built the batch follow-up summary and teach the supervisor prompt to reference the batch range.
 
-In `src/triton_agent/optimize/run_loop.py`, keep only generic continuation-prompt helpers that are still needed. Remove optimize runtime ownership that only existed for the old continuous path.
+In `src/helix/optimize/run_loop.py`, keep only generic continuation-prompt helpers that are still needed. Remove optimize runtime ownership that only existed for the old continuous path.
 
-In `src/triton_agent/optimize/batch.py`, preserve `round_batch_size` in per-workspace optimize requests.
+In `src/helix/optimize/batch.py`, preserve `round_batch_size` in per-workspace optimize requests.
 
 - [ ] **Step 4: Run the focused runtime tests to verify they pass**
 
@@ -607,7 +607,7 @@ Expected: PASS with checked and supervised batch orchestration, batch-size-one d
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/execution.py src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/batch.py tests/test_optimize_runtime.py tests/test_supervisor.py
+git add src/helix/optimize/orchestration.py src/helix/optimize/execution.py src/helix/optimize/run_loop.py src/helix/optimize/batch.py tests/test_optimize_runtime.py tests/test_supervisor.py
 git commit -m "feat: batch optimize worker and supervisor orchestration"
 ```
 

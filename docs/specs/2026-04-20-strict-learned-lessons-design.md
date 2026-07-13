@@ -28,7 +28,7 @@ Keep the change in the workflow contract and prompt layer:
 
 - Update `skills/triton/triton-npu-optimize/SKILL.md` to define strict admission criteria and anti-examples.
 - Update `skills/triton/triton-npu-optimize/references/artifacts.md` to describe the stricter artifact contract.
-- Update optimize worker, unsupervised, and resume prompts in `src/triton_agent/prompts.py` so the rule is visible at execution time.
+- Update optimize worker, unsupervised, and resume prompts in `src/helix/prompts.py` so the rule is visible at execution time.
 - Update text contract tests so future edits keep the strict learned-lessons boundary intact.
 
 Do not add a new CLI subcommand or runtime validator. The current issue is prompt semantics, and enforcing lesson quality mechanically would require semantic judgment that is better handled by the code agent workflow for now.

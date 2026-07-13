@@ -57,9 +57,9 @@ Expected:
 ### Task 3: Implement Batch Status File Support
 
 **Files:**
-- Modify: `src/triton_agent/optimize/batch.py`
-- Modify: `src/triton_agent/optimize/render.py`
-- Modify: `src/triton_agent/optimize/models.py`
+- Modify: `src/helix/optimize/batch.py`
+- Modify: `src/helix/optimize/render.py`
+- Modify: `src/helix/optimize/models.py`
 
 - [ ] **Step 1: Add batch result state for skipped workspaces**
 

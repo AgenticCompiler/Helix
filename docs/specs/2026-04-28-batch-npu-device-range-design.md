@@ -2,7 +2,7 @@
 
 ## Summary
 
-Extend `TRITON_AGENT_BATCH_NPU_DEVICES` parsing so users can mix explicit device IDs and closed numeric ranges such as `0,3-5,8-9` while preserving the existing batch affinity behavior after parsing.
+Extend `HELIX_BATCH_NPU_DEVICES` parsing so users can mix explicit device IDs and closed numeric ranges such as `0,3-5,8-9` while preserving the existing batch affinity behavior after parsing.
 
 ## Goal
 
@@ -30,7 +30,7 @@ Extend `TRITON_AGENT_BATCH_NPU_DEVICES` parsing so users can mix explicit device
 
 ## Approach
 
-Keep the change local to `src/triton_agent/npu_affinity.py`:
+Keep the change local to `src/helix/npu_affinity.py`:
 
 1. Split the raw string on commas as today.
 2. For each non-empty token:

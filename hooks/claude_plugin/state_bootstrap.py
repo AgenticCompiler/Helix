@@ -9,7 +9,7 @@ import shutil
 import sys
 
 
-PLUGIN_AGENT_NAME = "triton-agent-optimizer"
+PLUGIN_AGENT_NAME = "helix-optimizer"
 PLUGIN_OWNER_FILENAME = "plugin-owner.json"
 _AGENT_TYPE_KEYS = ("subagent_type", "subagentType", "agent_type")
 
@@ -50,7 +50,7 @@ def bootstrap_runtime_state(
     run_git: RunGit | None = None,
 ) -> BootstrapResult:
     contexts: list[str] = []
-    runtime_dir = workspace / ".triton-agent"
+    runtime_dir = workspace / ".helix"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "state.json"
     try:
@@ -143,7 +143,7 @@ def validate_existing_state(state_path: Path) -> BootstrapResult:
 
 
 def cleanup_runtime_tree(runtime_dir: Path) -> None:
-    if runtime_dir.name != ".triton-agent":
+    if runtime_dir.name != ".helix":
         return
     if runtime_dir.is_symlink() or runtime_dir.is_file():
         runtime_dir.unlink()
@@ -219,7 +219,7 @@ def _plugin_run_id() -> str:
 def _compiler_source_enabled(value: bool | None) -> bool:
     if value is not None:
         return value
-    configured = os.environ.get("TRITON_AGENT_CLAUDE_PLUGIN_COMPILER_SOURCE", "auto")
+    configured = os.environ.get("HELIX_CLAUDE_PLUGIN_COMPILER_SOURCE", "auto")
     return configured.strip().lower() not in {"0", "false", "no", "off", "disabled"}
 
 

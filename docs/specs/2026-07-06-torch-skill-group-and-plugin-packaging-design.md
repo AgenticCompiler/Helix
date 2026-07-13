@@ -31,7 +31,7 @@ Separately, the Claude plugin builder still exposes an `optimize_target` paramet
 ## Non-Goals
 
 - Do not rename the logical skill `torch-npu-optimize-knowledge`.
-- Do not change `triton-agent optimize --optimize-target ...` semantics.
+- Do not change `helix optimize --optimize-target ...` semantics.
 - Do not remove operator-target staging of `torch-npu-optimize-knowledge` from the main CLI.
 - Do not add compatibility aliases or duplicate copies under both `skills/triton/` and `skills/torch/`.
 - Do not redesign unrelated plugin-builder options.
@@ -50,7 +50,7 @@ The central skill catalog should continue resolving the logical name `torch-npu-
 
 ### Main CLI Staging Stays Target-Aware
 
-`src/triton_agent/skills/selection.py` should keep the current optimize-target behavior:
+`src/helix/skills/selection.py` should keep the current optimize-target behavior:
 
 - kernel-target optimize excludes `torch-npu-optimize-knowledge`
 - operator-target optimize includes `torch-npu-optimize-knowledge`

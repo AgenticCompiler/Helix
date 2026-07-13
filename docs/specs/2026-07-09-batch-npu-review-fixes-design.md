@@ -17,7 +17,7 @@ but ignored for runtime leasing.
 - `run-eval-mcp-server` defaults to device `0` only when no CLI option and no
   legacy environment variable provide a device list.
 - An explicit empty `--npu-devices` value, or an explicitly empty
-  `TRITON_AGENT_BATCH_NPU_DEVICES`, is invalid everywhere.
+  `HELIX_BATCH_NPU_DEVICES`, is invalid everywhere.
 - In MCP-enabled batch flows, `--concurrency max` and capacity validation use
   physical device count, not `workers-per-npu`.
 - Managed MCP scope reuse treats semantically equivalent affinity strings such

@@ -6,8 +6,8 @@ Existing `*-batch` commands remain supported. The matching single-workspace comm
 
 This lets users choose either spelling:
 
-- `triton-agent optimize-batch -i operators --concurrency 4`
-- `triton-agent optimize -i operators --concurrency 4`
+- `helix optimize-batch -i operators --concurrency 4`
+- `helix optimize -i operators --concurrency 4`
 
 The batch switch is based on the presence of `--concurrency`, not on its numeric value. `--concurrency 1` on a single command still means batch mode with one worker. Omitting `--concurrency` keeps the current single-workspace behavior.
 

@@ -52,7 +52,7 @@
   - CLI parser and orchestration for `profile-bench`; remove `--bench`.
 - `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
   - Replace `--bench` with `--case-id` and render runtime-helper execution commands for both modes.
-- `src/triton_agent/run_eval_mcp_server.py`
+- `src/helix/run_eval_mcp_server.py`
   - Remove the numeric `bench` parameter from `profile-bench` tool metadata and argument forwarding.
 - `tests/test_generation_contracts.py`
   - Contract docs assertions for benchmark specs and profiler skill docs.
@@ -354,7 +354,7 @@ git commit -m "feat: unify run-bench case execution"
 - Modify: `skills/triton-npu-run-eval/scripts/profile_runner.py`
 - Modify: `skills/triton-npu-run-eval/scripts/run-command.py`
 - Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
-- Modify: `src/triton_agent/run_eval_mcp_server.py`
+- Modify: `src/helix/run_eval_mcp_server.py`
 - Modify: `tests/test_profile_runner.py`
 - Modify: `tests/test_ascend_operator_ir_analyzer.py`
 - Modify: `tests/test_cli.py`
@@ -411,7 +411,7 @@ In `capture_ir.py`:
 - replace `--bench` with `--case-id`
 - route both modes through `bench_runtime.py run-one`
 
-In `src/triton_agent/run_eval_mcp_server.py`:
+In `src/helix/run_eval_mcp_server.py`:
 
 - remove the numeric `bench` parameter from the `profile-bench` tool
 - forward only `case_id`
@@ -436,7 +436,7 @@ Expected: PASS
 - [ ] **Step 6: Commit the `case_id` selection rewrite**
 
 ```bash
-git add skills/triton-npu-run-eval/scripts/profile_runner.py skills/triton-npu-run-eval/scripts/run-command.py skills/triton-npu-analyze-ir/scripts/capture_ir.py src/triton_agent/run_eval_mcp_server.py tests/test_profile_runner.py tests/test_ascend_operator_ir_analyzer.py tests/test_cli.py
+git add skills/triton-npu-run-eval/scripts/profile_runner.py skills/triton-npu-run-eval/scripts/run-command.py skills/triton-npu-analyze-ir/scripts/capture_ir.py src/helix/run_eval_mcp_server.py tests/test_profile_runner.py tests/test_ascend_operator_ir_analyzer.py tests/test_cli.py
 git commit -m "feat: switch benchmark profiling to case ids"
 ```
 

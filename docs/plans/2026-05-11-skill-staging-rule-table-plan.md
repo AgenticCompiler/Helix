@@ -6,21 +6,21 @@
 
 **Architecture:** Add a small shared staging module that owns the rule table and the `+`/`-`/`*` resolution logic. Generation, convert, and optimize orchestration should ask that helper for `staged_skill_names` and `staged_skill_sources` instead of hard-coding local lists. Keep `SkillLinkManager` focused on copying and cleanup only.
 
-**Tech Stack:** Python 3.12, `unittest`, existing orchestration modules under `src/triton_agent/`.
+**Tech Stack:** Python 3.12, `unittest`, existing orchestration modules under `src/helix/`.
 
 ---
 
 ### Task 1: Add the shared staging resolver
 
 **Files:**
-- Create: `src/triton_agent/skill_staging.py`
+- Create: `src/helix/skill_staging.py`
 - Create: `tests/test_skill_staging.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-from triton_agent.models import CommandKind
-from triton_agent.skill_staging import resolve_staged_skills
+from helix.models import CommandKind
+from helix.skill_staging import resolve_staged_skills
 
 def test_gen_eval_rule_expands_to_the_expected_set():
     names, sources = resolve_staged_skills(CommandKind.GEN_EVAL)
@@ -45,7 +45,7 @@ Expected: FAIL because the shared resolver does not exist yet.
 
 ```python
 from dataclasses import dataclass
-from triton_agent.models import CommandKind
+from helix.models import CommandKind
 
 @dataclass(frozen=True)
 class StageRule:
@@ -76,9 +76,9 @@ Expected: PASS.
 ### Task 2: Wire orchestration through the shared table
 
 **Files:**
-- Modify: `src/triton_agent/generation/orchestration.py`
-- Modify: `src/triton_agent/convert/orchestration.py`
-- Modify: `src/triton_agent/optimize/orchestration.py`
+- Modify: `src/helix/generation/orchestration.py`
+- Modify: `src/helix/convert/orchestration.py`
+- Modify: `src/helix/optimize/orchestration.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -100,7 +100,7 @@ Expected: FAIL because the orchestration modules still hard-code their local ski
 - [ ] **Step 3: Replace local staging constants with resolver calls**
 
 ```python
-from triton_agent.skill_staging import resolve_staged_skills
+from helix.skill_staging import resolve_staged_skills
 
 staged_skill_names, staged_skill_sources = resolve_staged_skills(command_kind, options=options)
 ```

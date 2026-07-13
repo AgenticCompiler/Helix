@@ -8,7 +8,7 @@
 
 ## User-Visible Behavior
 
-- During `uv run triton-agent optimize ...`, pressing `Ctrl+C` once should ask the CLI to stop the running code agent gracefully.
+- During `uv run helix optimize ...`, pressing `Ctrl+C` once should ask the CLI to stop the running code agent gracefully.
 - The CLI should send one `SIGINT` to the code agent, wait briefly, then send a second `SIGINT` automatically if the agent is still running.
 - If the code agent still has not exited after the second grace period, the CLI should force termination with `SIGKILL`.
 - The interrupted optimize run should exit as a user interrupt rather than a stall, and the optimize supervisor must not restart the agent for recovery after this path.
@@ -16,7 +16,7 @@
 
 ## Implementation Notes
 
-- Keep the subprocess lifecycle in `src/triton_agent/process_runner.py`, because that module already owns `Popen`, PTY handling, stall detection, and shutdown.
+- Keep the subprocess lifecycle in `src/helix/process_runner.py`, because that module already owns `Popen`, PTY handling, stall detection, and shutdown.
 - Add an opt-in interrupt policy for non-interactive process execution so optimize can request the graceful interrupt sequence without changing other commands.
 - Catch `KeyboardInterrupt` around the process wait loop, send the configured signals to the child, wait between signals, and return an `AgentResult` that represents a user interrupt.
 - Use process groups for non-interactive child processes so the signal sequence reaches the full code-agent subprocess tree instead of only the top-level launcher.

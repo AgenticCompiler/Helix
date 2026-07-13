@@ -42,9 +42,9 @@ Update optimize worker guidance so it states:
 
 This belongs in:
 
-- `src/triton_agent/optimize/prompts.py`
-- `src/triton_agent/optimize/memory_file.py`
-- `src/triton_agent/optimize/execution.py` follow-up wording
+- `src/helix/optimize/prompts.py`
+- `src/helix/optimize/memory_file.py`
+- `src/helix/optimize/execution.py` follow-up wording
 
 ### Skill Contract
 

@@ -2,7 +2,7 @@
 
 ## User-visible behavior
 
-Add a new `--system-prompt` option to `triton-agent optimize` and `triton-agent optimize-batch`.
+Add a new `--system-prompt` option to `helix optimize` and `helix optimize-batch`.
 
 - When the value is plain text, append that text to the temporary optimize memory file (`AGENTS.md` or `CLAUDE.md`) after the built-in guidance.
 - When the value starts with `@`, treat the remainder as a file path, read that file as UTF-8 text, and append the file contents instead.

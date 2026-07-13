@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.contract import (
+from helix.optimize.contract import (
     BASELINE_STATE_REQUIRED_FIELDS,
     ROUND_STATE_OPTIONAL_FIELDS,
     ROUND_STATE_REQUIRED_FIELDS,
