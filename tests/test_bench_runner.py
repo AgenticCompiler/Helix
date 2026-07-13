@@ -183,7 +183,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertEqual(len(results), 8)
         self.assertTrue(all(result is results[0] for result in results))
 
-    def test_bench_runtime_support_paths_include_profile_csv_parser_and_env_registry(self) -> None:
+    def test_bench_runtime_support_paths_include_runtime_dependencies(self) -> None:
         module = load_bench_runner_module()
 
         support_names = {path.name for path in module._bench_runtime_support_paths()}
@@ -191,6 +191,51 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertIn("bench_runtime.py", support_names)
         self.assertIn("profile_csv_parser.py", support_names)
         self.assertIn("env_registry.py", support_names)
+        self.assertIn("torch_npu_warnings.py", support_names)
+
+    def test_profiler_uses_runtime_default_aic_metrics(self) -> None:
+        runtime = load_bench_runtime_module()
+        experimental_config = MagicMock()
+        profiler_context = MagicMock()
+        profiler_api = SimpleNamespace(
+            _ExperimentalConfig=experimental_config,
+            ProfilerLevel=SimpleNamespace(Level1="level-1"),
+            ProfilerActivity=SimpleNamespace(NPU="npu", CPU="cpu"),
+            schedule=MagicMock(),
+            tensorboard_trace_handler=MagicMock(),
+            profile=MagicMock(return_value=profiler_context),
+        )
+        torch_npu = SimpleNamespace(profiler=profiler_api)
+        torch = SimpleNamespace(npu=SimpleNamespace(synchronize=MagicMock()))
+        case = runtime.BenchCase(
+            case_id="case-a",
+            fn=MagicMock(),
+            warmup=0,
+            repeats=1,
+            case_data={},
+        )
+        resolution = SimpleNamespace(kernel_names=["KernelA"])
+        metrics = {"kernel_avg_time_us": 1.0, "ops": []}
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {"torch": torch}), patch.object(
+            runtime.importlib,
+            "import_module",
+            return_value=torch_npu,
+        ), patch.object(runtime, "_read_profiler_metrics", return_value=metrics):
+            actual_metrics, error_message = runtime._profile_case_with_profiler(
+                case,
+                resolution,
+                Path(tmp) / "profile",
+                verbose=True,
+            )
+
+        self.assertEqual(actual_metrics, metrics)
+        self.assertIsNone(error_message)
+        experimental_config.assert_called_once_with(
+            profiler_level="level-1",
+            l2_cache=False,
+            data_simplification=False,
+        )
 
     def test_bench_runner_source_no_longer_uses_dependency_adapter_or_mode_forwarders(self) -> None:
         module = load_bench_runner_module()

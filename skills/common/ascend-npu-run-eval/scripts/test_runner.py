@@ -44,6 +44,11 @@ from run_runtime import (
     run_remote_command_streaming,
     run_streaming_process,
 )
+from torch_npu_warnings import (
+    TORCH_NPU_COLLECT_ENV_MODULE_PATTERN,
+    TORCH_NPU_OWNER_MISMATCH_MESSAGE_PATTERN,
+    suppress_torch_npu_owner_mismatch_warning,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -657,6 +662,7 @@ def _run_declarative_differential_test_payload(
 
 
 def _bootstrap_torch_npu(*import_paths: Path) -> None:
+    suppress_torch_npu_owner_mismatch_warning()
     loaded_torch = sys.modules.get("torch")
     if loaded_torch is not None and hasattr(loaded_torch, "npu"):
         return
@@ -954,6 +960,7 @@ def _copy_remote_differential_archive(
 
 def _build_remote_standalone_command(test_name: str, operator_name: str) -> list[str]:
     remote_script = f"""
+{_remote_torch_npu_owner_mismatch_warning_filter_source()}
 import importlib.util
 import sys
 import traceback
@@ -1048,6 +1055,7 @@ def _build_remote_differential_command(
     emit_serialized_payload: bool = False,
 ) -> list[str]:
     remote_script = f"""
+{_remote_torch_npu_owner_mismatch_warning_filter_source()}
 import base64
 import importlib
 import importlib.util
@@ -1146,6 +1154,18 @@ except Exception:
     raise SystemExit(1)
 """
     return ["python3", "-c", remote_script]
+
+
+def _remote_torch_npu_owner_mismatch_warning_filter_source() -> str:
+    return (
+        "import warnings\n"
+        "warnings.filterwarnings(\n"
+        "    'ignore',\n"
+        f"    message={TORCH_NPU_OWNER_MISMATCH_MESSAGE_PATTERN!r},\n"
+        "    category=UserWarning,\n"
+        f"    module={TORCH_NPU_COLLECT_ENV_MODULE_PATTERN!r},\n"
+        ")"
+    )
 
 
 def _extract_serialized_payload_result(result: ResultPayload) -> tuple[ResultPayload, object | None]:

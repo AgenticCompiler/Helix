@@ -1070,6 +1070,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     or remote_path.endswith("/perf_artifacts.py")
                     or remote_path.endswith("/profile_csv_parser.py")
                     or remote_path.endswith("/env_registry.py")
+                    or remote_path.endswith("/torch_npu_warnings.py")
                 )
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
