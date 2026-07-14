@@ -304,10 +304,18 @@ def main(operator_api):
 
             result_file_holder: dict[str, Path] = {}
 
-            def fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
+            def fake_buffered(
+                command,
+                workdir,
+                stall_timeout_seconds,
+                extra_env=None,
+                *,
+                timeout_seconds=None,
+            ):
                 del extra_env
                 self.assertEqual(workdir, str(root.resolve()))
-                self.assertEqual(stall_timeout_seconds, 300)
+                self.assertEqual(stall_timeout_seconds, 0)
+                self.assertEqual(timeout_seconds, 300)
                 self.assertIn("local-test-worker", command)
                 result_file = Path(command[command.index("--result-file") + 1])
                 result_file_holder["path"] = result_file
@@ -352,8 +360,16 @@ def main(operator_api):
             test_file.write_text("# test-mode: differential\n", encoding="utf-8")
             operator.write_text("def build_api():\n    return lambda value: value\n", encoding="utf-8")
 
-            def fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
+            def fake_buffered(
+                command,
+                workdir,
+                stall_timeout_seconds,
+                extra_env=None,
+                *,
+                timeout_seconds=None,
+            ):
                 del workdir, stall_timeout_seconds, extra_env
+                self.assertEqual(timeout_seconds, 300)
                 result_file = Path(command[command.index("--result-file") + 1])
                 archived_path.write_bytes(b"pt")
                 result_file.write_text(
@@ -584,8 +600,11 @@ def main(operator_api):
                 _workdir: str,
                 stall_timeout_seconds: int,
                 extra_env: Optional[dict[str, str]] = None,
+                *,
+                timeout_seconds: Optional[float] = None,
             ) -> dict[str, object]:
-                del stall_timeout_seconds
+                self.assertEqual(stall_timeout_seconds, 0)
+                self.assertEqual(timeout_seconds, 300)
                 nonlocal observed_env
                 observed_env = extra_env
                 return fake_result

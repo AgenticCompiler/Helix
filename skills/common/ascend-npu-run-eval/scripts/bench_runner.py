@@ -1,6 +1,7 @@
 from __future__ import annotations
 # pyright: reportUnusedImport=false, reportUnusedFunction=false
 
+import argparse
 import contextlib
 import importlib.util
 import json
@@ -14,7 +15,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TextIO, TypeVar, cast
+from typing import Optional, TextIO, TypeVar, cast
 
 from bench_contract import (  # noqa: F401
     KernelResolution,
@@ -49,7 +50,7 @@ from run_runtime import (
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
-    eval_stall_timeout_seconds,
+    eval_timeout_seconds,
     create_remote_workspace,
     emit_verbose,
     local_python_executable,
@@ -63,12 +64,12 @@ from run_runtime import (
 
 NpuDevices = tuple[str, ...]
 ProbeCaps = tuple[int, int]
-BenchRunResult = tuple[ResultPayload, Path | None]
+BenchRunResult = tuple[ResultPayload, Optional[Path]]
 BenchRunResultWithPerfPath = tuple[ResultPayload, Path]
-RemoteBenchRunResult = tuple[ResultPayload, Path | None, str]
+RemoteBenchRunResult = tuple[ResultPayload, Optional[Path], str]
 RemoteBenchRunResultWithPerfPath = tuple[ResultPayload, Path, str]
-ResolvedProfileOutputRoot = tuple[str | None, str]
-PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+ResolvedProfileOutputRoot = tuple[Optional[str], str]
+PreservedRunDir = tuple[Path, Optional[tempfile.TemporaryDirectory[str]]]
 CaseWorkspaceRoots = tuple[Path, Path]
 CaseWorkspace = tuple[Path, Callable[[], None]]
 _bench_runtime_module_cache = None
@@ -76,6 +77,7 @@ _bench_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _PRESERVED_RUN_DIR_NONE_SENTINEL = "__NONE__"
+_LOCAL_BENCH_WORKER_COMMAND = "local-bench-worker"
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,7 @@ def normalize_bench_mode(bench_mode: str) -> str:
     return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
 
 
-def run_local_bench(
+def _run_local_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
@@ -175,6 +177,118 @@ def run_local_bench(
             )
         return _run_local_bench_torch_npu_profiler(bench_file, operator_file, verbose=verbose,
                                            output=output)
+
+
+def run_local_bench(
+    bench_file: Path,
+    operator_file: Path,
+    bench_mode: str,
+    npu_devices: str | None = None,
+    verbose: bool = False,
+    output: str | None = None,
+) -> BenchRunResult:
+    with tempfile.TemporaryDirectory() as tmp:
+        result_file = Path(tmp) / "local-bench-result.json"
+        command = [
+            local_python_executable(),
+            str(Path(__file__).resolve()),
+            _LOCAL_BENCH_WORKER_COMMAND,
+            "--bench-file",
+            str(bench_file.resolve()),
+            "--operator-file",
+            str(operator_file.resolve()),
+            "--bench-mode",
+            bench_mode,
+            "--result-file",
+            str(result_file),
+        ]
+        if npu_devices is not None:
+            command.extend(["--npu-devices", npu_devices])
+        if verbose:
+            command.append("--verbose")
+        if output is not None:
+            command.extend(["--output", output])
+        if verbose:
+            result = run_streaming_process(
+                command,
+                str(bench_file.resolve().parent),
+                stall_timeout_seconds=0,
+                timeout_seconds=eval_timeout_seconds(),
+            )
+        else:
+            result = run_buffered_process(
+                command,
+                str(bench_file.resolve().parent),
+                stall_timeout_seconds=0,
+                timeout_seconds=eval_timeout_seconds(),
+            )
+        if not result_succeeded(result):
+            return result, None
+        if not result_file.exists():
+            return (
+                make_result(
+                    return_code=1,
+                    stdout=str(result["stdout"]),
+                    stderr=str(result["stderr"])
+                    + f"Local benchmark worker did not write result payload: {result_file}",
+                    stalled=bool(result["stalled"]),
+                    session_id=result["session_id"],
+                ),
+                None,
+            )
+        return _read_local_bench_worker_payload(result_file)
+
+
+def _read_local_bench_worker_payload(result_file: Path) -> BenchRunResult:
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    result_payload = payload["result"]
+    result = make_result(
+        return_code=int(result_payload["return_code"]),
+        stdout=str(result_payload["stdout"]),
+        stderr=str(result_payload["stderr"]),
+        stalled=bool(result_payload["stalled"]),
+        session_id=cast(str | None, result_payload["session_id"]),
+    )
+    perf_raw = payload.get("perf_path")
+    perf_path = None if perf_raw is None else Path(str(perf_raw)).expanduser().resolve()
+    return result, perf_path
+
+
+def _run_local_bench_worker_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog=Path(__file__).name)
+    parser.add_argument("command", choices=[_LOCAL_BENCH_WORKER_COMMAND])
+    parser.add_argument("--bench-file", required=True)
+    parser.add_argument("--operator-file", required=True)
+    parser.add_argument("--bench-mode", required=True)
+    parser.add_argument("--result-file", required=True)
+    parser.add_argument("--npu-devices")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--output")
+    args = parser.parse_args(argv)
+    result, perf_path = _run_local_bench(
+        Path(args.bench_file).expanduser().resolve(),
+        Path(args.operator_file).expanduser().resolve(),
+        args.bench_mode,
+        args.npu_devices,
+        verbose=bool(args.verbose),
+        output=args.output,
+    )
+    Path(args.result_file).write_text(
+        json.dumps(
+            {
+                "result": {
+                    "return_code": int(result["return_code"]),
+                    "stdout": str(result["stdout"]),
+                    "stderr": str(result["stderr"]),
+                    "stalled": bool(result["stalled"]),
+                    "session_id": result["session_id"],
+                },
+                "perf_path": None if perf_path is None else str(perf_path.resolve()),
+            }
+        ),
+        encoding="utf-8",
+    )
+    return 0
 
 
 def run_remote_bench(
@@ -505,7 +619,7 @@ def _run_remote_bench_perf_counter(
             stdout=stream_target,
             verbose=verbose,
             stderr=stderr,
-            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            stall_timeout_seconds=eval_timeout_seconds(),
             extra_env=extra_env,
         )
     copied_perf_path: Path | None = None
@@ -665,7 +779,7 @@ def _run_remote_bench_torch_npu_profiler(
             stdout=stream_target,
             verbose=verbose,
             stderr=stderr,
-            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            stall_timeout_seconds=eval_timeout_seconds(),
             extra_env=extra_env,
         )
     copied_perf_path: Path | None = None
@@ -891,7 +1005,7 @@ def _run_local_bench_msprof(
                 result = run_streaming_process(
                     command,
                     str(bench_file.parent),
-                    stall_timeout_seconds=eval_stall_timeout_seconds(),
+                    stall_timeout_seconds=eval_timeout_seconds(),
                     stdout=stream_target,
                     extra_env={TRITON_ALWAYS_COMPILE: "1"},
                 )
@@ -1070,7 +1184,7 @@ def _run_remote_bench_msprof(
                     stdout=stream_target,
                     verbose=verbose,
                     stderr=stderr,
-                    stall_timeout_seconds=eval_stall_timeout_seconds(),
+                    stall_timeout_seconds=eval_timeout_seconds(),
                 )
             elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -1722,7 +1836,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
             result = run_streaming_process(
                 command,
                 str(workspace_root),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=eval_timeout_seconds(),
                 stdout=stream_target,
                 extra_env=extra_env,
             )
@@ -1730,7 +1844,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
         result = run_buffered_process(
             command,
             str(workspace_root),
-            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            stall_timeout_seconds=eval_timeout_seconds(),
             extra_env=extra_env,
         )
     return _parse_torch_npu_profiler_case_result_payload(
@@ -1765,7 +1879,7 @@ def _run_local_perf_counter_case_in_subprocess(
             result = run_streaming_process(
                 command,
                 str(workspace_root),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=eval_timeout_seconds(),
                 stdout=stream_target,
                 extra_env=extra_env,
             )
@@ -1773,7 +1887,7 @@ def _run_local_perf_counter_case_in_subprocess(
         result = run_buffered_process(
             command,
             str(workspace_root),
-            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            stall_timeout_seconds=eval_timeout_seconds(),
             extra_env=extra_env,
         )
     return _parse_worker_case_result_payload(
@@ -1839,7 +1953,7 @@ def _run_remote_torch_npu_profiler_case(
         verbose=verbose,
         stderr=stderr,
         extra_env=extra_env,
-        stall_timeout_seconds=eval_stall_timeout_seconds(),
+        stall_timeout_seconds=eval_timeout_seconds(),
     )
     return _parse_torch_npu_profiler_case_result_payload(
         result,
@@ -1876,7 +1990,7 @@ def _run_remote_perf_counter_case(
         verbose=verbose,
         stderr=stderr,
         extra_env=extra_env,
-        stall_timeout_seconds=eval_stall_timeout_seconds(),
+        stall_timeout_seconds=eval_timeout_seconds(),
     )
     return _parse_worker_case_result_payload(
         result,
@@ -2044,7 +2158,7 @@ def _run_local_msprof_case_parallel(
                 result = run_streaming_process(
                     command,
                     str(case_workspace),
-                    stall_timeout_seconds=eval_stall_timeout_seconds(),
+                    stall_timeout_seconds=eval_timeout_seconds(),
                     stdout=stream_target,
                     extra_env=extra_env,
                 )
@@ -2118,7 +2232,7 @@ def _run_remote_msprof_case_parallel(
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=eval_timeout_seconds(),
             )
             elapsed = time.monotonic() - t0
         return _build_remote_msprof_case_outcome(
@@ -2317,3 +2431,7 @@ def _create_local_msprof_preserved_run_dir() -> Path | None:
     run_dir = Path(tempfile.mkdtemp(prefix="helix-msprof-", dir=str(root)))
     _set_directory_owner_only(run_dir)
     return run_dir
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_local_bench_worker_main())

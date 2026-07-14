@@ -4,11 +4,12 @@ import errno
 import locale
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, Optional, TextIO, TypedDict, cast
 
@@ -73,7 +74,7 @@ def _scp_timeout() -> int:
     return env_int(HELIX_SCP_TIMEOUT_SECONDS, 300)
 
 
-def eval_stall_timeout_seconds() -> int:
+def eval_timeout_seconds() -> int:
     return env_int(HELIX_EVAL_TIMEOUT_SECONDS, 300)
 
 
@@ -81,11 +82,97 @@ def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
     print(f"[{category}] {message}", file=stderr)
 
 
+def _timeout_message(timeout_seconds: float) -> str:
+    return (
+        f"Evaluation timed out after {timeout_seconds:g} seconds "
+        "(HELIX_EVAL_TIMEOUT_SECONDS); the current operator execution exceeded the limit.\n"
+    )
+
+
+def _iter_pipe_chunks(stream: Any) -> Iterator[bytes | str]:
+    if stream is None:
+        return
+    read = getattr(stream, "read", None)
+    if callable(read):
+        while True:
+            try:
+                try:
+                    chunk = read(4096)
+                except TypeError:
+                    chunk = read()
+            except ValueError:
+                return
+            if not chunk:
+                return
+            if isinstance(chunk, (bytes, str)):
+                yield chunk
+        return
+    readline = getattr(stream, "readline", None)
+    if callable(readline):
+        while True:
+            try:
+                chunk = readline()
+            except ValueError:
+                return
+            if not chunk:
+                return
+            if isinstance(chunk, (bytes, str)):
+                yield chunk
+        return
+    try:
+        for chunk in stream:
+            if isinstance(chunk, (bytes, str)):
+                yield chunk
+    except ValueError:
+        return
+
+
+def _terminate_process_tree(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is not None:
+        return
+    if _IS_WINDOWS:
+        try:
+            completed = subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if completed.returncode != 0:
+                process.terminate()
+        except OSError:
+            process.terminate()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        process.terminate()
+    try:
+        process.wait(timeout=1)
+        return
+    except (AttributeError, TypeError, subprocess.TimeoutExpired):
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        kill = getattr(process, "kill", None)
+        if callable(kill):
+            kill()
+
+
+def _process_group_popen_kwargs() -> dict[str, Any]:
+    if _IS_WINDOWS:
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {"start_new_session": True}
+
+
 def run_buffered_process(
     command: list[str],
     workdir: str,
     stall_timeout_seconds: int,
     extra_env: dict[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -94,56 +181,62 @@ def run_buffered_process(
         stderr=subprocess.PIPE,
         text=False,
         env=_merged_env(extra_env),
+        **_process_group_popen_kwargs(),
     )
     stdout_pipe = process.stdout
     stderr_pipe = process.stderr
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
 
-    def _drain_stderr() -> None:
-        if stderr_pipe is None:
-            return
-        try:
-            try:
-                iterator = iter(stderr_pipe)
-            except TypeError:
-                # Defensive fallback for pipe-like test doubles or platform-specific
-                # wrappers that expose read() but not iteration.
-                read_stderr = getattr(stderr_pipe, "read", None)
-                if callable(read_stderr):
-                    chunk = read_stderr()
-                    if isinstance(chunk, (bytes, str)) and chunk:
-                        stderr_lines.append(_coerce_output_text(chunk))
-                return
-            for line in iterator:
-                stderr_lines.append(_coerce_output_text(line))
-        except ValueError:
-            pass  # pipe closed by parent
-
-    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-    stderr_thread.start()
-
+    lock = threading.Lock()
     start = time.monotonic()
+    last_output = [start]
+
+    def _drain(stream: Any, chunks: list[str]) -> None:
+        for chunk in _iter_pipe_chunks(stream):
+            text = _coerce_output_text(chunk)
+            with lock:
+                chunks.append(text)
+                last_output[0] = time.monotonic()
+
+    stdout_thread = threading.Thread(target=_drain, args=(stdout_pipe, stdout_lines), daemon=True)
+    stderr_thread = threading.Thread(target=_drain, args=(stderr_pipe, stderr_lines), daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    readers = (stdout_thread, stderr_thread)
 
     try:
         while True:
-            line = stdout_pipe.readline() if stdout_pipe is not None else ""
-            if line:
-                stdout_lines.append(_coerce_output_text(line))
-                start = time.monotonic()
-            elif process.poll() is not None:
+            if process.poll() is not None:
                 break
-            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
-                process.terminate()
-                stderr_thread.join(timeout=5)
+            elapsed = time.monotonic() - start
+            if timeout_seconds is not None and timeout_seconds > 0 and elapsed > timeout_seconds:
+                _terminate_process_tree(process)
+                for reader in readers:
+                    reader.join(timeout=1)
                 return make_result(
                     return_code=1,
                     stdout="".join(stdout_lines),
-                    stderr="".join(stderr_lines),
+                    stderr="".join(stderr_lines) + _timeout_message(timeout_seconds),
                     stalled=True,
                 )
+            if stall_timeout_seconds > 0:
+                with lock:
+                    elapsed_since_output = time.monotonic() - last_output[0]
+                if elapsed_since_output > stall_timeout_seconds:
+                    _terminate_process_tree(process)
+                    for reader in readers:
+                        reader.join(timeout=1)
+                    return make_result(
+                        return_code=1,
+                        stdout="".join(stdout_lines),
+                        stderr="".join(stderr_lines),
+                        stalled=True,
+                    )
+            time.sleep(0.05)
 
-        stderr_thread.join(timeout=5)
+        for reader in readers:
+            reader.join(timeout=1)
         return make_result(
             return_code=_resolved_returncode(process.returncode),
             stdout="".join(stdout_lines),
@@ -166,10 +259,26 @@ def run_streaming_process(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     extra_env: dict[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> ResultPayload:
     if _IS_WINDOWS:
-        return _run_streaming_windows(command, workdir, stall_timeout_seconds, stdout, extra_env)
-    return _run_streaming_pty(command, workdir, stall_timeout_seconds, stdout, extra_env)
+        return _run_streaming_windows(
+            command,
+            workdir,
+            stall_timeout_seconds,
+            stdout,
+            extra_env,
+            timeout_seconds=timeout_seconds,
+        )
+    return _run_streaming_pty(
+        command,
+        workdir,
+        stall_timeout_seconds,
+        stdout,
+        extra_env,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def _run_streaming_windows(
@@ -178,6 +287,8 @@ def _run_streaming_windows(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     extra_env: dict[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -186,10 +297,14 @@ def _run_streaming_windows(
         stderr=subprocess.STDOUT,
         text=False,
         env=_merged_env(extra_env),
+        **_process_group_popen_kwargs(),
     )
     output_chunks: list[str] = []
-    start_ref: list[float] = [time.monotonic()]
+    started_at = time.monotonic()
+    start = started_at
+    start_ref: list[float] = [start]
     stalled_ref: list[bool] = [False]
+    timed_out_ref: list[bool] = [False]
     lock = threading.Lock()
 
     def reader() -> None:
@@ -213,8 +328,13 @@ def _run_streaming_windows(
             break
         with lock:
             elapsed = time.monotonic() - start_ref[0]
+        if timeout_seconds is not None and timeout_seconds > 0 and time.monotonic() - start > timeout_seconds:
+            _terminate_process_tree(process)
+            stalled_ref[0] = True
+            timed_out_ref[0] = True
+            break
         if stall_timeout_seconds > 0 and elapsed > stall_timeout_seconds:
-            process.terminate()
+            _terminate_process_tree(process)
             stalled_ref[0] = True
             break
 
@@ -223,7 +343,7 @@ def _run_streaming_windows(
     return make_result(
         return_code=rc,
         stdout="".join(output_chunks),
-        stderr="",
+        stderr=_timeout_message(timeout_seconds) if timed_out_ref[0] and timeout_seconds is not None else "",
         stalled=stalled_ref[0],
     )
 
@@ -234,6 +354,8 @@ def _run_streaming_pty(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     extra_env: dict[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> ResultPayload:
     pty_module = pty
     select_module = select
@@ -250,9 +372,11 @@ def _run_streaming_pty(
         text=False,
         close_fds=True,
         env=_merged_env(extra_env),
+        **_process_group_popen_kwargs(),
     )
     os.close(slave_fd)
-    start = time.monotonic()
+    started_at = time.monotonic()
+    start = started_at
 
     try:
         while True:
@@ -281,8 +405,16 @@ def _run_streaming_pty(
                     break
             elif process.poll() is not None:
                 break
+            elif timeout_seconds is not None and timeout_seconds > 0 and time.monotonic() - started_at > timeout_seconds:
+                _terminate_process_tree(process)
+                return make_result(
+                    return_code=1,
+                    stdout="".join(output_chunks),
+                    stderr=_timeout_message(timeout_seconds),
+                    stalled=True,
+                )
             elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
-                process.terminate()
+                _terminate_process_tree(process)
                 return make_result(
                     return_code=1,
                     stdout="".join(output_chunks),
@@ -426,8 +558,14 @@ def run_remote_command_streaming(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_stall_timeout_seconds()
-    return run_streaming_process(command, ".", stall_timeout_seconds=timeout, stdout=stdout)
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_timeout_seconds()
+    return run_streaming_process(
+        command,
+        ".",
+        stall_timeout_seconds=0,
+        stdout=stdout,
+        timeout_seconds=timeout,
+    )
 
 
 def run_remote_command_buffered(
@@ -446,8 +584,13 @@ def run_remote_command_buffered(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_stall_timeout_seconds()
-    return run_buffered_process(command, ".", stall_timeout_seconds=timeout)
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_timeout_seconds()
+    return run_buffered_process(
+        command,
+        ".",
+        stall_timeout_seconds=0,
+        timeout_seconds=timeout,
+    )
 
 
 def _ssh_command(spec: RemoteSpec, remote_command: str) -> list[str]:
