@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -3007,6 +3008,67 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("post command failed", captured_results[0].message)
             status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
             self.assertEqual(status["workspaces"]["kernel_a"]["status"], "incomplete")
+
+    def test_run_optimize_batch_prints_failure_before_other_workspaces_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                upload_enabled=False,
+            )
+            failure_reported = threading.Event()
+            beta_saw_failure = threading.Event()
+
+            class FailureNotifyingStream(StringIO):
+                def write(self, text: str) -> int:
+                    written = super().write(text)
+                    if "[FAIL] alpha: agent failed" in text:
+                        failure_reported.set()
+                    return written
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                if request.workdir.name == "alpha":
+                    return AgentResult(return_code=1, stdout="", stderr="agent failed\n")
+                if failure_reported.wait(timeout=1):
+                    beta_saw_failure.set()
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            stream = FailureNotifyingStream()
+            exit_code = run_optimize_batch(
+                root,
+                options,
+                max_concurrency=2,
+                stdout=stream,
+                run_request=fake_run_request,
+            )
+
+            self.assertEqual(exit_code, 1)
+            self.assertTrue(beta_saw_failure.is_set())
+            self.assertIn("[FAIL] alpha: agent failed", stream.getvalue())
 
     def test_run_optimize_batch_operator_filter_selects_matching_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

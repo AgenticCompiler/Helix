@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, cast
+from typing import Any, Iterator, Optional, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from env_registry import (
@@ -46,9 +46,9 @@ from torch_npu_warnings import suppress_torch_npu_owner_mismatch_warning
 
 LoadedBenchCases = tuple[list["BenchCase"], KernelResolution]
 RuntimeBenchResult = tuple[ResultPayload, Path]
-ProfileCaseOutcome = tuple[PerfMetrics | None, str | None]
-ResolvedProfileOutputRoot = tuple[str | None, str]
-PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+ProfileCaseOutcome = tuple[Optional[PerfMetrics], Optional[str]]
+ResolvedProfileOutputRoot = tuple[Optional[str], str]
+PreservedRunDir = tuple[Path, Optional[tempfile.TemporaryDirectory[str]]]
 
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50

@@ -67,6 +67,8 @@ def run_optimize_batch(
         for workspace, operator_file in discovered
     ]
     results: list[BatchOptimizeResult] = []
+    output_lock = threading.Lock()
+    stream = stdout or sys.stdout
     for workspace, message in failures:
         ws_key = optimize_batch_workspace_key(root, workspace)
         record = batch_status.get(ws_key)
@@ -79,19 +81,17 @@ def run_optimize_batch(
                 )
             )
         else:
-            results.append(
-                BatchOptimizeResult(
-                    workspace=workspace,
-                    status="failed",
-                    message=message,
-                )
+            failure = BatchOptimizeResult(
+                workspace=workspace,
+                status="failed",
+                message=message,
             )
+            results.append(failure)
+            _print_batch_optimize_failure(failure, stream=stream, output_lock=output_lock)
     if not runnable and not results:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
 
-    output_lock = threading.Lock()
-    stream = stdout or sys.stdout
     devices = (
         configured_batch_npu_devices()
         if options.npu_devices is None
@@ -162,13 +162,13 @@ def run_optimize_batch(
             try:
                 build_optimize_request(item.operator_file, item.workspace, options)
             except ValueError as exc:
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        status="failed",
-                        message=str(exc),
-                    )
+                failure = BatchOptimizeResult(
+                    workspace=item.workspace,
+                    status="failed",
+                    message=str(exc),
                 )
+                results.append(failure)
+                _print_batch_optimize_failure(failure, stream=stream, output_lock=output_lock)
                 update_optimize_batch_workspace_status(
                     root,
                     item.workspace,
@@ -189,13 +189,13 @@ def run_optimize_batch(
             try:
                 result = future.result()
             except Exception as exc:  # pragma: no cover - defensive boundary
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        status="failed",
-                        message=f"unexpected optimize failure: {exc}",
-                    )
+                failure = BatchOptimizeResult(
+                    workspace=item.workspace,
+                    status="failed",
+                    message=f"unexpected optimize failure: {exc}",
                 )
+                results.append(failure)
+                _print_batch_optimize_failure(failure, stream=stream, output_lock=output_lock)
                 update_optimize_batch_workspace_status(
                     root,
                     item.workspace,
@@ -224,16 +224,16 @@ def run_optimize_batch(
                             stderr=forwarded_stream,
                         )
                     if completed.returncode != 0:
-                        results.append(
-                            BatchOptimizeResult(
-                                workspace=item.workspace,
-                                status="failed",
-                                message=(
-                                    "post-optimize command failed: "
-                                    f"{summarize_post_optimize_command_failure(completed)}"
-                                ),
-                            )
+                        failure = BatchOptimizeResult(
+                            workspace=item.workspace,
+                            status="failed",
+                            message=(
+                                "post-optimize command failed: "
+                                f"{summarize_post_optimize_command_failure(completed)}"
+                            ),
                         )
+                        results.append(failure)
+                        _print_batch_optimize_failure(failure, stream=stream, output_lock=output_lock)
                         update_optimize_batch_workspace_status(
                             root,
                             item.workspace,
@@ -297,13 +297,13 @@ def run_optimize_batch(
                     status="completed",
                 )
             else:
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        status="failed",
-                        message=summarize_batch_optimize_failure(result),
-                    )
+                failure = BatchOptimizeResult(
+                    workspace=item.workspace,
+                    status="failed",
+                    message=summarize_batch_optimize_failure(result),
                 )
+                results.append(failure)
+                _print_batch_optimize_failure(failure, stream=stream, output_lock=output_lock)
                 update_optimize_batch_workspace_status(
                     root,
                     item.workspace,
@@ -312,6 +312,16 @@ def run_optimize_batch(
                 )
 
     return render_batch_optimize_results(results, stdout=stream)
+
+
+def _print_batch_optimize_failure(
+    result: BatchOptimizeResult,
+    *,
+    stream: TextIO,
+    output_lock: threading.Lock,
+) -> None:
+    with output_lock:
+        print(f"[FAIL] {result.workspace.name}: {result.message}", file=stream, flush=True)
 
 
 def summarize_batch_optimize_failure(result: AgentResult) -> str:

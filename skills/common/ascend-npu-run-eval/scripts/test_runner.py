@@ -36,7 +36,7 @@ from run_runtime import (
     copy_file_to_remote,
     copy_npu_compare_runtime_to_remote,
     create_remote_workspace,
-    eval_stall_timeout_seconds,
+    eval_timeout_seconds,
     local_python_executable,
     make_result,
     result_succeeded,
@@ -311,15 +311,17 @@ def run_local_test(
             runner_result = run_streaming_process(
                 command,
                 str(test_file.resolve().parent),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=0,
                 extra_env=_run_test_accuracy_env(accuracy_mode),
+                timeout_seconds=eval_timeout_seconds(),
             )
         else:
             runner_result = run_buffered_process(
                 command,
                 str(test_file.resolve().parent),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=0,
                 extra_env=_run_test_accuracy_env(accuracy_mode),
+                timeout_seconds=eval_timeout_seconds(),
             )
         if result_succeeded(runner_result):
             if not result_file.exists():
@@ -364,15 +366,17 @@ def run_local_test_case_payload(
             runner_result = run_streaming_process(
                 command,
                 str(test_file.resolve().parent),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=0,
                 extra_env=_run_test_accuracy_env(accuracy_mode),
+                timeout_seconds=eval_timeout_seconds(),
             )
         else:
             runner_result = run_buffered_process(
                 command,
                 str(test_file.resolve().parent),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=0,
                 extra_env=_run_test_accuracy_env(accuracy_mode),
+                timeout_seconds=eval_timeout_seconds(),
             )
         if result_succeeded(runner_result):
             if not result_file.exists():
@@ -824,7 +828,7 @@ def run_remote_test(
                 spec,
                 remote_workspace,
                 _build_remote_standalone_command(test_file.name, operator_file.name),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=eval_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
@@ -836,7 +840,7 @@ def run_remote_test(
                 spec,
                 remote_workspace,
                 _build_remote_differential_command(test_file.name, operator_file.name, case_id),
-                stall_timeout_seconds=eval_stall_timeout_seconds(),
+                stall_timeout_seconds=eval_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
@@ -896,7 +900,7 @@ def run_remote_test_case_payload(
                 archive_result=False,
                 emit_serialized_payload=True,
             ),
-            stall_timeout_seconds=eval_stall_timeout_seconds(),
+            stall_timeout_seconds=eval_timeout_seconds(),
             verbose=verbose,
             stderr=stderr,
             extra_env={

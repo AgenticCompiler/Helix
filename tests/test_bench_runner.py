@@ -77,6 +77,34 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(metadata["kernel"], "abs_kernel")
             self.assertEqual(metadata["api-name"], "abs_")
 
+    def test_run_local_bench_reports_worker_timeout(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+            timeout_result = make_skill_result(
+                1,
+                "",
+                "Evaluation timed out after 300 seconds (HELIX_EVAL_TIMEOUT_SECONDS).\n",
+                stalled=True,
+            )
+
+            with patch.object(module, "run_buffered_process", return_value=timeout_result) as mocked:
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "torch-npu-profiler",
+                )
+
+        self.assertEqual(result, timeout_result)
+        self.assertIsNone(perf_path)
+        self.assertIn("local-bench-worker", mocked.call_args.args[0])
+        self.assertEqual(mocked.call_args.kwargs["stall_timeout_seconds"], 0)
+        self.assertEqual(mocked.call_args.kwargs["timeout_seconds"], 300)
+
     def test_parse_npu_devices_returns_none_when_unset(self) -> None:
         module = load_bench_runner_module()
 
@@ -275,7 +303,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.object(module, "_load_bench_runtime_module", return_value=fake_runtime), \
                  patch.object(module, "run_streaming_process") as streaming:
-                result, resolved_perf = module.run_local_bench(
+                result, resolved_perf = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "standalone",
@@ -316,7 +344,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     return_value=fake_runtime,
                 ):
                     with redirect_stdout(stdout):
-                        result, resolved_perf = module.run_local_bench(
+                        result, resolved_perf = module._run_local_bench(
                             bench_file,
                             operator_file,
                             "standalone",
@@ -344,7 +372,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 "_load_bench_runtime_module",
                 return_value=fake_runtime,
             ):
-                _, perf_path = module.run_local_bench(
+                _, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "standalone",
@@ -382,7 +410,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 "_load_bench_runtime_module",
                 return_value=fake_runtime,
             ):
-                result, resolved_perf = module.run_local_bench(
+                result, resolved_perf = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "standalone",
@@ -515,7 +543,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 "_run_local_bench_msprof",
                 return_value=(fake_result, perf_file),
             ) as helper:
-                result, resolved_perf = module.run_local_bench(
+                result, resolved_perf = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -625,7 +653,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     original_cwd = Path.cwd()
                     os.chdir(root)
                     try:
-                        result, perf_path = module.run_local_bench(
+                        result, perf_path = module._run_local_bench(
                             bench_file,
                             operator_file,
                             "standalone",
@@ -700,7 +728,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 original_cwd = Path.cwd()
                 os.chdir(root)
                 try:
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "standalone",
@@ -770,7 +798,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 original_cwd = Path.cwd()
                 os.chdir(root)
                 try:
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "standalone",
@@ -832,7 +860,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                         "runtime_support_paths": staticmethod(lambda: [runtime_script]),
                     },
                 )()
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "standalone",
@@ -946,7 +974,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ) as mocked:
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1032,7 +1060,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1097,7 +1125,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 original_cwd = Path.cwd()
                 os.chdir(root)
                 try:
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "msprof",
@@ -1157,7 +1185,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1233,7 +1261,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1285,7 +1313,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1331,7 +1359,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1377,7 +1405,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ), redirect_stdout(stdout):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1425,7 +1453,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1476,7 +1504,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1531,7 +1559,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1591,7 +1619,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1647,7 +1675,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     "run_streaming_process",
                     side_effect=_fake_streaming,
                 ):
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "msprof",
@@ -1681,7 +1709,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 return_value=make_skill_result(0, "", ""),
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1731,7 +1759,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 "run_streaming_process",
                 side_effect=_fake_streaming,
             ):
-                result, perf_path = module.run_local_bench(
+                result, perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "msprof",
@@ -1778,7 +1806,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     "run_streaming_process",
                     side_effect=_fake_streaming,
                 ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.5]):
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "msprof",
@@ -1815,7 +1843,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     "run_streaming_process",
                     return_value=make_skill_result(1, "", "command failed"),
                 ), patch.object(module.time, "monotonic", side_effect=[0.0, 2.5]):
-                    result, perf_path = module.run_local_bench(
+                    result, perf_path = module._run_local_bench(
                         bench_file,
                         operator_file,
                         "msprof",
@@ -2539,7 +2567,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 with patch.object(
                     module, "run_buffered_process", side_effect=_fake_buffered_process,
                 ):
-                    result, _perf_path = module.run_local_bench(
+                    result, _perf_path = module._run_local_bench(
                         bench_file, operator_file, "standalone",
                         npu_devices="0",
                     )
@@ -2580,7 +2608,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                      module, "_read_local_msprof_metrics",
                      side_effect=_fake_read_metrics, create=True,
                  ):
-                result, _perf_path = module.run_local_bench(
+                result, _perf_path = module._run_local_bench(
                     bench_file, operator_file, "msprof",
                 )
 
@@ -2652,7 +2680,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                 with patch.object(
                     module, "run_buffered_process", side_effect=_fake_buffered_process,
                 ):
-                    result, _perf_path = module.run_local_bench(
+                    result, _perf_path = module._run_local_bench(
                         bench_file, operator_file, "standalone",
                         npu_devices="0",
                     )
@@ -2875,7 +2903,7 @@ def build_bench_case_fn(operator_api, case):
             with patch.object(
                 module, "_load_bench_runtime_module", return_value=mock_runtime,
             ):
-                result, _perf_path = module.run_local_bench(
+                result, _perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "perf-counter",
@@ -2925,7 +2953,7 @@ def build_bench_case_fn(operator_api, case):
             with patch.object(
                 module, "_load_bench_runtime_module", return_value=mock_runtime,
             ):
-                result, _perf_path = module.run_local_bench(
+                result, _perf_path = module._run_local_bench(
                     bench_file,
                     operator_file,
                     "torch-npu-profiler",

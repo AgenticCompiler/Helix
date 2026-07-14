@@ -5,7 +5,7 @@ import math
 from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypedDict, Union, cast
+from typing import Literal, Optional, TypedDict, Union, cast
 
 
 class PerfOpRow(TypedDict):
@@ -77,7 +77,7 @@ class PerfValueMap(dict[str, float]):
 RequiredLatencyIds = Union[Collection[str], dict[str, PerfEntry], PerfValueMap]
 PerfPairValues = tuple[dict[str, float], dict[str, float], dict[str, ComparisonMode]]
 RequiredLatencyIdResolution = tuple[set[str], dict[str, ComparisonMode]]
-PerfMetricSummary = tuple[float | None, float | None]
+PerfMetricSummary = tuple[Optional[float], Optional[float]]
 
 
 def _read_bench_mode_from_jsonl(path: Path) -> str | None:

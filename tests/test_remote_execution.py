@@ -396,6 +396,64 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertFalse(result["stalled"])
         self.assertEqual(result["return_code"], 0)
 
+    def test_run_runtime_buffered_wall_timeout_is_not_extended_by_output(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import time\n"
+                "for _ in range(100):\n"
+                "    print('still running', flush=True)\n"
+                "    time.sleep(0.02)\n"
+            ),
+        ]
+
+        self._monotonic_patcher.stop()
+        try:
+            result = module.run_buffered_process(
+                command,
+                ".",
+                stall_timeout_seconds=0,
+                timeout_seconds=0.1,
+            )
+        finally:
+            self._monotonic_patcher.start()
+
+        self.assertEqual(result["return_code"], 1)
+        self.assertTrue(result["stalled"])
+        self.assertIn("HELIX_EVAL_TIMEOUT_SECONDS", result["stderr"])
+        self.assertIn("timed out after 0.1 seconds", result["stderr"])
+
+    def test_run_runtime_windows_termination_kills_process_tree(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeProcess:
+            pid = 123
+
+            def poll(self):
+                return None
+
+            def terminate(self) -> None:
+                raise AssertionError("taskkill should be available")
+
+        with (
+            patch.object(module, "_IS_WINDOWS", True),
+            patch.object(
+                module.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0),
+            ) as taskkill,
+        ):
+            module._terminate_process_tree(_FakeProcess())
+
+        taskkill.assert_called_once_with(
+            ["taskkill", "/PID", "123", "/T", "/F"],
+            check=False,
+            stdout=module.subprocess.DEVNULL,
+            stderr=module.subprocess.DEVNULL,
+        )
+
     def test_run_runtime_buffered_process_decodes_utf8_output_from_bytes(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -511,7 +569,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
         with patch.dict(module.os.environ, {"HELIX_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
             with self.assertRaises(ValueError):
-                module.eval_stall_timeout_seconds()
+                module.eval_timeout_seconds()
 
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")

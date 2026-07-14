@@ -162,7 +162,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "HELIX_EVAL_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for run-test and run-bench execution (default: 300).",
+                "Wall-clock timeout in seconds for each run-test or run-bench operator evaluation (default: 300).",
             ),
             (
                 "HELIX_PROFILE_TIMEOUT_SECONDS",
