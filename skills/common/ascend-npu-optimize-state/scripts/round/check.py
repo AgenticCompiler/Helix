@@ -39,13 +39,6 @@ OptimizePtCleanupMode = Literal["never", "round", "run-test"]
 _PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
 _LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})
 _LEGACY_NEVER_CLEANUP_VALUES = frozenset({"0", "false", "no", "off"})
-_ROUND_METADATA_FILENAMES = {
-    "attempts.md",
-    "summary.md",
-    "perf.txt",
-    "perf-analysis.md",
-    "round-state.json",
-}
 _PROFILE_ARTIFACT_PREFIXES = ("PROF_", "OPPROF_")
 _ALLOWED_CORRECTNESS_STATUS_VALUES = frozenset(ROUND_CORRECTNESS_STATUS_VALUES)
 _ALLOWED_BENCHMARK_STATUS_VALUES = frozenset(ROUND_BENCHMARK_STATUS_VALUES)
@@ -832,16 +825,11 @@ def resolve_round_operator_file(round_dir: Path) -> Path | None:
     candidates = [
         path
         for path in sorted(round_dir.iterdir())
-        if path.is_file()
-        and path.name not in _ROUND_METADATA_FILENAMES
-        and not path.name.endswith("_perf.txt")
+        if path.suffix == ".py" and path.is_file()
     ]
     if len(candidates) == 1:
         return candidates[0]
     if candidates:
-        preferred_python = [path for path in candidates if path.suffix == ".py"]
-        if len(preferred_python) == 1:
-            return preferred_python[0]
         return candidates[0]
     return None
 

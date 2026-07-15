@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -438,6 +439,34 @@ class OptimizeRoundContractTests(unittest.TestCase):
             self.assertEqual(result.operator_path, round_dir / "kernel.py")
             self.assertEqual(result.perf_path, round_dir / "perf.txt")
             self.assertEqual(result.issues, ())
+
+    def test_round_operator_fallback_ignores_unreadable_non_python_artifacts(self) -> None:
+        module = load_skill_script_module(
+            "ascend-npu-optimize-state",
+            "round/check",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "first.py").write_text("print('first')\n", encoding="utf-8")
+            (workspace / "second.py").write_text("print('second')\n", encoding="utf-8")
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            fallback_operator = round_dir / "candidate.py"
+            fallback_operator.write_text("print('candidate')\n", encoding="utf-8")
+            unreadable_json = round_dir / "artifact.json"
+            unreadable_json.write_text("{}\n", encoding="utf-8")
+            original_is_file = Path.is_file
+
+            def is_file(path: Path) -> bool:
+                if path == unreadable_json:
+                    raise PermissionError("simulated unreadable JSON artifact")
+                return original_is_file(path)
+
+            with patch.object(Path, "is_file", new=is_file):
+                result = module.resolve_round_operator_file(round_dir)
+
+            self.assertEqual(result, fallback_operator)
 
     def test_load_round_state_accepts_optional_perf_analysis_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

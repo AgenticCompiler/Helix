@@ -1,5 +1,12 @@
 # helix
 
+<img src="docs/assets/helix-logo.svg" alt="Helix logo" width="128" />
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](./pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-D22128?logo=apache&logoColor=white)](./LICENSE)
+[![Lint: Ruff](https://img.shields.io/badge/lint-ruff-261230?logo=ruff&logoColor=white)](./pyproject.toml)
+[![Type checked: Pyright](https://img.shields.io/badge/type%20checked-pyright-5A45FF)](./pyproject.toml)
+
 `helix` is a CLI for generating, running, and optimizing Triton Ascend NPU operator workflows with code agents and local skills.
 
 This README is organized by task so you can quickly find the right command for the job.
