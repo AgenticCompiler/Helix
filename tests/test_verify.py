@@ -330,6 +330,36 @@ class VerifyTests(unittest.TestCase):
                 ((11 / 8 * 22 / 18) ** 0.5) - ((10 / 8 * 20 / 18) ** 0.5),
             )
 
+    def test_run_verify_uses_remote_differential_comparison_without_pt_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            self._write_baseline(workspace)
+            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            target = prepare_verify_target(workspace, timestamp_label="20260420-153012")
+            result_payload = AgentResult(return_code=0, stdout="PASS\n", stderr="")
+            with patch(
+                "helix.verify.core.run_remote_differential_comparison",
+                return_value=(result_payload, "/tmp/helix-123"),
+            ) as comparison, patch(
+                "helix.verify.core.run_remote_test",
+                side_effect=AssertionError("remote verify must not copy a PT archive"),
+            ):
+                result = run_verify(
+                    target,
+                    VerifyOptions(phase="test", remote="alice@example.com", remote_workdir="/tmp/helix"),
+                )
+
+        self.assertEqual(result.return_code, 0)
+        comparison.assert_called_once_with(
+            target.test_file,
+            target.baseline_operator,
+            target.copied_operator,
+            "alice@example.com",
+            "/tmp/helix",
+            keep_remote_workdir=False,
+            verbose=False,
+        )
+
     def test_run_verify_test_phase_skips_benchmark(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

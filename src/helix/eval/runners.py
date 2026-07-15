@@ -82,6 +82,21 @@ class TestRunnerModule(Protocol):
         stderr: TextIO | None = None,
     ) -> tuple[_RunSkillPayload, object | None, str]: ...
 
+    def run_remote_differential_comparison(
+        self,
+        test_file: Path,
+        ref_operator_file: Path,
+        operator_file: Path,
+        remote: str,
+        remote_workdir: str | None,
+        *,
+        case_id: str | None = None,
+        accuracy_mode: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> tuple[_RunSkillPayload, str]: ...
+
     def parse_test_metadata(self, test_file: Path) -> dict[str, str]: ...
 
 
@@ -182,6 +197,34 @@ def run_remote_test(
         stderr=stderr,
     )
     return _normalize_agent_result(result), archived, remote_workspace
+
+
+def run_remote_differential_comparison(
+    test_file: Path,
+    ref_operator_file: Path,
+    operator_file: Path,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    case_id: str | None = None,
+    accuracy_mode: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[AgentResult, str]:
+    result, remote_workspace = _load_test_runner().run_remote_differential_comparison(
+        test_file,
+        ref_operator_file,
+        operator_file,
+        remote,
+        remote_workdir,
+        case_id=case_id,
+        accuracy_mode=accuracy_mode,
+        keep_remote_workdir=keep_remote_workdir,
+        verbose=verbose,
+        stderr=stderr,
+    )
+    return _normalize_agent_result(result), remote_workspace
 
 
 def run_local_test_case_payload(

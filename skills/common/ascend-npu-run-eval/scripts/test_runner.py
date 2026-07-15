@@ -927,6 +927,108 @@ def run_remote_test_case_payload(
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
 
 
+def run_remote_differential_comparison(
+    test_file: Path,
+    ref_operator_file: Path,
+    operator_file: Path,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    case_id: str | None = None,
+    accuracy_mode: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[ResultPayload, str]:
+    """Run and compare differential archives without moving PT payloads locally."""
+    maybe_print_visible_devices()
+    spec, remote_workspace = create_remote_workspace(
+        remote, remote_workdir, verbose=verbose, stderr=stderr
+    )
+    remote_test = f"{remote_workspace}/{test_file.name}"
+    remote_ref_operator = f"{remote_workspace}/reference_{ref_operator_file.name}"
+    remote_operator = f"{remote_workspace}/candidate_{operator_file.name}"
+    extra_env = {
+        TRITON_ALWAYS_COMPILE: "1",
+        **_run_test_accuracy_env(accuracy_mode),
+    }
+    try:
+        copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
+        copy_file_to_remote(
+            spec, ref_operator_file, remote_ref_operator, verbose=verbose, stderr=stderr
+        )
+        copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
+        copy_npu_compare_runtime_to_remote(
+            spec,
+            SCRIPT_DIR,
+            remote_workspace=remote_workspace,
+            verbose=verbose,
+            stderr=stderr,
+            copy_file_fn=copy_file_to_remote,
+        )
+        compare_script = SCRIPT_DIR / "compare_result.py"
+        copy_file_to_remote(
+            spec,
+            compare_script,
+            f"{remote_workspace}/{compare_script.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
+        reference_result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            _build_remote_differential_command(
+                test_file.name,
+                Path(remote_ref_operator).name,
+                case_id,
+            ),
+            stall_timeout_seconds=eval_timeout_seconds(),
+            verbose=verbose,
+            stderr=stderr,
+            extra_env=extra_env,
+        )
+        if not result_succeeded(reference_result):
+            return _filter_result_payload(reference_result, verbose=verbose), remote_workspace
+        candidate_result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            _build_remote_differential_command(
+                test_file.name,
+                Path(remote_operator).name,
+                case_id,
+            ),
+            stall_timeout_seconds=eval_timeout_seconds(),
+            verbose=verbose,
+            stderr=stderr,
+            extra_env=extra_env,
+        )
+        if not result_succeeded(candidate_result):
+            return _filter_result_payload(candidate_result, verbose=verbose), remote_workspace
+        compare_command = [
+            "python3",
+            compare_script.name,
+            "--ref-result",
+            f"reference_{ref_operator_file.stem}_result.pt",
+            "--new-result",
+            f"candidate_{operator_file.stem}_result.pt",
+        ]
+        if accuracy_mode is not None:
+            compare_command.extend(["--accuracy-mode", accuracy_mode])
+        compare_result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            compare_command,
+            stall_timeout_seconds=eval_timeout_seconds(),
+            verbose=verbose,
+            stderr=stderr,
+            extra_env=extra_env,
+        )
+        return _filter_result_payload(compare_result, verbose=verbose), remote_workspace
+    finally:
+        if not keep_remote_workdir:
+            cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
 def _run_test_accuracy_env(accuracy_mode: str | None = None) -> dict[str, str]:
     extra_env: dict[str, str] = {}
     if accuracy_mode is not None:

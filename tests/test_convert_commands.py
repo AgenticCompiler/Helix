@@ -644,6 +644,56 @@ class ConvertRuntimeTests(unittest.TestCase):
             candidate_result,
         )
 
+    def test_verify_converted_output_compares_remote_differential_operators_without_archives(self) -> None:
+        from helix.commands.convert import _verify_converted_output
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            converted.write_text("print('dst')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=converted.resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+                remote="alice@example.com",
+                remote_workdir="/tmp/helix",
+            )
+            result = AgentResult(return_code=0, stdout="PASS\n", stderr="")
+            with patch(
+                "helix.commands.convert.run_remote_differential_comparison",
+                return_value=(result, "/tmp/helix-123"),
+            ) as comparison, patch(
+                "helix.commands.convert.run_remote_test",
+                side_effect=AssertionError("PT archives must not be copied for remote differential convert"),
+            ):
+                verification = _verify_converted_output(request)
+
+        self.assertEqual(verification.return_code, 0)
+        comparison.assert_called_once_with(
+            test_file.resolve(),
+            operator.resolve(),
+            converted.resolve(),
+            "alice@example.com",
+            "/tmp/helix",
+            verbose=False,
+            stderr=sys.stderr,
+        )
+
     def test_handle_convert_repairs_once_after_cli_verification_failure(self) -> None:
         from helix.commands.convert import handle_convert
 

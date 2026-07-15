@@ -245,6 +245,23 @@ class RunRemoteTestFn(Protocol):
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
+class RunRemoteDifferentialComparisonFn(Protocol):
+    def __call__(
+        self,
+        test_file: Path,
+        ref_operator_file: Path,
+        operator_file: Path,
+        remote: str,
+        remote_workdir: str | None,
+        *,
+        case_id: str | None = None,
+        accuracy_mode: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> tuple[ResultPayload, str]: ...
+
+
 class RunLocalTestPayloadFn(Protocol):
     def __call__(
         self,
@@ -446,6 +463,11 @@ def _add_run_test_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--keep-remote-workdir", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--test-mode", choices=["standalone", "differential"])
+    parser.add_argument(
+        "--accuracy-mode",
+        choices=["npu-contract", "dtype-close"],
+        default="npu-contract",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -488,6 +510,31 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
         case_id = cast(str | None, getattr(args, "case_id", None))
         require_reference_input = args.command in {"run-test-convert", "run-test-optimize"}
+        if remote is not None and resolved_test_mode == "differential":
+            _validate_remote_differential_inputs(parser, ref_result, ref_operator_file)
+            assert ref_operator_file is not None
+            run_remote_differential_comparison = _load_remote_differential_comparison_function()
+            try:
+                result, remote_workspace = run_remote_differential_comparison(
+                    test_file,
+                    ref_operator_file,
+                    operator_file,
+                    remote,
+                    remote_workdir,
+                    case_id=case_id,
+                    accuracy_mode=getattr(args, "accuracy_mode", None),
+                    keep_remote_workdir=bool(args.keep_remote_workdir),
+                    verbose=bool(args.verbose),
+                    stderr=sys.stderr,
+                )
+            except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            _render_result(result, skip_stdout=True)
+            print(f"Return code: {result['return_code']}")
+            if args.keep_remote_workdir:
+                print(f"Remote workspace: {remote_workspace}")
+            return int(result["return_code"])
         if case_id is not None:
             _validate_run_test_comparison_inputs(
                 parser,
@@ -952,6 +999,17 @@ def _validate_run_test_comparison_inputs(
         )
 
 
+def _validate_remote_differential_inputs(
+    parser: argparse.ArgumentParser,
+    ref_result: Path | None,
+    ref_operator_file: Path | None,
+) -> None:
+    if ref_result is not None:
+        parser.error("Remote differential run-test does not accept --ref-result; use --ref-operator-file.")
+    if ref_operator_file is None:
+        parser.error("Remote differential run-test requires --ref-operator-file.")
+
+
 def _resolve_ref_operator_result(
     test_file: Path,
     ref_operator_file: Path,
@@ -1173,6 +1231,15 @@ def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTe
         cast(ParseMetadataFn, getattr(module, "parse_test_metadata")),
         cast(RunLocalTestFn, getattr(module, "run_local_test")),
         cast(RunRemoteTestFn, getattr(module, "run_remote_test")),
+    )
+
+
+def _load_remote_differential_comparison_function() -> RunRemoteDifferentialComparisonFn:
+    with _script_dir_on_path():
+        module = importlib.import_module("test_runner")
+    return cast(
+        RunRemoteDifferentialComparisonFn,
+        getattr(module, "run_remote_differential_comparison"),
     )
 
 

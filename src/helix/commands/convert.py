@@ -11,7 +11,12 @@ from helix.convert.batch import resolve_batch_convert_operator_file, run_convert
 from helix.convert.models import ConvertOptions
 from helix.convert.orchestration import build_convert_request, run_convert_request
 from helix.convert.outputs import prepare_convert_target
-from helix.eval.runners import parse_test_metadata, run_local_test, run_remote_test
+from helix.eval.runners import (
+    parse_test_metadata,
+    run_local_test,
+    run_remote_differential_comparison,
+    run_remote_test,
+)
 from helix.models import AgentRequest, AgentResult, CommandKind
 from helix.batch.affinity import resolve_batch_concurrency
 from helix.terminal.render import render_result
@@ -195,6 +200,35 @@ def _verify_converted_output(
         )
 
     test_mode = _resolve_convert_validation_mode(test_file, request.test_mode)
+    if test_mode == "differential" and request.remote is not None:
+        result, _remote_workspace = run_remote_differential_comparison(
+            test_file,
+            request.input_path,
+            converted_output,
+            request.remote,
+            request.remote_workdir,
+            verbose=request.verbose,
+            stderr=sys.stderr,
+        )
+        if result.return_code != 0:
+            return _ConvertVerificationResult(
+                return_code=result.return_code,
+                summary=(
+                    "Convert verification failed.\n"
+                    f"{_convert_test_label(test_mode)}: {test_file}\n"
+                    f"Original operator: {request.input_path}\n"
+                    f"Converted operator: {converted_output}\n"
+                    f"{_format_result_excerpt(result)}"
+                ),
+            )
+        return _ConvertVerificationResult(
+            return_code=0,
+            summary=(
+                "Convert verification passed.\n"
+                f"Test file: {test_file}\n"
+                f"Converted operator: {converted_output}"
+            ),
+        )
     if test_mode == "standalone":
         candidate_result, _candidate_archive, candidate_summary = _run_convert_validation_test(
             request,

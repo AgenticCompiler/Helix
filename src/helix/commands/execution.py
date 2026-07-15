@@ -7,7 +7,6 @@ from typing import TextIO
 
 from helix.commands.comparison import compare_perf_files
 from helix.commands.comparison import (
-    compare_remote_result_files,
     compare_result_files,
     compare_result_payload_objects,
     find_case_result_payload,
@@ -23,6 +22,7 @@ from helix.eval.runners import (
     run_local_test,
     run_local_test_case_payload,
     run_remote_bench,
+    run_remote_differential_comparison,
     run_remote_probe_bench,
     run_remote_test,
     run_remote_test_case_payload,
@@ -45,6 +45,30 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
     )
+    if remote is not None and resolved_test_mode == "differential":
+        _validate_remote_differential_inputs(parser, ref_result, ref_operator_file)
+        assert ref_operator_file is not None
+        try:
+            result, remote_workspace = run_remote_differential_comparison(
+                test_file,
+                ref_operator_file,
+                operator_file,
+                remote,
+                remote_workdir,
+                case_id=case_id,
+                accuracy_mode=args.accuracy_mode,
+                keep_remote_workdir=args.keep_remote_workdir,
+                verbose=args.verbose,
+                stderr=sys.stderr,
+            )
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        render_result(result, skip_stdout=True)
+        print(f"Return code: {result.return_code}")
+        if args.keep_remote_workdir:
+            print(f"Remote workspace: {remote_workspace}")
+        return result.return_code
     if case_id is not None:
         _validate_run_test_comparison_inputs(
             parser,
@@ -111,10 +135,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             final_code = _compare_run_test_result(
                 ref_result,
                 archived_result,
-                remote,
-                remote_workdir,
                 accuracy_mode=accuracy_mode,
-                verbose=args.verbose,
             )
         cleaned_pt = cleanup_run_test_pt_files((archived_result,))
         if ref_result is None and resolved_test_mode == "differential" and not cleaned_pt:
@@ -282,31 +303,14 @@ def _render_case_run_result(
 def _compare_run_test_result(
     ref_result: Path,
     archived_result: Path,
-    remote: str | None,
-    remote_workdir: str | None,
     *,
     accuracy_mode: str,
-    verbose: bool,
 ) -> int:
-    if remote is None:
-        return compare_result_files(
-            ref_result,
-            archived_result,
-            accuracy_mode=accuracy_mode,
-        )
-    try:
-        return compare_remote_result_files(
-            ref_result,
-            archived_result,
-            remote,
-            remote_workdir,
-            accuracy_mode=accuracy_mode,
-            verbose=verbose,
-            stderr=sys.stderr,
-        )
-    except (RuntimeError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    return compare_result_files(
+        ref_result,
+        archived_result,
+        accuracy_mode=accuracy_mode,
+    )
 
 
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -489,6 +493,17 @@ def _validate_run_test_comparison_inputs(
         parser.error("--ref-result is supported only with --test-mode differential")
     if ref_operator_file is not None and resolved_test_mode != "differential":
         parser.error("--ref-operator-file is supported only with --test-mode differential")
+
+
+def _validate_remote_differential_inputs(
+    parser: argparse.ArgumentParser,
+    ref_result: Path | None,
+    ref_operator_file: Path | None,
+) -> None:
+    if ref_result is not None:
+        parser.error("Remote differential run-test does not accept --ref-result; use --ref-operator-file.")
+    if ref_operator_file is None:
+        parser.error("Remote differential run-test requires --ref-operator-file.")
 
 
 def resolve_run_test_comparison_inputs(
