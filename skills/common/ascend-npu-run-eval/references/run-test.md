@@ -29,6 +29,7 @@ Rules:
 - `run-test-convert` differential mode requires exactly one of `--ref-result` or `--ref-operator-file`.
 - In convert differential mode, `run-test-convert` requires `--ref-operator-file` or `--ref-result`.
 - `run-test-optimize` differential mode requires exactly one of `--ref-result` or `--ref-operator-file`.
+- With `--remote` in differential mode, use `--ref-operator-file`; remote execution compares both archives in one remote workspace and never transfers `.pt` payloads. `--ref-result` is not supported in this mode.
 - Prefer `--verbose` while debugging failures so the command prints per-case progress and richer error context.
 
 - `run-test-baseline` must be used to validate the correctness of a baseline operator.

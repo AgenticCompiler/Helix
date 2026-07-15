@@ -11,7 +11,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
-from helix.eval.runners import run_local_bench, run_local_test, run_remote_bench, run_remote_test
+from helix.eval.runners import (
+    run_local_bench,
+    run_local_test,
+    run_remote_bench,
+    run_remote_differential_comparison,
+    run_remote_test,
+)
 from helix.models import AgentResult
 from helix.optimize.baseline import load_baseline_state
 from helix.optimize.pt_cleanup import cleanup_dir_pt_files
@@ -321,6 +327,17 @@ def _run_test(
 ) -> tuple[AgentResult, Path | None]:
     if options.remote is None:
         return run_local_test(target.test_file, target.copied_operator, test_mode)
+    if test_mode == "differential":
+        result, _remote_workspace = run_remote_differential_comparison(
+            target.test_file,
+            target.baseline_operator,
+            target.copied_operator,
+            options.remote,
+            options.remote_workdir,
+            keep_remote_workdir=options.keep_remote_workdir,
+            verbose=options.verbose,
+        )
+        return result, None
     result, archived_result, _remote_workspace = run_remote_test(
         target.test_file,
         target.copied_operator,

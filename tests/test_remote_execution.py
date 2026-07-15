@@ -685,6 +685,68 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIn("test kernel.py", remote_run.call_args.args[2][2])
         self.assertIn("kernel op.py", remote_run.call_args.args[2][2])
 
+    def test_remote_differential_comparison_keeps_pt_files_remote(self) -> None:
+        module = load_test_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            test_file = root / "differential test.py"
+            ref_operator = root / "reference kernel.py"
+            operator = root / "candidate kernel.py"
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            ref_operator.write_text("def kernel():\n    pass\n", encoding="utf-8")
+            operator.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-differential"),
+            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
+                module,
+                "copy_file_from_remote",
+            ) as copy_from_remote, patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "PASS\n", ""),
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, workspace = module.run_remote_differential_comparison(
+                    test_file,
+                    ref_operator,
+                    operator,
+                    "alice@example.com",
+                    None,
+                    accuracy_mode="dtype-close",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(workspace, "/tmp/remote-differential")
+        copy_from_remote.assert_not_called()
+        copied_sources = [call.args[1] for call in copy_to_remote.call_args_list]
+        self.assertIn(test_file, copied_sources)
+        self.assertIn(ref_operator, copied_sources)
+        self.assertIn(operator, copied_sources)
+        self.assertNotIn(ref_operator.with_name("reference kernel_result.pt"), copied_sources)
+        self.assertEqual(remote_run.call_count, 3)
+        reference_command = remote_run.call_args_list[0].args[2]
+        candidate_command = remote_run.call_args_list[1].args[2]
+        compare_command = remote_run.call_args_list[2].args[2]
+        self.assertIn("reference_reference kernel.py", reference_command[2])
+        self.assertIn("candidate_candidate kernel.py", candidate_command[2])
+        self.assertEqual(
+            compare_command,
+            [
+                "python3",
+                "compare_result.py",
+                "--ref-result",
+                "reference_reference kernel_result.pt",
+                "--new-result",
+                "candidate_candidate kernel_result.pt",
+                "--accuracy-mode",
+                "dtype-close",
+            ],
+        )
+        cleanup.assert_called_once_with("spec", "/tmp/remote-differential", verbose=False, stderr=None)
+
     def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
         module = load_compare_result_module()
         runtime = module._load_run_runtime_module()
