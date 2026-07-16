@@ -298,7 +298,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "abs_perf.txt"
-            perf_file.write_text("latency-case-a: 1.0\n", encoding="utf-8")
+            perf_file.write_text('{"case_label":"case-a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             fake_runtime = MagicMock()
             fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.object(module, "_load_bench_runtime_module", return_value=fake_runtime), \
@@ -1930,8 +1930,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-a: 10\nlatency-b: 20\n", encoding="utf-8")
-            compare.write_text("latency-a: 8\nlatency-b: 10\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout
@@ -1960,15 +1960,11 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    "# latency-error-case-1: msprof command failed with return code 1\n"
-                    "# resolved-kernels-case-1: Kernel\n"
-                    "# kernel-source-case-1: metadata\n"
-                    "latency-case-2: 10\n"
+                    '{"case_label":"case-1","kernel_names":["Kernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
-            compare.write_text("latency-case-1: 8\nlatency-case-2: 8\n", encoding="utf-8")
+            compare.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -1992,15 +1988,11 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    "# latency-error-case-1: msprof command failed with return code 1\n"
-                    "# resolved-kernels-case-1: Kernel\n"
-                    "# kernel-source-case-1: metadata\n"
-                    "latency-case-2: 10\n"
+                    '{"case_label":"case-1","kernel_names":["Kernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
-            compare.write_text("latency-case-1: 8\nlatency-case-2: 8\n", encoding="utf-8")
+            compare.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -2016,13 +2008,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 1)
             self.assertIn("Perf comparison:", output)
-            self.assertIn("latency-case-2: baseline=10, compare=8, delta=-20.00%", output)
+            self.assertIn("latency-case-2: baseline=10.0, compare=8.0, delta=-20.00%", output)
             self.assertIn("Avg improvement: +20.0%", output)
             self.assertIn("Geomean speedup: 1.25x", output)
             self.assertIn("Metric source: kernel", output)
             self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
             self.assertIn("latency-case-1", output)
-            self.assertIn("latency-error-case-1", output)
+            self.assertIn("error_message: msprof command failed with return code 1", output)
 
     def test_compare_perf_files_fails_on_non_positive_latency_without_skip(self) -> None:
         module = load_perf_artifacts_module()
@@ -2030,8 +2022,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-a: 10\nlatency-b: 0\n", encoding="utf-8")
-            compare.write_text("latency-a: 8\nlatency-b: 5\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -2054,8 +2046,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-a: 10\nlatency-b: 0\n", encoding="utf-8")
-            compare.write_text("latency-a: 8\nlatency-b: 5\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -2072,7 +2064,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 1)
-            self.assertIn("latency-a: baseline=10, compare=8, delta=-20.00%", output)
+            self.assertIn("latency-a: baseline=10.0, compare=8.0, delta=-20.00%", output)
             self.assertIn("Avg improvement: +20.0%", output)
             self.assertIn("Geomean speedup: 1.25x", output)
             self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
@@ -2085,8 +2077,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-a: 10\n", encoding="utf-8")
-            compare.write_text("latency-b: 11\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout
@@ -2109,9 +2101,9 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-a: 10\nlatency-b: 20\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             compare.write_text(
-                "latency-a: 9\nmean_ms: 14.5\nlatency-b: 18\nnotes: candidate\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
 
@@ -2137,11 +2129,11 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
             baseline.write_text(
-                "latency-case-1: 10\n# raw-op-statistic-case-1: {\"ops\":[{\"op_type\":\"Kernel\",\"avg_time_us\":10.0}]}\n",
+                '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"Kernel","avg_time_us":10.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             compare.write_text(
-                "latency-case-1: 8\n# raw-op-statistic-case-1: {\"ops\":[{\"op_type\":\"Kernel\",\"avg_time_us\":8.0}]}\n",
+                '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"Kernel","avg_time_us":8.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
 
@@ -2167,15 +2159,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    'latency-case-1: NA\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    'latency-case-1: 3.0\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":3.0,"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":7.5,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2204,15 +2194,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: 3.0\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":3.0,"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":7.5,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2240,15 +2228,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: 10\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: 3.0\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":3.0,"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":7.5,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2276,8 +2262,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-case-1: 10\n", encoding="utf-8")
-            compare.write_text("latency-case-1: 8\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -2292,7 +2278,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 1)
-            self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
+            self.assertIn("requires total-op for 'latency-case-1'", output)
 
     def test_compare_perf_files_reports_mixed_metric_source_when_cases_mix_kernel_and_total_op(self) -> None:
         module = load_perf_artifacts_module()
@@ -2302,17 +2288,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: 10\n"
-                    "latency-case-2: NA\n"
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: 8\n"
-                    "latency-case-2: 3.0\n"
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":3.0,"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":7.5,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2338,15 +2320,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: 22.6848\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":22.6848}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":22.6848,"ops":[{"op_type":"OpA","avg_time_us":22.6848}],"total_op_avg_time_us":22.6848,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":10.7328}],"total_op_avg_time_us":10.7328,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2373,11 +2353,10 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-case-1: 22.6848\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":22.6848,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             compare.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":10.7328}],"total_op_avg_time_us":10.7328,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2393,7 +2372,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 1)
-            self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
+            self.assertIn("requires total-op for 'latency-case-1'", output)
             self.assertNotIn("Traceback", output)
 
     def test_compare_perf_files_auto_mode_skips_missing_total_op_rebuild_when_requested(self) -> None:
@@ -2404,18 +2383,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: 22.6848\n"
-                    "latency-case-2: 30.0\n"
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":30.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":22.6848,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":30.0,"ops":[{"op_type":"OpA","avg_time_us":30.0}],"total_op_avg_time_us":30.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: NA\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
-                    "latency-case-2: 24.0\n"
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":24.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":10.7328}],"total_op_avg_time_us":10.7328,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"case-2","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":24.0,"ops":[{"op_type":"OpA","avg_time_us":24.0}],"total_op_avg_time_us":24.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2437,7 +2411,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(return_code, 1)
             self.assertIn("latency-case-2", output)
             self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
-            self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
+            self.assertIn("requires total-op for 'latency-case-1'", output)
             self.assertNotIn("latency-case-1: baseline=", output)
 
     def test_compare_perf_files_all_mode_prints_kernel_and_total_op_sections(self) -> None:
@@ -2448,15 +2422,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             compare = root / "compare_perf.txt"
             baseline.write_text(
                 (
-                    "latency-case-1: 10\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             compare.write_text(
                 (
-                    "latency-case-1: 8\n"
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
@@ -2485,8 +2457,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
-            baseline.write_text("latency-case-1: 0.0038\n", encoding="utf-8")
-            compare.write_text("latency-case-1: 0.0254\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.0038,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"case-1","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.0254,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout

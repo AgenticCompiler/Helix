@@ -32,8 +32,14 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "candidate_perf.txt"
-            baseline.write_text("latency-a: 10\n", encoding="utf-8")
-            compare.write_text("latency-a: 8\n", encoding="utf-8")
+            baseline.write_text(
+                '{"case_label":"a","kernel_names":["KernelA"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":0.1}\n',
+                encoding="utf-8",
+            )
+            compare.write_text(
+                '{"case_label":"a","kernel_names":["KernelA"],"kernel_source":"metadata","kernel_avg_time_us":8.0,"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.1}\n',
+                encoding="utf-8",
+            )
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -519,63 +525,14 @@ class JsonlPerfArtifactParserTests(unittest.TestCase):
                 module.parse_perf_file(perf)
             self.assertIn("duplicates", str(ctx.exception))
 
-    def test_cross_format_comparison_equivalent_results(self) -> None:
-        module = load_perf_artifacts_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            legacy = root / "legacy_perf.txt"
-            legacy.write_text(
-                "latency-case-x: 5.0\n"
-                "# raw-op-statistic-case-x: " + '{"ops":[{"op_type":"K","avg_time_us":5.0}]}\n',
-                encoding="utf-8",
-            )
-            jsonl = root / "jsonl_perf.txt"
-            jsonl.write_text(
-                '{"case_label":"case-x","kernel_names":["K"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.1}\n',
-                encoding="utf-8",
-            )
-
-            legacy_entries = module.parse_perf_file(legacy)
-            jsonl_entries = module.parse_perf_file(jsonl)
-
-            self.assertEqual(
-                legacy_entries["latency-case-x"],
-                jsonl_entries["latency-case-x"],
-            )
-
-    def test_compare_perf_files_accepts_legacy_msprof_baseline_against_numeric_jsonl_case_labels(
-        self,
-    ) -> None:
-        module = load_perf_artifacts_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baseline = root / "baseline_perf.txt"
-            baseline.write_text(
-                "latency-case-1: 10.0\n"
-                '# raw-op-statistic-case-1: {"ops":[{"op_type":"K","avg_time_us":10.0}]}\n',
-                encoding="utf-8",
-            )
-            compare = root / "compare_perf.txt"
-            compare.write_text(
-                '{"case_label":"1","kernel_names":["K"],"kernel_source":"metadata","kernel_avg_time_us":8.0,"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.1}\n',
-                encoding="utf-8",
-            )
-
-            stdout = io.StringIO()
-            with redirect_stdout(stdout):
-                exit_code = module.compare_perf_files(baseline, compare)
-
-            self.assertEqual(exit_code, 0)
-            self.assertIn("latency-case-1", stdout.getvalue())
-
-    def test_legacy_parser_still_works_for_text_format(self) -> None:
+    def test_parse_rejects_legacy_text_format(self) -> None:
         module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             perf = root / "perf.txt"
             perf.write_text("latency-case-z: 7.5\n", encoding="utf-8")
-            entries = module.parse_perf_file(perf)
-            self.assertEqual(entries["latency-case-z"], 7.5)
+            with self.assertRaisesRegex(ValueError, "JSONL"):
+                module.parse_perf_file(perf)
 
     # --- Regression: Bug 1 — metric_source=total-op must use total_op_avg_time_us ---
 

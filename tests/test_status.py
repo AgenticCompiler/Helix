@@ -131,7 +131,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt-note.md").write_text(
@@ -158,11 +158,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -187,7 +187,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
@@ -195,11 +195,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 5\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -218,7 +218,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt-note.md").write_text(
@@ -241,11 +241,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -278,13 +278,13 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -311,13 +311,13 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -338,7 +338,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
@@ -346,11 +346,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 7\nmean_ms: 11.0\nlatency-b: 15\nnotes: strong round\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":7.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":15.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 19\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":19.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -369,7 +369,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 1\nlatency-b: 100\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
@@ -377,11 +377,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 0.5\nlatency-b: 100\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.5,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 0.9\nlatency-b: 60\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":60.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -403,15 +403,8 @@ class OptimizeStatusTests(unittest.TestCase):
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 10",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
-                        "latency-b: 20",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":[{"op_type":"OpB","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -439,27 +432,13 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 8",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":70.0}]}',
-                        "latency-b: 8",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":70.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpA","avg_time_us":70.0}],"total_op_avg_time_us":70.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpB","avg_time_us":70.0}],"total_op_avg_time_us":70.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 11",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
-                        "latency-b: 11",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":[{"op_type":"OpA","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":[{"op_type":"OpB","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             for round_dir in (round_one, round_two):
@@ -496,15 +475,8 @@ class OptimizeStatusTests(unittest.TestCase):
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 10",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
-                        "latency-b: 10",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpB","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -532,27 +504,13 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 5",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":80.0}]}',
-                        "latency-b: 5",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":80.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpA","avg_time_us":80.0}],"total_op_avg_time_us":80.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpB","avg_time_us":80.0}],"total_op_avg_time_us":80.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 8",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
-                        "latency-b: 8",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
-                    ]
-                )
-                + "\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpA","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpB","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(
@@ -585,11 +543,11 @@ class OptimizeStatusTests(unittest.TestCase):
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "other_perf.txt").write_text(
-                "latency-a: 999\nlatency-b: 999\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -615,13 +573,13 @@ class OptimizeStatusTests(unittest.TestCase):
             )
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 999\nlatency-b: 999\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -641,11 +599,11 @@ class OptimizeStatusTests(unittest.TestCase):
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "other_perf.txt").write_text(
-                "latency-a: 999\nlatency-b: 999\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":999.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -687,7 +645,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
@@ -695,11 +653,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "perf.txt").write_text(
-                "latency-a: 7\nlatency-b: 15\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":7.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":15.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
 
@@ -714,17 +672,17 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 15\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":15.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -740,17 +698,17 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "Gemm.py").write_text("print('x')\n", encoding="utf-8")
             (workspace / "baseline_perf.txt").write_text(
-                "latency-a: 100\nlatency-b: 100\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "Gemm_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_Gemm_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_Gemm_perf.txt")
@@ -766,17 +724,17 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "Gemm.py").write_text("print('x')\n", encoding="utf-8")
             (workspace / "baseline_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "candidate_perf.txt").write_text(
-                "latency-a: 100\nlatency-b: 100\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_Gemm_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_Gemm_perf.txt")
@@ -789,8 +747,8 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_ambiguous_baseline_does_not_repeat_missing_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "kernel_a_perf.txt").write_text("latency-a: 10\n", encoding="utf-8")
-            (workspace / "kernel_b_perf.txt").write_text("latency-a: 11\n", encoding="utf-8")
+            (workspace / "kernel_a_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            (workspace / "kernel_b_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (workspace / "opt-round-1").mkdir()
 
             status = inspect_optimize_status_workspace(workspace)
@@ -804,7 +762,7 @@ class OptimizeStatusTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             invalid_round = workspace / "opt-round-1"
@@ -812,11 +770,11 @@ class OptimizeStatusTests(unittest.TestCase):
             invalid_round.mkdir()
             valid_round.mkdir()
             (invalid_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 1\nlatency-b: 1\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (valid_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(
@@ -839,7 +797,7 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_workspace_has_optimize_artifacts_detects_single_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "kernel_perf.txt").write_text("latency-a: 10\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (workspace / "opt-round-1").mkdir()
 
             self.assertTrue(workspace_has_optimize_artifacts(workspace))
@@ -850,7 +808,7 @@ class OptimizeStatusTests(unittest.TestCase):
             (root / "visible").mkdir()
             (root / ".hidden").mkdir()
             (root / ".hidden" / "kernel_perf.txt").write_text(
-                "latency-a: 10\n", encoding="utf-8"
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8"
             )
 
             results = scan_optimize_status_workspaces(root)

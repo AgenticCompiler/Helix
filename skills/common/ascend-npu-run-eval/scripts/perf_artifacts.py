@@ -503,62 +503,6 @@ def format_latency_value(value: float) -> str:
     return rendered
 
 
-def render_perf_case_records(
-    records: list[PerfCaseRecord],
-    *,
-    latency_prefix: str,
-    raw_prefix: str,
-    resolved_kernels_prefix: str,
-    kernel_source_prefix: str,
-    latency_error_prefix: str,
-    missing_kernel_match_error: str,
-    elapsed_id_prefix: str = "",
-) -> list[str]:
-    rendered: list[str] = []
-    for record in records:
-        rendered.extend(
-            render_perf_case_record(
-                record,
-                latency_prefix=latency_prefix,
-                raw_prefix=raw_prefix,
-                resolved_kernels_prefix=resolved_kernels_prefix,
-                kernel_source_prefix=kernel_source_prefix,
-                latency_error_prefix=latency_error_prefix,
-                missing_kernel_match_error=missing_kernel_match_error,
-                elapsed_id_prefix=elapsed_id_prefix,
-            )
-        )
-    return rendered
-
-
-def render_perf_case_record(
-    record: PerfCaseRecord,
-    *,
-    latency_prefix: str,
-    raw_prefix: str,
-    resolved_kernels_prefix: str,
-    kernel_source_prefix: str,
-    latency_error_prefix: str,
-    missing_kernel_match_error: str,
-    elapsed_id_prefix: str = "",
-) -> list[str]:
-    case_label = record.case_label
-    lines = [f"{latency_prefix}-{case_label}: {_format_case_latency_value(record)}"]
-    if record.case_wall_clock_seconds is not None:
-        elapsed_id = f"{elapsed_id_prefix}-{case_label}" if elapsed_id_prefix else case_label
-        lines.append(f"# elapsed-seconds-{elapsed_id}: {record.case_wall_clock_seconds:.6f}")
-    if record.metrics is not None:
-        raw_payload = json.dumps({"ops": record.metrics["ops"]}, separators=(",", ":"))
-        lines.append(f"# {raw_prefix}-{case_label}: {raw_payload}")
-        if record.metrics["kernel_avg_time_us"] is None:
-            lines.append(f"# {latency_error_prefix}-{case_label}: {missing_kernel_match_error}")
-    if record.error_message is not None:
-        lines.append(f"# {latency_error_prefix}-{case_label}: {record.error_message}")
-    lines.append(f"# {resolved_kernels_prefix}-{case_label}: {','.join(record.kernel_names)}")
-    lines.append(f"# {kernel_source_prefix}-{case_label}: {record.kernel_source}")
-    return lines
-
-
 def render_perf_case_record_jsonl(
     record: PerfCaseRecord,
     *,
@@ -611,12 +555,6 @@ def render_perf_case_records_jsonl(
     ]
 
 
-def _format_case_latency_value(record: PerfCaseRecord) -> str:
-    if record.metrics is None or record.metrics["kernel_avg_time_us"] is None:
-        return "NA"
-    return format_latency_value(record.metrics["kernel_avg_time_us"])
-
-
 def _parse_perf_file(path: Path) -> dict[str, float]:
     entries = _parse_perf_entries(path)
     return PerfValueMap(
@@ -653,55 +591,12 @@ def _parse_perf_entries_impl(
     metric_source: MetricSource = "auto",
 ) -> PerfParseOutcome:
     lines = path.read_text(encoding="utf-8").splitlines()
-    for raw_line in lines:
-        stripped = raw_line.strip()
-        if stripped:
-            if stripped.startswith("{"):
-                return _parse_perf_entries_from_jsonl(
-                    path,
-                    lines,
-                    tolerate_latency_errors=tolerate_latency_errors,
-                    metric_source=metric_source,
-                )
-            break
-    raw_totals = _parse_raw_op_statistic_totals(path, lines)
-    latency_errors = _parse_latency_errors(path, lines)
-    entries: dict[str, PerfEntry] = {}
-    skipped_latency_errors: dict[str, str] = {}
-    for line_no, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.startswith("#"):
-            continue
-        if ":" not in line:
-            raise ValueError(f"{path}:{line_no} is not a 'latency-<id>: <value>' line")
-        key, value = line.split(":", 1)
-        latency_id = key.strip()
-        if not latency_id.startswith("latency-"):
-            raise ValueError(f"{path}:{line_no} does not start with 'latency-'")
-        value_text = value.strip()
-        if latency_id in entries:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
-        uncomparable_error = _get_uncomparable_latency_error(
-            path, line_no, latency_id, latency_errors
-        )
-        if uncomparable_error is not None:
-            if tolerate_latency_errors:
-                skipped_latency_errors[latency_id] = uncomparable_error
-                continue
-            raise ValueError(uncomparable_error)
-        entries[latency_id] = _build_perf_entry_for_source(
-            path=path,
-            line_no=line_no,
-            latency_id=latency_id,
-            value_text=value_text,
-            raw_totals=raw_totals,
-            metric_source=metric_source,
-        )
-    if not entries and not skipped_latency_errors:
-        raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
-    return PerfParseOutcome(entries=entries, skipped_latency_errors=skipped_latency_errors)
+    return _parse_perf_entries_from_jsonl(
+        path,
+        lines,
+        tolerate_latency_errors=tolerate_latency_errors,
+        metric_source=metric_source,
+    )
 
 
 def _parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
@@ -754,69 +649,22 @@ def _parse_required_perf_entries_impl(
         return PerfParseOutcome(entries={}, skipped_latency_errors={})
 
     lines = path.read_text(encoding="utf-8").splitlines()
-    for raw_line in lines:
-        stripped = raw_line.strip()
-        if stripped:
-            if stripped.startswith("{"):
-                full_outcome = _parse_perf_entries_from_jsonl(
-                    path,
-                    lines,
-                    tolerate_latency_errors=tolerate_latency_errors,
-                    metric_source=metric_source,
-                    required_ids=required_ids,
-                    comparison_modes=comparison_modes,
-                )
-                missing_ids = sorted(
-                    required_ids
-                    - set(full_outcome.entries)
-                    - set(full_outcome.skipped_latency_errors)
-                )
-                if missing_ids:
-                    raise ValueError(f"{path} is missing required latency ids: {missing_ids}")
-                return full_outcome
-            break
-    raw_totals = _parse_raw_op_statistic_totals(path, lines)
-    latency_errors = _parse_latency_errors(path, lines)
-    entries: dict[str, PerfEntry] = {}
-    skipped_latency_errors: dict[str, str] = {}
-    for line_no, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#") or ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        latency_id = key.strip()
-        matched_latency_id = _resolve_required_latency_id_match(latency_id, required_ids)
-        if matched_latency_id is None:
-            continue
-        value_text = value.strip()
-        if matched_latency_id in entries:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{matched_latency_id}'")
-        uncomparable_error = _get_uncomparable_latency_error(
-            path, line_no, latency_id, latency_errors
-        )
-        if uncomparable_error is not None:
-            if tolerate_latency_errors:
-                skipped_latency_errors[matched_latency_id] = uncomparable_error
-                continue
-            raise ValueError(uncomparable_error)
-        effective_metric_source = (
-            "total-op"
-            if metric_source == "auto" and comparison_modes[matched_latency_id] == "total-op"
-            else metric_source
-        )
-        entries[matched_latency_id] = _build_perf_entry_for_source(
-            path=path,
-            line_no=line_no,
-            latency_id=latency_id,
-            value_text=value_text,
-            raw_totals=raw_totals,
-            metric_source=effective_metric_source,
-        )
-
-    missing_ids = sorted(required_ids - set(entries) - set(skipped_latency_errors))
+    full_outcome = _parse_perf_entries_from_jsonl(
+        path,
+        lines,
+        tolerate_latency_errors=tolerate_latency_errors,
+        metric_source=metric_source,
+        required_ids=required_ids,
+        comparison_modes=comparison_modes,
+    )
+    missing_ids = sorted(
+        required_ids
+        - set(full_outcome.entries)
+        - set(full_outcome.skipped_latency_errors)
+    )
     if missing_ids:
         raise ValueError(f"{path} is missing required latency ids: {missing_ids}")
-    return PerfParseOutcome(entries=entries, skipped_latency_errors=skipped_latency_errors)
+    return full_outcome
 
 
 def _parse_perf_entries_from_jsonl(
@@ -837,7 +685,9 @@ def _parse_perf_entries_from_jsonl(
         try:
             parsed = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"{path}:{line_no} has invalid JSON: {exc}") from exc
+            raise ValueError(
+                f"{path}:{line_no} must contain a JSONL record; invalid JSON: {exc}"
+            ) from exc
         if not isinstance(parsed, dict):
             raise ValueError(f"{path}:{line_no} JSONL record must be an object")
         record = cast(dict[str, object], parsed)
@@ -910,66 +760,8 @@ def _parse_perf_entries_from_jsonl(
     if not entries and not skipped_latency_errors:
         if required_ids is not None:
             return PerfParseOutcome(entries={}, skipped_latency_errors={})
-        raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
+        raise ValueError(f"{path} did not contain any JSONL performance records")
     return PerfParseOutcome(entries=entries, skipped_latency_errors=skipped_latency_errors)
-
-
-def _parse_raw_op_statistic_totals(path: Path, lines: list[str]) -> dict[str, float]:
-    totals: dict[str, float] = {}
-    for line_no, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line.startswith("# raw-op-statistic-"):
-            continue
-        body = line[1:].strip()
-        if ":" not in body:
-            raise ValueError(f"{path}:{line_no} is not a '# raw-op-statistic-<id>: <json>' line")
-        key, value = body.split(":", 1)
-        raw_stat_id = key.strip()
-        latency_id = f"latency-{raw_stat_id.removeprefix('raw-op-statistic-')}"
-        if latency_id in totals:
-            raise ValueError(f"{path}:{line_no} duplicates raw-op statistic for '{latency_id}'")
-        try:
-            payload = json.loads(value.strip())
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{path}:{line_no} has invalid raw-op-statistic JSON") from exc
-        if not isinstance(payload, dict):
-            raise ValueError(f"{path}:{line_no} raw-op-statistic JSON must be an object")
-        payload_dict = cast(dict[str, object], payload)
-        ops = payload_dict.get("ops")
-        if not isinstance(ops, list):
-            raise ValueError(f"{path}:{line_no} raw-op-statistic JSON is missing an 'ops' list")
-        total = 0.0
-        typed_ops = cast(list[object], ops)
-        for op in typed_ops:
-            if not isinstance(op, dict):
-                raise ValueError(f"{path}:{line_no} raw-op-statistic ops entries must be objects")
-            op_dict = cast(dict[str, object], op)
-            avg_time_us = op_dict.get("avg_time_us")
-            if not isinstance(avg_time_us, (int, float)):
-                raise ValueError(
-                    f"{path}:{line_no} raw-op-statistic ops entries must include numeric 'avg_time_us'"
-                )
-            total += float(avg_time_us)
-        totals[latency_id] = total
-    return totals
-
-
-def _parse_latency_errors(path: Path, lines: list[str]) -> dict[str, str]:
-    errors: dict[str, str] = {}
-    for line_no, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line.startswith("# latency-error-"):
-            continue
-        body = line[1:].strip()
-        if ":" not in body:
-            raise ValueError(f"{path}:{line_no} is not a '# latency-error-<id>: <message>' line")
-        key, value = body.split(":", 1)
-        error_id = key.strip()
-        latency_id = f"latency-{error_id.removeprefix('latency-error-')}"
-        if latency_id in errors:
-            raise ValueError(f"{path}:{line_no} duplicates latency error for '{latency_id}'")
-        errors[latency_id] = value.strip()
-    return errors
 
 
 def _resolve_required_latency_requirements(
@@ -1039,99 +831,6 @@ def _rebuild_entry_for_mode(
         skip_latency_errors=False,
         metric_source=metric_source,
     ).entries[latency_id]
-
-
-def _require_raw_total(
-    path: Path,
-    line_no: int,
-    latency_id: str,
-    raw_totals: dict[str, float],
-    *,
-    reason: str = "to provide total-op fallback",
-) -> float:
-    total = raw_totals.get(latency_id)
-    if total is None:
-        raise ValueError(
-            f"{path}:{line_no} requires '# raw-op-statistic-{latency_id.removeprefix('latency-')}: ...' {reason}"
-        )
-    return total
-
-
-def _build_perf_entry_for_source(
-    *,
-    path: Path,
-    line_no: int,
-    latency_id: str,
-    value_text: str,
-    raw_totals: dict[str, float],
-    metric_source: MetricSource,
-) -> PerfEntry:
-    if metric_source == "kernel":
-        if value_text == "NA":
-            raise ValueError(
-                f"{path}:{line_no} requires kernel latency for '{latency_id}' under --metric-source kernel"
-            )
-        try:
-            parsed_value = float(value_text)
-        except ValueError as exc:
-            raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-        return PerfEntry(
-            display_value=value_text,
-            numeric_value=parsed_value,
-            comparison_mode="latency",
-        )
-
-    if metric_source == "total-op":
-        total_op_value = _require_raw_total(
-            path,
-            line_no,
-            latency_id,
-            raw_totals,
-            reason=f"for '{latency_id}' under --metric-source total-op",
-        )
-        display_value = (
-            f"NA ({_format_total_op_display(total_op_value)})"
-            if value_text == "NA"
-            else _format_total_op_display(total_op_value)
-        )
-        return PerfEntry(
-            display_value=display_value,
-            numeric_value=total_op_value,
-            comparison_mode="total-op",
-        )
-
-    if value_text == "NA":
-        total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
-        return PerfEntry(
-            display_value=f"NA ({_format_total_op_display(total_op_value)})",
-            numeric_value=total_op_value,
-            comparison_mode="total-op",
-        )
-
-    try:
-        parsed_value = float(value_text)
-    except ValueError as exc:
-        raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-    return PerfEntry(
-        display_value=value_text,
-        numeric_value=parsed_value,
-        comparison_mode="latency",
-    )
-
-
-def _get_uncomparable_latency_error(
-    path: Path,
-    line_no: int,
-    latency_id: str,
-    latency_errors: dict[str, str],
-) -> str | None:
-    error_message = latency_errors.get(latency_id)
-    if error_message is None or error_message.startswith("no resolved kernels matched"):
-        return None
-    return (
-        f"{path}:{line_no} cannot compare '{latency_id}' because "
-        f"'# latency-error-{latency_id.removeprefix('latency-')}: {error_message}' is present"
-    )
 
 
 def _format_total_op_display(value: float) -> str:

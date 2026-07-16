@@ -258,7 +258,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+        (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
     def _write_round(
@@ -267,7 +267,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         round_name: str,
         *,
         parent_round: str,
-        perf_text: str = "latency-a: 1.0\n",
+        perf_text: str = '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
         operator_source: Optional[str] = None,
         correctness_status: str = "passed",
         benchmark_status: str = "passed",
@@ -1910,7 +1910,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         workdir,
                         "opt-round-2",
                         parent_round="opt-round-1",
-                        perf_text="latency-a: 0.9\n",
+                        perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                     )
                     return AgentResult(return_code=0, stdout="worker ok", stderr="")
 
@@ -2658,7 +2658,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         workdir,
                         "opt-round-1",
                         parent_round="round-0",
-                        perf_text="latency-a: 0.9\n",
+                        perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                     )
                     return AgentResult(return_code=0, stdout="worker ok", stderr="")
 
@@ -2731,13 +2731,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         workdir,
                         "opt-round-1",
                         parent_round="round-0",
-                        perf_text="latency-a: 0.9\n",
+                        perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                     )
                     self_outer._write_round(
                         workdir,
                         "opt-round-2",
                         parent_round="round-1",
-                        perf_text="latency-a: 1.1\n",
+                        perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.1,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                         correctness_status="failed",
                         benchmark_status="not_run",
                     )
