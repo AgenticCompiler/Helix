@@ -18,7 +18,7 @@ from helix.skills.loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
     load_bench_runner_module,
-    load_test_runner_module,
+    load_remote_api_module,
     make_skill_result,
 )
 
@@ -133,6 +133,25 @@ class RemoteExecutionTests(unittest.TestCase):
             ["scp", "input.py", "alice@example.com:/tmp/input.py"],
         )
         self.assertEqual(mocked.call_args.args[1], "D:/Project")
+
+    def test_copy_files_to_remote_uses_one_scp_command(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+        sources = [Path("/tmp/first.py"), Path("/tmp/second.py")]
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.copy_files_to_remote(
+                module.parse_remote_spec("alice@example.com:2200"),
+                sources,
+                "/tmp/remote",
+            )
+
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [
+                "scp", "-P", "2200", "/private/tmp/first.py", "/private/tmp/second.py",
+                "alice@example.com:/tmp/remote/",
+            ],
+        )
 
     def test_copy_file_from_remote_avoids_windows_drive_letter_in_scp_destination_argument(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
@@ -574,7 +593,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
-        with patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked:
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
             module.run_remote_command_streaming(
                 module.parse_remote_spec("alice@example.com"),
                 "/tmp/remote dir",
@@ -591,7 +610,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
     def test_run_remote_command_streaming_prefixes_env_assignments(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
-        with patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked:
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
             module.run_remote_command_streaming(
                 module.parse_remote_spec("alice@example.com"),
                 "/tmp/workspace",
@@ -607,7 +626,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
         with (
             patch.dict(environ, {"TRITON_ALL_BLOCKS_PARALLEL": "0"}, clear=False),
-            patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked,
+            patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked,
         ):
             module.run_remote_command_streaming(
                 module.parse_remote_spec("alice@example.com"),
@@ -619,7 +638,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIn("TRITON_ALL_BLOCKS_PARALLEL=0", command[-1])
 
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -633,6 +652,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-keep"),
             ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module, "copy_files_to_remote"
+            ), patch.object(
                 module,
                 "run_remote_command_streaming",
                 return_value=make_skill_result(0, "", ""),
@@ -652,7 +673,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         cleanup.assert_not_called()
 
     def test_run_remote_test_quotes_filenames_with_spaces(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -666,6 +687,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-space"),
             ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module, "copy_files_to_remote"
+            ), patch.object(
                 module,
                 "run_remote_command_streaming",
                 return_value=make_skill_result(0, "", ""),
@@ -680,13 +703,14 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
         self.assertEqual(
             remote_run.call_args.args[2],
-            ["python3", "-c", remote_run.call_args.args[2][2]],
+            [
+                "python3", "run_test_remote_worker.py", "--test-file", "test kernel.py",
+                "--operator-file", "kernel op.py", "--test-mode", "standalone",
+            ],
         )
-        self.assertIn("test kernel.py", remote_run.call_args.args[2][2])
-        self.assertIn("kernel op.py", remote_run.call_args.args[2][2])
 
     def test_remote_differential_comparison_keeps_pt_files_remote(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -702,6 +726,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-differential"),
             ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
+                module, "copy_files_to_remote"
+            ) as copy_files_to_remote, patch.object(
                 module,
                 "copy_file_from_remote",
             ) as copy_from_remote, patch.object(
@@ -726,12 +752,26 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIn(ref_operator, copied_sources)
         self.assertIn(operator, copied_sources)
         self.assertNotIn(ref_operator.with_name("reference kernel_result.pt"), copied_sources)
+        self.assertEqual(
+            [path.name for path in copy_files_to_remote.call_args.args[1]],
+            [
+                "npu_compare.py", "dtype_close_compare.py", "npu_compare_common.py",
+                "npu_contract_compare.py", "env_registry.py", "run_test_remote_worker.py",
+                "test_contract.py", "torch_npu_warnings.py", "compare_result.py",
+            ],
+        )
         self.assertEqual(remote_run.call_count, 3)
         reference_command = remote_run.call_args_list[0].args[2]
         candidate_command = remote_run.call_args_list[1].args[2]
         compare_command = remote_run.call_args_list[2].args[2]
-        self.assertIn("reference_reference kernel.py", reference_command[2])
-        self.assertIn("candidate_candidate kernel.py", candidate_command[2])
+        self.assertEqual(reference_command[0:8], [
+            "python3", "run_test_remote_worker.py", "--test-file", test_file.name,
+            "--operator-file", "reference_reference kernel.py", "--test-mode", "differential",
+        ])
+        self.assertEqual(candidate_command[0:8], [
+            "python3", "run_test_remote_worker.py", "--test-file", test_file.name,
+            "--operator-file", "candidate_candidate kernel.py", "--test-mode", "differential",
+        ])
         self.assertEqual(
             compare_command,
             [

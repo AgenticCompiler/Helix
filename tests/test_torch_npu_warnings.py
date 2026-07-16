@@ -33,15 +33,14 @@ class TorchNpuWarningsTests(unittest.TestCase):
 
         self.assertEqual([str(item.message) for item in captured], ["unrelated torch_npu warning"])
 
-    def test_test_runner_installs_filter_in_remote_commands(self) -> None:
-        module = load_operator_eval_script_module("test_runner")
+    def test_fixed_remote_worker_installs_filter(self) -> None:
+        worker_path = (
+            Path(__file__).resolve().parents[1]
+            / "skills/common/ascend-npu-run-eval/scripts/run_test_remote_worker.py"
+        )
+        worker_source = worker_path.read_text(encoding="utf-8")
 
-        standalone_command = module._build_remote_standalone_command("test.py", "operator.py")
-        differential_command = module._build_remote_differential_command("test.py", "operator.py")
-
-        self.assertIn("warnings.filterwarnings", standalone_command[2])
-        self.assertIn("torch_npu\\\\.utils\\\\.collect_env", standalone_command[2])
-        self.assertIn("warnings.filterwarnings", differential_command[2])
+        self.assertIn("suppress_torch_npu_owner_mismatch_warning", worker_source)
 
 
 if __name__ == "__main__":

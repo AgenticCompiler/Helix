@@ -84,7 +84,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "cli.py"
+            / "run_test_command.py"
         )
         spec = importlib.util.spec_from_file_location("run_command_test_sys_path", script)
         if spec is None or spec.loader is None:
@@ -1643,6 +1643,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             operator.write_text("print('x')\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
             baseline_result.write_text("baseline\n", encoding="utf-8")
+            compare_calls: list[tuple[Path, Path, object]] = []
 
             def fake_run_local_test(
                 test_path: Path,
@@ -1685,8 +1686,11 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path: (
-                                0
+                            lambda baseline_path, new_path, **kwargs: (
+                                compare_calls.append(
+                                    (baseline_path, new_path, kwargs.get("accuracy_mode"))
+                                )
+                                or 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
                                 else 2
@@ -1703,6 +1707,8 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(operator),
                                 "--ref-result",
                                 str(baseline_result),
+                                "--accuracy-mode",
+                                "dtype-close",
                             ]
                         )
             finally:
@@ -1710,6 +1716,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = original_stderr
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual(compare_calls, [(baseline_result.resolve(), archive, "dtype-close")])
         self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
         self.assertEqual(stderr.getvalue(), "")
 
@@ -2135,7 +2142,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path: (
+                            lambda baseline_path, new_path, **_kwargs: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
@@ -2263,7 +2270,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                             if result_path == derived_baseline_result.resolve() and case_id == "case-b"
                             else (_ for _ in ()).throw(AssertionError("unexpected baseline payload request"))
                         ),
-                        lambda ref_payload, new_payload: (
+                        lambda ref_payload, new_payload, **_kwargs: (
                             0 if ref_payload == baseline_payload and new_payload == candidate_payload else 2
                         ),
                     ),
@@ -2399,7 +2406,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                             if result_path == baseline_archive.resolve() and case_id == "case-b"
                             else (_ for _ in ()).throw(AssertionError("unexpected derived payload lookup"))
                         ),
-                        lambda ref_payload, new_payload: (
+                        lambda ref_payload, new_payload, **_kwargs: (
                             0 if ref_payload == baseline_payload and new_payload == candidate_payload else 2
                         ),
                     ),
@@ -2837,7 +2844,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     module,
                     "_load_compare_result_functions",
                     return_value=(
-                            lambda baseline_path, new_path: (
+                            lambda baseline_path, new_path, **_kwargs: (
                                 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
@@ -2930,7 +2937,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     module,
                     "_load_compare_result_functions",
                     return_value=(
-                        lambda baseline_path, new_path: (
+                        lambda baseline_path, new_path, **_kwargs: (
                             0
                             if baseline_path == baseline_result.resolve() and new_path == archive
                             else 2
@@ -3122,7 +3129,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path: (
+                            lambda baseline_path, new_path, **_kwargs: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
@@ -3231,7 +3238,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path: (
+                            lambda baseline_path, new_path, **_kwargs: (
                                 0
                                 if baseline_path == baseline_archive.resolve()
                                 and new_path == optimize_archive
@@ -3725,9 +3732,9 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "common"
             / "ascend-npu-run-eval"
             / "scripts"
-            / "cli.py"
+            / "run_test_command.py"
         )
-        spec = importlib.util.spec_from_file_location("run_command_compare_result_protocol_test", script)
+        spec = importlib.util.spec_from_file_location("run_test_command_compare_result_protocol_test", script)
         if spec is None or spec.loader is None:
             self.fail(f"Unable to load module spec for {script}")
         module = importlib.util.module_from_spec(spec)

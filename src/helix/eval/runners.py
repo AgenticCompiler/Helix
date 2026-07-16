@@ -140,7 +140,7 @@ class SimulatorRunnerModule(Protocol):
 
 
 def _load_test_runner() -> TestRunnerModule:
-    return cast(TestRunnerModule, load_operator_eval_script_module("test_runner"))
+    return cast(TestRunnerModule, load_operator_eval_script_module("run_test_api"))
 
 
 def _load_bench_runner() -> BenchRunnerModule:

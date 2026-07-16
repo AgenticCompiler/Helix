@@ -489,6 +489,34 @@ def copy_file_to_remote(
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {local_path} to remote.")
 
 
+def copy_files_to_remote(
+    spec: RemoteSpec,
+    local_paths: list[Path],
+    remote_directory: str,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> None:
+    """Copy same-named files through one SCP connection.
+
+    Remote run-test needs several small runtime scripts. Sending them one at a
+    time turns SSH handshake latency into the dominant cost on distant hosts.
+    """
+    if not local_paths:
+        return
+    names = [path.name for path in local_paths]
+    if len(set(names)) != len(names):
+        raise ValueError("Remote batch copy requires unique source filenames.")
+    command = ["scp"]
+    if spec["port"] is not None:
+        command.extend(["-P", str(spec["port"])])
+    command.extend(str(path.resolve()) for path in local_paths)
+    command.append(f"{spec['user_host']}:{remote_directory}/")
+    _maybe_emit_remote_command(command, verbose, stderr)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
+    if not result_succeeded(result):
+        raise RuntimeError(result["stderr"] or result["stdout"] or "Failed to copy files to remote.")
+
+
 def copy_file_from_remote(
     spec: RemoteSpec,
     remote_path: str,
@@ -559,6 +587,13 @@ def run_remote_command_streaming(
     )
     _maybe_emit_remote_command(command, verbose, stderr)
     timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_timeout_seconds()
+    if not verbose:
+        return run_buffered_process(
+            command,
+            ".",
+            stall_timeout_seconds=0,
+            timeout_seconds=timeout,
+        )
     return run_streaming_process(
         command,
         ".",
