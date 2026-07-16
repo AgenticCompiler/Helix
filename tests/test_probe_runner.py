@@ -266,7 +266,7 @@ class ProbeCapsWarningTests(unittest.TestCase):
             bench.write_text("# bench", encoding="utf-8")
             op.write_text("x", encoding="utf-8")
             base.write_text("y", encoding="utf-8")
-            perf.write_text("latency-a: 100.0", encoding="utf-8")
+            perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             local_run = self.module._LocalRun(
                 payload={"return_code": 0, "stdout": "", "stderr": ""},
                 perf_path=perf,
@@ -357,7 +357,7 @@ class ProbeBaselineSnapshotTests(unittest.TestCase):
             bench.write_text("# bench", encoding="utf-8")
             op.write_text("x", encoding="utf-8")
             base.write_text("y", encoding="utf-8")
-            perf.write_text("latency-a: 100.0", encoding="utf-8")
+            perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             local_run = self.module._LocalRun(
                 payload={"return_code": 0, "stdout": "", "stderr": ""},
                 perf_path=perf,
@@ -476,15 +476,13 @@ class ParsePerfPairValidationTests(unittest.TestCase):
             cand = root / "cand.perf.txt"
             base.write_text(
                 (
-                    "latency-a: 22.6848\n"
-                    '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":22.6848}]}\n'
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":22.6848,"ops":[{"op_type":"OpA","avg_time_us":22.6848}],"total_op_avg_time_us":22.6848,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )
             cand.write_text(
                 (
-                    "latency-a: NA\n"
-                    '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":10.7328}],"total_op_avg_time_us":10.7328,"error_message":null,"case_wall_clock_seconds":null}\n'
                 ),
                 encoding="utf-8",
             )

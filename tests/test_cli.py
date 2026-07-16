@@ -2344,7 +2344,7 @@ class PathResolutionTests(unittest.TestCase):
             (root / "visible").mkdir()
             (root / ".hidden").mkdir()
             (root / ".hidden" / "kernel_perf.txt").write_text(
-                "latency-a: 10\n", encoding="utf-8"
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8"
             )
             stdout = StringIO()
 
@@ -2375,13 +2375,13 @@ class PathResolutionTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2405,15 +2405,10 @@ class PathResolutionTests(unittest.TestCase):
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 10",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
-                        "latency-b: 10",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
-                    ]
-                )
-                + "\n",
+                (
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                    '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpB","avg_time_us":50.0}],"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                ),
                 encoding="utf-8",
             )
             (baseline_dir / "state.json").write_text(
@@ -2441,27 +2436,17 @@ class PathResolutionTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 5",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":80.0}]}',
-                        "latency-b: 5",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":80.0}]}',
-                    ]
-                )
-                + "\n",
+                (
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpA","avg_time_us":80.0}],"total_op_avg_time_us":80.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                    '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpB","avg_time_us":80.0}],"total_op_avg_time_us":80.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                ),
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 8",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
-                        "latency-b: 8",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
-                    ]
-                )
-                + "\n",
+                (
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpA","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                    '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpB","avg_time_us":40.0}],"total_op_avg_time_us":40.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                ),
                 encoding="utf-8",
             )
             self._write_round_state(
@@ -2489,13 +2474,13 @@ class PathResolutionTests(unittest.TestCase):
             workspace = Path(tmp)
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2621,13 +2606,13 @@ class PathResolutionTests(unittest.TestCase):
             warning_workspace.mkdir()
             (warning_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (warning_workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             warning_round = warning_workspace / "opt-round-1"
             warning_round.mkdir()
             (warning_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
 
@@ -2635,13 +2620,13 @@ class PathResolutionTests(unittest.TestCase):
             ok_workspace.mkdir()
             (ok_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (ok_workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             ok_round = ok_workspace / "opt-round-1"
             ok_round.mkdir()
             (ok_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(ok_round, perf_artifact="opt_kernel_perf.txt")
@@ -2662,7 +2647,7 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt-note.md").write_text(
@@ -2689,11 +2674,11 @@ class PathResolutionTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2724,7 +2709,7 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt-note.md").write_text(
@@ -2747,11 +2732,11 @@ class PathResolutionTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2778,13 +2763,13 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-c: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"c","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2809,17 +2794,17 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (workspace / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 15\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":15.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2843,13 +2828,13 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2875,13 +2860,13 @@ class PathResolutionTests(unittest.TestCase):
             alpha.mkdir()
             (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (alpha / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             alpha_round = alpha / "opt-round-2"
             alpha_round.mkdir()
             (alpha_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 5\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(alpha_round, perf_artifact="opt_kernel_perf.txt")
@@ -2890,7 +2875,7 @@ class PathResolutionTests(unittest.TestCase):
             beta.mkdir()
             (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (beta / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             beta_round_one = beta / "opt-round-1"
@@ -2898,11 +2883,11 @@ class PathResolutionTests(unittest.TestCase):
             beta_round_one.mkdir()
             beta_round_three.mkdir()
             (beta_round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (beta_round_three / "opt_kernel_perf.txt").write_text(
-                "latency-a: 4\nlatency-b: 8\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":4.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(beta_round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2928,13 +2913,13 @@ class PathResolutionTests(unittest.TestCase):
             alpha.mkdir()
             (alpha / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (alpha / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             alpha_round = alpha / "opt-round-2"
             alpha_round.mkdir()
             (alpha_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 5\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(alpha_round, perf_artifact="opt_kernel_perf.txt")
@@ -2943,7 +2928,7 @@ class PathResolutionTests(unittest.TestCase):
             beta.mkdir()
             (beta / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (beta / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             beta_round_one = beta / "opt-round-1"
@@ -2951,11 +2936,11 @@ class PathResolutionTests(unittest.TestCase):
             beta_round_one.mkdir()
             beta_round_three.mkdir()
             (beta_round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (beta_round_three / "opt_kernel_perf.txt").write_text(
-                "latency-a: 4\nlatency-b: 8\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":4.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(beta_round_one, perf_artifact="opt_kernel_perf.txt")
@@ -2996,7 +2981,7 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
@@ -3004,11 +2989,11 @@ class PathResolutionTests(unittest.TestCase):
             round_one.mkdir()
             round_two.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (round_two / "opt_kernel_perf.txt").write_text(
-                "latency-a: 5\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -3032,13 +3017,13 @@ class PathResolutionTests(unittest.TestCase):
             workspace.mkdir()
             (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
             (round_one / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":16.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(round_one, perf_artifact="opt_kernel_perf.txt")
@@ -3060,7 +3045,7 @@ class PathResolutionTests(unittest.TestCase):
             warning_workspace.mkdir()
             (warning_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (warning_workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (warning_workspace / "opt-round-1").mkdir()
@@ -3069,7 +3054,7 @@ class PathResolutionTests(unittest.TestCase):
             ok_workspace.mkdir()
             (ok_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (ok_workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (ok_workspace / "opt-note.md").write_text(
@@ -3089,11 +3074,11 @@ class PathResolutionTests(unittest.TestCase):
             ok_round.mkdir()
             best_round.mkdir()
             (ok_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 18\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             (best_round / "opt_kernel_perf.txt").write_text(
-                "latency-a: 9\nlatency-b: 10\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
             self._write_round_state(ok_round, perf_artifact="opt_kernel_perf.txt")
@@ -3657,7 +3642,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (resumable / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -3726,7 +3711,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (resumable / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4539,7 +4524,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4597,7 +4582,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4655,7 +4640,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4719,7 +4704,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4783,7 +4768,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4841,7 +4826,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4905,7 +4890,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -4963,7 +4948,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -5164,7 +5149,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -5238,7 +5223,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "test_kernel.py").write_text(
                 "# test-mode: standalone\nprint('test')\n", encoding="utf-8"
@@ -5388,7 +5373,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -5452,7 +5437,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -5549,7 +5534,7 @@ class PathResolutionTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
@@ -6493,8 +6478,8 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "candidate_perf.txt"
-            baseline.write_text("latency-a: 10\n", encoding="utf-8")
-            compare.write_text("latency-a: 11\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
@@ -6520,8 +6505,8 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "candidate_perf.txt"
-            baseline.write_text("latency-a: 10\n", encoding="utf-8")
-            compare.write_text("latency-a: 11\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
@@ -6548,8 +6533,8 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
             compare = root / "candidate_perf.txt"
-            baseline.write_text("latency-a: 10\n", encoding="utf-8")
-            compare.write_text("latency-a: 11\n", encoding="utf-8")
+            baseline.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            compare.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             with patch("helix.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(

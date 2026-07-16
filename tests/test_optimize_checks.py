@@ -397,7 +397,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            (workdir / "baseline" / "other_perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (workdir / "baseline" / "other_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             round_dir = self._write_round(workdir, "opt-round-1")
             payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
             payload["comparison_target_path"] = "../baseline/other_perf.txt"
@@ -463,7 +463,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             result = optimize_checks.check_baseline(baseline_dir)
 
@@ -624,22 +624,22 @@ class OptimizeCheckTests(unittest.TestCase):
             workdir = Path(tmp)
             self._write_baseline(
                 workdir,
-                perf_text="latency-a: 10.0\n",
+                perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_perf_text="latency-a: 8.5\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.5,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_perf_text="latency-a: 8.4\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.4,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_perf_text="latency-a: 8.3\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.3,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
             result = optimize_checks.check_round(round_dir)
@@ -661,22 +661,22 @@ class OptimizeCheckTests(unittest.TestCase):
             workdir = Path(tmp)
             self._write_baseline(
                 workdir,
-                perf_text="latency-a: 10.0\n",
+                perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_perf_text="latency-a: 8.5\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.5,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_perf_text="latency-a: 8.4\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.4,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_perf_text="latency-a: 7.0\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":7.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
             result = optimize_checks.check_round(round_dir)
@@ -691,22 +691,22 @@ class OptimizeCheckTests(unittest.TestCase):
             workdir = Path(tmp)
             self._write_baseline(
                 workdir,
-                perf_text="latency-a: 10.0\n",
+                perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_perf_text="latency-a: 1.0\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_perf_text="latency-a: 5.0\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":5.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_perf_text="latency-a: 8.3\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.3,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
             result = optimize_checks.check_round(round_dir)
@@ -724,22 +724,22 @@ class OptimizeCheckTests(unittest.TestCase):
             workdir = Path(tmp)
             self._write_baseline(
                 workdir,
-                perf_text="latency-a: 10.0\n",
+                perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_perf_text="latency-a: 8.3\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.3,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_perf_text="latency-a: 8.4\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.4,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_perf_text="latency-a: 8.5\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.5,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
             result = optimize_checks.check_round(round_dir)
@@ -760,22 +760,22 @@ class OptimizeCheckTests(unittest.TestCase):
             workdir = Path(tmp)
             self._write_baseline(
                 workdir,
-                perf_text="latency-a: 100.0\n",
+                perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_perf_text="latency-a: 100.0\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_perf_text="latency-a: 98.0392156862745\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":98.0392156862745,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_perf_text="latency-a: 100.0\n",
+                round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
             result = optimize_checks.check_round(round_dir)
@@ -791,12 +791,11 @@ class OptimizeCheckTests(unittest.TestCase):
     def test_check_round_does_not_warn_when_recent_rounds_mix_metric_bases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            baseline_perf = "\n".join(
-                [
-                    "latency-a: 10.0",
-                    '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
-                ]
-            ) + "\n"
+            baseline_perf = (
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture",'
+                '"kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":50.0}],'
+                '"total_op_avg_time_us":50.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+            )
             self._write_baseline(
                 workdir,
                 perf_text=baseline_perf,
@@ -893,7 +892,7 @@ class OptimizeCheckTests(unittest.TestCase):
             (workdir / "bench_kernel.py").write_text("print('bench')\n", encoding="utf-8")
             (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "state.json").write_text(
                 json.dumps(
                     {
@@ -915,7 +914,7 @@ class OptimizeCheckTests(unittest.TestCase):
             (round_dir / "opt_kernel.py").write_text(TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -965,7 +964,7 @@ class OptimizeCheckTests(unittest.TestCase):
         (baseline_dir / "perf.txt").write_text(perf_text, encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
-    def _write_baseline(self, workdir: Path, *, perf_text: str = "latency-a: 1.0\n") -> None:
+    def _write_baseline(self, workdir: Path, *, perf_text: str = '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n') -> None:
         self._write_baseline_with_perf_text(workdir, perf_text=perf_text)
 
     def _write_baseline_operator_named_perf(self, workdir: Path) -> None:
@@ -991,7 +990,7 @@ class OptimizeCheckTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (baseline_dir / "kernel_perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+        (baseline_dir / "kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
     def _write_round(
@@ -1001,7 +1000,7 @@ class OptimizeCheckTests(unittest.TestCase):
         *,
         perf_analysis_path: Optional[str] = None,
         operator_source: str = TRITON_ROUND_OPERATOR,
-        round_perf_text: str = "latency-a: 1.0\n",
+        round_perf_text: str = '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
         effective_metric_source: str = "kernel",
     ) -> Path:
         round_dir = workdir / round_name

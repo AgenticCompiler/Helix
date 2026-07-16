@@ -377,7 +377,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             baseline.write_text("print('baseline')\n", encoding="utf-8")
             operator.write_text("print('x')\n", encoding="utf-8")
             bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
-            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+            baseline_perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             observed: list[object] = []
             stdout = StringIO()
@@ -668,7 +668,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             baseline.write_text("print('baseline')\n", encoding="utf-8")
             operator.write_text("print('x')\n", encoding="utf-8")
             bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
-            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+            baseline_perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             observed_compare: list[object] = []
 
@@ -1998,7 +1998,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             timing_path = workspace / ".helix" / "round-timings" / "opt-round-4.jsonl"
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
             operator_file.write_text("print('kernel')\n", encoding="utf-8")
-            perf_path.write_text("latency-a: 1.0\n", encoding="utf-8")
+            perf_path.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             def fake_run_local_bench(
                 bench_path: Path,
@@ -4735,12 +4735,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -4858,12 +4858,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.8\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.8,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -5010,12 +5010,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -5143,7 +5143,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -5297,12 +5297,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":0.9,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -5406,7 +5406,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")

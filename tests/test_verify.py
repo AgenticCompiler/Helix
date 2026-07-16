@@ -19,7 +19,7 @@ class VerifyTests(unittest.TestCase):
         (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
         (baseline_dir / "perf.txt").write_text(
-            "latency-a: 10\nlatency-b: 20\n",
+            '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             encoding="utf-8",
         )
         (workspace / "differential_test_kernel.py").write_text(
@@ -83,8 +83,8 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 9\nlatency-b: 19\n")
-            best_round = self._write_round(workspace, 2, "latency-a: 6\nlatency-b: 12\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":19.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
+            best_round = self._write_round(workspace, 2, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":6.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":12.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
 
             target = prepare_verify_target(
                 workspace,
@@ -114,7 +114,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             existing = workspace / "opt-verify" / "verify-20260420-153012"
             existing.mkdir(parents=True)
             (existing / "opt_kernel.py").write_text("existing\n", encoding="utf-8")
@@ -136,7 +136,7 @@ class VerifyTests(unittest.TestCase):
             (round_dir / "kernel.py").write_text("print('legacy round')\n", encoding="utf-8")
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "perf.txt").write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
+            (round_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -156,7 +156,7 @@ class VerifyTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (workspace / "kernel_perf.txt").write_text(
-                "latency-a: 10\nlatency-b: 20\n",
+                '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
                 encoding="utf-8",
             )
 
@@ -176,7 +176,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
@@ -184,8 +184,8 @@ class VerifyTests(unittest.TestCase):
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "opt_kernel_perf.txt"
             result_path = target.verify_dir / "opt_kernel_result.pt"
-            baseline_perf_path.write_text("latency-a: 11\nlatency-b: 22\n", encoding="utf-8")
-            perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
+            baseline_perf_path.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":11.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":22.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            perf_path.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             with patch(
                 "helix.verify.core.run_local_test",
@@ -334,7 +334,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(workspace, timestamp_label="20260420-153012")
             result_payload = AgentResult(return_code=0, stdout="PASS\n", stderr="")
             with patch(
@@ -364,7 +364,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
@@ -390,7 +390,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
@@ -431,26 +431,16 @@ class VerifyTests(unittest.TestCase):
             round_dir = self._write_round(
                 workspace,
                 1,
-                "\n".join(
-                    [
-                        "latency-a: 8",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":8.0}]}',
-                        "latency-b: 18",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":18.0}]}',
-                    ]
-                )
-                + "\n",
+                (
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":[{"op_type":"OpA","avg_time_us":8.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                    '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":[{"op_type":"OpB","avg_time_us":18.0}],"total_op_avg_time_us":18.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                ),
             )
             (workspace / "baseline" / "perf.txt").write_text(
-                "\n".join(
-                    [
-                        "latency-a: 10",
-                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":10.0}]}',
-                        "latency-b: 20",
-                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":20.0}]}',
-                    ]
-                )
-                + "\n",
+                (
+                    '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":10.0,"ops":[{"op_type":"OpA","avg_time_us":10.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                    '{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":20.0,"ops":[{"op_type":"OpB","avg_time_us":20.0}],"total_op_avg_time_us":20.0,"error_message":null,"case_wall_clock_seconds":null}\n'
+                ),
                 encoding="utf-8",
             )
             payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
@@ -493,7 +483,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
@@ -508,8 +498,8 @@ class VerifyTests(unittest.TestCase):
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "opt_kernel_perf.txt"
-            baseline_perf_path.write_text("latency-a: 9\nlatency-b: 18\n", encoding="utf-8")
-            perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
+            baseline_perf_path.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":9.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
+            perf_path.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
             with patch(
                 "helix.verify.core.run_local_bench",
@@ -538,7 +528,7 @@ class VerifyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
-            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            self._write_round(workspace, 1, '{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n{"case_label":"b","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":18.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n')
             target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
