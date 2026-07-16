@@ -9,8 +9,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from helix.skills.loader import load_operator_eval_script_module
 
 
-def load_test_runner_module():
-    return load_operator_eval_script_module("test_runner")
+def load_local_test_api_module():
+    return load_operator_eval_script_module("run_local_api")
+
+
+def load_remote_api_module():
+    return load_operator_eval_script_module("run_remote_api")
+
+
+def load_local_test_worker_module():
+    return load_operator_eval_script_module("run_test_local_worker")
+
+
+def load_test_contract_module():
+    return load_operator_eval_script_module("test_contract")
 
 
 def load_bench_runner_module():

@@ -345,4 +345,4 @@ def _baseline_issue(workdir: Path) -> str | None:
 
 @lru_cache(maxsize=1)
 def _test_runner_module():
-    return load_skill_script_module("ascend-npu-run-eval", "test_runner")
+    return load_skill_script_module("ascend-npu-run-eval", "run_test_api")

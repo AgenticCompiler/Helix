@@ -2,26 +2,21 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-from datetime import datetime, timezone
 import importlib
 import importlib.util
-import json
-import os
 import sys
 from pathlib import Path
-from typing import Iterator, Literal, Protocol, TextIO, cast
+from typing import Any, Iterator, Protocol, TextIO, cast
 
-from env_registry import HELIX_OPTIMIZE_DELETE_PT_FILES, TRITON_ALL_BLOCKS_PARALLEL
+from execution_lifecycle import (
+    active_optimize_round_context as _active_optimize_round_context,
+    append_optimize_timing_event as _append_optimize_timing_event,
+    guard_operator_execution_env as _guard_operator_execution_env,
+)
 from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
-_BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
-_BLOCKS_PARALLEL_SAFE_VALUE = "0"
-_PT_CLEANUP_MODES = frozenset({"never", "round", "run-test"})
-_LEGACY_ROUND_CLEANUP_VALUES = frozenset({"1", "true", "yes", "on"})
-_LEGACY_NEVER_CLEANUP_VALUES = frozenset({"0", "false", "no", "off"})
-PtCleanupMode = Literal["never", "round", "run-test"]
 
 
 def _profile_bench_hint(profile_dir: Path) -> str:
@@ -30,179 +25,6 @@ def _profile_bench_hint(profile_dir: Path) -> str:
         f"`--profile-dir {profile_dir}` if you need the summary again; "
         "if that is not enough, inspect the raw files in this profile directory directly."
     )
-
-
-def _pt_cleanup_mode() -> PtCleanupMode:
-    raw_value = os.environ.get(HELIX_OPTIMIZE_DELETE_PT_FILES)
-    if raw_value is None:
-        return "round"
-    value = raw_value.strip().lower()
-    if value in _PT_CLEANUP_MODES:
-        return cast(PtCleanupMode, value)
-    if value in _LEGACY_ROUND_CLEANUP_VALUES:
-        return "round"
-    if value in _LEGACY_NEVER_CLEANUP_VALUES:
-        return "never"
-    return "round"
-
-
-def _is_ordinary_pt_result_file(path: Path) -> bool:
-    name_lower = path.name.lower()
-    return name_lower == "test_result.pt" or name_lower.endswith("_result.pt")
-
-
-def _cleanup_pt_file(pt_file: Path) -> str | None:
-    if not pt_file.is_file() or not _is_ordinary_pt_result_file(pt_file):
-        return None
-    try:
-        pt_file.unlink()
-        return pt_file.name
-    except OSError:
-        return None
-
-
-def _cleanup_run_test_pt_files(paths: tuple[Path | None, ...]) -> list[str]:
-    if _pt_cleanup_mode() != "run-test":
-        return []
-    cleaned: list[str] = []
-    seen: set[Path] = set()
-    for path in paths:
-        if path is None:
-            continue
-        resolved_path = path.resolve()
-        if resolved_path in seen:
-            continue
-        seen.add(resolved_path)
-        cleaned_name = _cleanup_pt_file(resolved_path)
-        if cleaned_name is not None:
-            cleaned.append(str(resolved_path))
-    return cleaned
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _find_optimize_state_path(*paths: Path) -> Path | None:
-    search_roots = [Path.cwd().resolve()]
-    search_roots.extend(path.resolve().parent for path in paths)
-    seen: set[Path] = set()
-    for root in search_roots:
-        current = root
-        while True:
-            if current in seen:
-                break
-            seen.add(current)
-            state_path = current / ".helix" / "state.json"
-            if state_path.is_file():
-                return state_path
-            if current.parent == current:
-                break
-            current = current.parent
-    return None
-
-
-def _active_optimize_round_context(*paths: Path) -> dict[str, str] | None:
-    state_path = _find_optimize_state_path(*paths)
-    if state_path is None:
-        return None
-    try:
-        raw_payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(raw_payload, dict):
-        return None
-    payload = cast(dict[str, object], raw_payload)
-    if payload.get("phase") != "round_active":
-        return None
-    run_id = payload.get("run_id")
-    current_round = payload.get("current_round")
-    rounds = payload.get("rounds")
-    if not isinstance(run_id, str) or not run_id:
-        return None
-    if not isinstance(current_round, int) or not isinstance(rounds, dict):
-        return None
-    rounds_dict = cast(dict[str, object], rounds)
-    round_entry = rounds_dict.get(str(current_round))
-    if not isinstance(round_entry, dict):
-        return None
-    round_entry_dict = cast(dict[str, object], round_entry)
-    round_dir = round_entry_dict.get("round_dir")
-    status = round_entry_dict.get("status")
-    if status != "active" or not isinstance(round_dir, str) or not round_dir:
-        return None
-    return {
-        "run_id": run_id,
-        "round": round_dir,
-        "workspace_root": str(state_path.parent.parent),
-    }
-
-
-def _timing_display_path(path: Path, workspace_root: Path) -> str:
-    resolved = path.resolve()
-    try:
-        return resolved.relative_to(workspace_root).as_posix()
-    except ValueError:
-        return str(resolved)
-
-
-def _append_optimize_timing_event(
-    context: dict[str, str] | None,
-    *,
-    event: str,
-    command: str,
-    return_code: int | None = None,
-    test_file: Path | None = None,
-    bench_file: Path | None = None,
-    operator_file: Path | None = None,
-) -> None:
-    if context is None:
-        return
-    try:
-        workspace_root = Path(context["workspace_root"])
-        log_path = workspace_root / ".helix" / "round-timings" / f"{context['round']}.jsonl"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        payload: dict[str, object] = {
-            "event": event,
-            "timestamp": _utc_now(),
-            "run_id": context["run_id"],
-            "round": context["round"],
-            "command": command,
-        }
-        if return_code is not None:
-            payload["return_code"] = return_code
-        if test_file is not None:
-            payload["test_file"] = _timing_display_path(test_file, workspace_root)
-        if bench_file is not None:
-            payload["bench_file"] = _timing_display_path(bench_file, workspace_root)
-        if operator_file is not None:
-            payload["operator_file"] = _timing_display_path(operator_file, workspace_root)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
-    except OSError:
-        return
-
-
-@contextlib.contextmanager
-def _guard_operator_execution_env(command: str) -> Iterator[None]:
-    if command not in {
-        "run-test-baseline",
-        "run-test-convert",
-        "run-test-optimize",
-        "run-bench",
-        "profile-bench",
-    }:
-        yield
-        return
-    previous = os.environ.get(TRITON_ALL_BLOCKS_PARALLEL)
-    if previous != _BLOCKS_PARALLEL_UNSAFE_VALUE:
-        yield
-        return
-    os.environ[TRITON_ALL_BLOCKS_PARALLEL] = _BLOCKS_PARALLEL_SAFE_VALUE
-    try:
-        yield
-    finally:
-        os.environ[TRITON_ALL_BLOCKS_PARALLEL] = previous
 
 
 class ParseMetadataFn(Protocol):
@@ -215,77 +37,6 @@ class ResolveRemoteExecutionFn(Protocol):
         explicit_remote: str | None,
         explicit_remote_workdir: str | None,
     ) -> tuple[str | None, str | None]: ...
-
-
-class RunLocalTestFn(Protocol):
-    def __call__(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        test_mode: str,
-        *,
-        case_id: str | None = None,
-        verbose: bool = False,
-    ) -> tuple[ResultPayload, Path | None]: ...
-
-
-class RunRemoteTestFn(Protocol):
-    def __call__(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        test_mode: str,
-        remote: str,
-        remote_workdir: str | None,
-        *,
-        case_id: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[ResultPayload, Path | None, str]: ...
-
-
-class RunRemoteDifferentialComparisonFn(Protocol):
-    def __call__(
-        self,
-        test_file: Path,
-        ref_operator_file: Path,
-        operator_file: Path,
-        remote: str,
-        remote_workdir: str | None,
-        *,
-        case_id: str | None = None,
-        accuracy_mode: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[ResultPayload, str]: ...
-
-
-class RunLocalTestPayloadFn(Protocol):
-    def __call__(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        *,
-        case_id: str,
-        verbose: bool = False,
-    ) -> tuple[ResultPayload, object | None]: ...
-
-
-class RunRemoteTestPayloadFn(Protocol):
-    def __call__(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        remote: str,
-        remote_workdir: str | None,
-        *,
-        case_id: str,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[ResultPayload, object | None, str]: ...
 
 
 class RunLocalBenchFn(Protocol):
@@ -313,34 +64,6 @@ class RunRemoteBenchFn(Protocol):
         stderr: TextIO | None = None,
         output: str | None = None,
     ) -> tuple[ResultPayload, Path | None, str]: ...
-
-
-class CompareResultFn(Protocol):
-    def __call__(self, ref_result: Path, new_result: Path) -> int: ...
-
-
-class CompareRemoteResultFn(Protocol):
-    def __call__(
-        self,
-        ref_result: Path,
-        new_result: Path,
-        remote: str,
-        remote_workdir: str | None,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> int: ...
-
-
-class LoadCaseResultPayloadFn(Protocol):
-    def __call__(self, ref_result: Path, case_id: str) -> object: ...
-
-
-class FindCaseResultPayloadFn(Protocol):
-    def __call__(self, ref_result: Path, case_id: str) -> object | None: ...
-
-
-class CompareResultPayloadFn(Protocol):
-    def __call__(self, ref_payload: object, new_payload: object) -> int: ...
 
 
 class ComparePerfFn(Protocol):
@@ -493,228 +216,31 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         )
 
     if args.command in {"run-test-baseline", "run-test-convert", "run-test-optimize"}:
-        _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
-        test_file = _resolve_existing_path(parser, args.test_file, "Test file")
-        operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-        timing_context = (
-            _active_optimize_round_context(test_file, operator_file)
-            if args.command == "run-test-optimize"
-            else None
-        )
-        ref_result = _resolve_optional_existing_path(
-            parser, getattr(args, "ref_result", None), "Reference result"
-        )
-        ref_operator_file = _resolve_optional_existing_path(
-            parser, getattr(args, "ref_operator_file", None), "Reference operator file"
-        )
-        resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
-        case_id = cast(str | None, getattr(args, "case_id", None))
-        require_reference_input = args.command in {"run-test-convert", "run-test-optimize"}
-        if remote is not None and resolved_test_mode == "differential":
-            _validate_remote_differential_inputs(parser, ref_result, ref_operator_file)
-            assert ref_operator_file is not None
-            run_remote_differential_comparison = _load_remote_differential_comparison_function()
-            try:
-                result, remote_workspace = run_remote_differential_comparison(
-                    test_file,
-                    ref_operator_file,
-                    operator_file,
-                    remote,
-                    remote_workdir,
-                    case_id=case_id,
-                    accuracy_mode=getattr(args, "accuracy_mode", None),
-                    keep_remote_workdir=bool(args.keep_remote_workdir),
-                    verbose=bool(args.verbose),
-                    stderr=sys.stderr,
-                )
-            except (FileNotFoundError, RuntimeError, ValueError) as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-            _render_result(result, skip_stdout=True)
-            print(f"Return code: {result['return_code']}")
-            if args.keep_remote_workdir:
-                print(f"Remote workspace: {remote_workspace}")
-            return int(result["return_code"])
-        if case_id is not None:
-            _validate_run_test_comparison_inputs(
-                parser,
-                args.command,
-                resolved_test_mode,
-                ref_result,
-                ref_operator_file,
-                case_id=case_id,
-                require_reference_input=require_reference_input,
-            )
-            run_local_test_case_payload, run_remote_test_case_payload = _load_test_payload_functions()
-            (
-                load_case_result_payload,
-                find_case_result_payload,
-                compare_result_payload_objects,
-            ) = _load_compare_result_payload_functions()
-            try:
-                ref_payload = _resolve_run_test_case_reference_payload(
-                    test_file,
-                    ref_result,
-                    ref_operator_file,
-                    run_local_test_case_payload,
-                    run_remote_test_case_payload,
-                    load_case_result_payload,
-                    find_case_result_payload,
-                    remote,
-                    remote_workdir,
-                    case_id=case_id,
-                    keep_remote_workdir=bool(args.keep_remote_workdir),
-                    verbose=bool(args.verbose),
-                    stderr=sys.stderr,
-                )
-            except (FileNotFoundError, RuntimeError, ValueError) as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-            remote_workspace: str | None = None
-            _append_optimize_timing_event(
-                timing_context,
-                event="run_test_start",
-                command=args.command,
-                test_file=test_file,
-                operator_file=operator_file,
-            )
-            try:
-                result, candidate_payload, remote_workspace = _run_test_case_payload_once(
-                    run_local_test_case_payload,
-                    run_remote_test_case_payload,
-                    test_file,
-                    operator_file,
-                    remote,
-                    remote_workdir,
-                    case_id=case_id,
-                    keep_remote_workdir=bool(args.keep_remote_workdir),
-                    verbose=bool(args.verbose),
-                    stderr=sys.stderr,
-                )
-            except (FileNotFoundError, RuntimeError, ValueError) as exc:
-                _append_optimize_timing_event(
-                    timing_context,
-                    event="run_test_end",
-                    command=args.command,
-                    return_code=1,
-                    test_file=test_file,
-                    operator_file=operator_file,
-                )
-                print(str(exc), file=sys.stderr)
-                return 1
-            _render_ref_run_result(
-                result,
-                archived_result=None,
-                remote_workspace=remote_workspace if args.keep_remote_workdir else None,
-                skip_stdout=remote is not None,
-            )
-            final_code = int(result["return_code"])
-            if final_code == 0 and ref_payload is not None:
-                if candidate_payload is None:
-                    print(
-                        "Differential run-test single-case execution did not produce a result payload required for automatic comparison.",
-                        file=sys.stderr,
-                    )
-                    final_code = 1
-                else:
-                    final_code = compare_result_payload_objects(ref_payload, candidate_payload)
-            _append_optimize_timing_event(
-                timing_context,
-                event="run_test_end",
-                command=args.command,
-                return_code=final_code,
-                test_file=test_file,
-                operator_file=operator_file,
-            )
-            return final_code
-        ref_result = _resolve_run_test_comparison_inputs(
+        from run_test_command import RunTestDependencies, handle_run_test_command
+
+        parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
+        run_local_payload, run_remote_payload = _load_test_payload_functions()
+        load_case_payload, find_case_payload, compare_payloads = _load_compare_result_payload_functions()
+        compare_result, compare_remote_result = _load_compare_result_functions()
+        return handle_run_test_command(
             parser,
             args,
-            resolved_test_mode,
-            ref_result,
-            ref_operator_file,
-            test_file,
-            run_local_test,
-            run_remote_test,
             remote,
             remote_workdir,
-            case_id=case_id,
-            command_name=args.command,
-            require_reference_input=require_reference_input,
+            RunTestDependencies(
+                parse_test_metadata=parse_test_metadata,
+                run_local_test=run_local_test,
+                run_remote_test=run_remote_test,
+                run_remote_differential_comparison=_load_remote_differential_comparison_function(),
+                run_local_test_case_payload=run_local_payload,
+                run_remote_test_case_payload=run_remote_payload,
+                load_case_result_payload=load_case_payload,
+                find_case_result_payload=find_case_payload,
+                compare_result_payload_objects=compare_payloads,
+                compare_result_files=compare_result,
+                compare_remote_result_files=compare_remote_result,
+            ),
         )
-        remote_workspace: str | None = None
-        _append_optimize_timing_event(
-            timing_context,
-            event="run_test_start",
-            command=args.command,
-            test_file=test_file,
-            operator_file=operator_file,
-        )
-        try:
-            if remote is not None:
-                result, archived_result, remote_workspace = run_remote_test(
-                    test_file,
-                    operator_file,
-                    resolved_test_mode,
-                    remote,
-                    remote_workdir,
-                    case_id=case_id,
-                    keep_remote_workdir=args.keep_remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            else:
-                result, archived_result = run_local_test(
-                    test_file,
-                    operator_file,
-                    resolved_test_mode,
-                    case_id=case_id,
-                    verbose=args.verbose,
-                )
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            _append_optimize_timing_event(
-                timing_context,
-                event="run_test_end",
-                command=args.command,
-                return_code=1,
-                test_file=test_file,
-                operator_file=operator_file,
-            )
-            print(str(exc), file=sys.stderr)
-            return 1
-        _render_result(result, skip_stdout=remote is not None)
-        print(f"Return code: {result['return_code']}")
-        final_code = int(result["return_code"])
-        if archived_result is not None:
-            print(f"Archived result: {archived_result}")
-            if ref_result is not None:
-                final_code = _compare_run_test_result(
-                    ref_result,
-                    archived_result,
-                    remote,
-                    remote_workdir,
-                    verbose=bool(args.verbose),
-                    stderr=sys.stderr,
-                )
-            if args.command == "run-test-optimize":
-                _cleanup_run_test_pt_files((archived_result,))
-        elif ref_result is not None:
-            print(
-                "Differential run-test did not produce an archived result required for automatic comparison.",
-                file=sys.stderr,
-            )
-            final_code = 1
-        if remote is not None and args.keep_remote_workdir:
-            print(f"Remote workspace: {remote_workspace}")
-        _append_optimize_timing_event(
-            timing_context,
-            event="run_test_end",
-            command=args.command,
-            return_code=final_code,
-            test_file=test_file,
-            operator_file=operator_file,
-        )
-        return final_code
 
     if args.command == "profile-bench":
         run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
@@ -906,280 +432,8 @@ def _resolve_optional_existing_path(
     return _resolve_existing_path(parser, raw_path, label)
 
 
-def _derived_result_path(operator_file: Path) -> Path:
-    return operator_file.parent / f"{operator_file.stem}_result.pt"
-
-
 def _derived_perf_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_perf.txt"
-
-
-def _resolve_test_mode_from_metadata(test_file: Path) -> str:
-    parse_test_metadata = _load_test_functions()[0]
-    metadata = parse_test_metadata(test_file)
-    mode = metadata.get("test-mode")
-    if mode not in {"standalone", "differential"}:
-        raise ValueError(f"Test metadata is missing required 'test-mode' entry: {test_file}")
-    return mode
-
-
-def _resolve_run_test_comparison_inputs(
-    parser: argparse.ArgumentParser,
-    args: argparse.Namespace,
-    resolved_test_mode: str,
-    ref_result: Path | None,
-    ref_operator_file: Path | None,
-    test_file: Path,
-    run_local_test: RunLocalTestFn,
-    run_remote_test: RunRemoteTestFn,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    case_id: str | None,
-    command_name: str,
-    require_reference_input: bool,
-) -> Path | None:
-    _validate_run_test_comparison_inputs(
-        parser,
-        command_name,
-        resolved_test_mode,
-        ref_result,
-        ref_operator_file,
-        case_id=case_id,
-        require_reference_input=require_reference_input,
-    )
-    if ref_operator_file is None:
-        return ref_result
-
-    return _resolve_ref_operator_result(
-        test_file,
-        ref_operator_file,
-        resolved_test_mode,
-        run_local_test,
-        run_remote_test,
-        remote,
-        remote_workdir,
-        case_id=case_id,
-        keep_remote_workdir=bool(args.keep_remote_workdir),
-        verbose=bool(args.verbose),
-    )
-
-
-def _validate_run_test_comparison_inputs(
-    parser: argparse.ArgumentParser,
-    command_name: str,
-    resolved_test_mode: str,
-    ref_result: Path | None,
-    ref_operator_file: Path | None,
-    *,
-    case_id: str | None,
-    require_reference_input: bool,
-) -> None:
-    if case_id is not None and resolved_test_mode != "differential":
-        parser.error(f"{command_name} standalone mode does not accept --case-id")
-    if ref_result is not None and resolved_test_mode != "differential":
-        parser.error(f"{command_name} standalone mode does not accept --ref-result")
-    if ref_operator_file is not None and resolved_test_mode != "differential":
-        parser.error(f"{command_name} standalone mode does not accept --ref-operator-file")
-    if ref_result is not None and ref_operator_file is not None:
-        if require_reference_input:
-            parser.error(
-                f"{command_name} differential mode requires exactly one of "
-                "--ref-result or --ref-operator-file"
-            )
-        else:
-            parser.error(
-                f"{command_name} differential mode accepts at most one of "
-                "--ref-result or --ref-operator-file"
-            )
-    if require_reference_input and resolved_test_mode == "differential" and ref_result is None and ref_operator_file is None:
-        parser.error(
-            f"{command_name} differential mode requires exactly one of "
-            "--ref-result or --ref-operator-file"
-        )
-
-
-def _validate_remote_differential_inputs(
-    parser: argparse.ArgumentParser,
-    ref_result: Path | None,
-    ref_operator_file: Path | None,
-) -> None:
-    if ref_result is not None:
-        parser.error("Remote differential run-test does not accept --ref-result; use --ref-operator-file.")
-    if ref_operator_file is None:
-        parser.error("Remote differential run-test requires --ref-operator-file.")
-
-
-def _resolve_ref_operator_result(
-    test_file: Path,
-    ref_operator_file: Path,
-    resolved_test_mode: str,
-    run_local_test: RunLocalTestFn,
-    run_remote_test: RunRemoteTestFn,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    case_id: str | None,
-    keep_remote_workdir: bool,
-    verbose: bool,
-) -> Path:
-    derived_ref_result = _derived_result_path(ref_operator_file)
-    if derived_ref_result.exists():
-        return derived_ref_result
-
-    ref_mode = resolved_test_mode
-    if remote is not None:
-        try:
-            ref_run_result, archived_result, remote_workspace = run_remote_test(
-                test_file,
-                ref_operator_file,
-                ref_mode,
-                remote,
-                remote_workdir,
-                case_id=case_id,
-                keep_remote_workdir=keep_remote_workdir,
-                verbose=verbose,
-                stderr=sys.stderr,
-            )
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            raise SystemExit(1) from exc
-        _render_ref_run_result(
-            ref_run_result,
-            archived_result,
-            remote_workspace=remote_workspace if keep_remote_workdir else None,
-            skip_stdout=True,
-        )
-        _raise_if_ref_run_failed(ref_run_result, archived_result)
-        return derived_ref_result
-
-    try:
-        ref_run_result, archived_result = run_local_test(
-            test_file,
-            ref_operator_file,
-            ref_mode,
-            case_id=case_id,
-            verbose=verbose,
-        )
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-    _render_ref_run_result(ref_run_result, archived_result, remote_workspace=None, skip_stdout=False)
-    _raise_if_ref_run_failed(ref_run_result, archived_result)
-    return derived_ref_result
-
-
-def _resolve_run_test_case_reference_payload(
-    test_file: Path,
-    ref_result: Path | None,
-    ref_operator_file: Path | None,
-    run_local_test_case_payload: RunLocalTestPayloadFn,
-    run_remote_test_case_payload: RunRemoteTestPayloadFn,
-    load_case_result_payload: LoadCaseResultPayloadFn,
-    find_case_result_payload: FindCaseResultPayloadFn,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    case_id: str,
-    keep_remote_workdir: bool,
-    verbose: bool,
-    stderr: TextIO | None,
-) -> object | None:
-    if ref_result is not None:
-        return load_case_result_payload(ref_result, case_id)
-    if ref_operator_file is None:
-        return None
-
-    derived_ref_result = _derived_result_path(ref_operator_file)
-    if derived_ref_result.exists():
-        ref_payload = find_case_result_payload(derived_ref_result, case_id)
-        if ref_payload is not None:
-            return ref_payload
-
-    try:
-        ref_run_result, ref_payload, remote_workspace = _run_test_case_payload_once(
-            run_local_test_case_payload,
-            run_remote_test_case_payload,
-            test_file,
-            ref_operator_file,
-            remote,
-            remote_workdir,
-            case_id=case_id,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
-            stderr=stderr,
-        )
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        print(str(exc), file=stderr or sys.stderr)
-        raise SystemExit(1) from exc
-    _render_ref_run_result(
-        ref_run_result,
-        archived_result=None,
-        remote_workspace=remote_workspace if keep_remote_workdir else None,
-        skip_stdout=remote is not None,
-    )
-    if int(ref_run_result["return_code"]) != 0 or ref_payload is None:
-        raise SystemExit(int(ref_run_result["return_code"]) or 1)
-    return ref_payload
-
-
-def _run_test_case_payload_once(
-    run_local_test_case_payload: RunLocalTestPayloadFn,
-    run_remote_test_case_payload: RunRemoteTestPayloadFn,
-    test_file: Path,
-    operator_file: Path,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    case_id: str,
-    keep_remote_workdir: bool,
-    verbose: bool,
-    stderr: TextIO | None,
-) -> tuple[ResultPayload, object | None, str | None]:
-    if remote is not None:
-        result, payload, remote_workspace = run_remote_test_case_payload(
-            test_file,
-            operator_file,
-            remote,
-            remote_workdir,
-            case_id=case_id,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
-            stderr=stderr,
-        )
-        return result, payload, remote_workspace
-    result, payload = run_local_test_case_payload(
-        test_file,
-        operator_file,
-        case_id=case_id,
-        verbose=verbose,
-    )
-    return result, payload, None
-
-
-def _render_ref_run_result(
-    ref_run_result: ResultPayload,
-    archived_result: Path | None,
-    *,
-    remote_workspace: str | None,
-    skip_stdout: bool = False,
-) -> None:
-    _render_result(ref_run_result, skip_stdout=skip_stdout)
-    print(f"Return code: {ref_run_result['return_code']}")
-    if archived_result is not None:
-        print(f"Archived result: {archived_result}")
-    if remote_workspace is not None:
-        print(f"Remote workspace: {remote_workspace}")
-
-
-def _raise_if_ref_run_failed(
-    ref_run_result: ResultPayload,
-    archived_result: Path | None,
-) -> None:
-    if int(ref_run_result["return_code"]) != 0 or archived_result is None:
-        raise SystemExit(1)
-
-
 def _render_result(result: ResultPayload, skip_stdout: bool) -> None:
     stdout = result["stdout"]
     stderr = result["stderr"]
@@ -1187,32 +441,6 @@ def _render_result(result: ResultPayload, skip_stdout: bool) -> None:
         print(stdout, end="" if stdout.endswith("\n") else "\n")
     if stderr:
         print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
-
-
-def _compare_run_test_result(
-    ref_result: Path,
-    archived_result: Path,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    verbose: bool,
-    stderr: TextIO | None,
-) -> int:
-    compare_result_files, compare_remote_result_files = _load_compare_result_functions()
-    if remote is None:
-        return compare_result_files(ref_result, archived_result)
-    try:
-        return compare_remote_result_files(
-            ref_result,
-            archived_result,
-            remote,
-            remote_workdir,
-            verbose=verbose,
-            stderr=stderr,
-        )
-    except (RuntimeError, ValueError) as exc:
-        print(str(exc), file=stderr or sys.stderr)
-        return 1
 
 
 def _resolve_remote_execution(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -1223,33 +451,47 @@ def _resolve_remote_execution(args: argparse.Namespace) -> tuple[str | None, str
     )
 
 
-def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTestFn]:
+def _load_test_functions() -> tuple[Any, Any, Any]:
     with _script_dir_on_path():
-        module = importlib.import_module("test_runner")
-
+        module = importlib.import_module("run_test_api")
     return (
-        cast(ParseMetadataFn, getattr(module, "parse_test_metadata")),
-        cast(RunLocalTestFn, getattr(module, "run_local_test")),
-        cast(RunRemoteTestFn, getattr(module, "run_remote_test")),
+        getattr(module, "parse_test_metadata"),
+        getattr(module, "run_local_test"),
+        getattr(module, "run_remote_test"),
     )
 
 
-def _load_remote_differential_comparison_function() -> RunRemoteDifferentialComparisonFn:
+def _load_remote_differential_comparison_function() -> Any:
     with _script_dir_on_path():
-        module = importlib.import_module("test_runner")
-    return cast(
-        RunRemoteDifferentialComparisonFn,
-        getattr(module, "run_remote_differential_comparison"),
+        module = importlib.import_module("run_test_api")
+    return getattr(module, "run_remote_differential_comparison")
+
+
+def _load_test_payload_functions() -> tuple[Any, Any]:
+    with _script_dir_on_path():
+        module = importlib.import_module("run_test_api")
+    return (
+        getattr(module, "run_local_test_case_payload"),
+        getattr(module, "run_remote_test_case_payload"),
     )
 
 
-def _load_test_payload_functions() -> tuple[RunLocalTestPayloadFn, RunRemoteTestPayloadFn]:
+def _load_compare_result_functions() -> tuple[Any, Any]:
     with _script_dir_on_path():
-        module = importlib.import_module("test_runner")
-
+        module = importlib.import_module("compare_result")
     return (
-        cast(RunLocalTestPayloadFn, getattr(module, "run_local_test_case_payload")),
-        cast(RunRemoteTestPayloadFn, getattr(module, "run_remote_test_case_payload")),
+        getattr(module, "compare_result_files"),
+        getattr(module, "compare_remote_result_files"),
+    )
+
+
+def _load_compare_result_payload_functions() -> tuple[Any, Any, Any]:
+    with _script_dir_on_path():
+        module = importlib.import_module("compare_result")
+    return (
+        getattr(module, "load_case_result_payload"),
+        getattr(module, "find_case_result_payload"),
+        getattr(module, "compare_result_payload_objects"),
     )
 
 
@@ -1262,28 +504,6 @@ def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemote
         cast(ParseMetadataFn, parse_bench_metadata),
         cast(RunLocalBenchFn, run_local_bench),
         cast(RunRemoteBenchFn, run_remote_bench),
-    )
-
-
-def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResultFn]:
-    with _script_dir_on_path():
-        module = importlib.import_module("compare_result")
-
-    return (
-        cast(CompareResultFn, getattr(module, "compare_result_files")),
-        cast(CompareRemoteResultFn, getattr(module, "compare_remote_result_files")),
-    )
-
-
-def _load_compare_result_payload_functions(
-) -> tuple[LoadCaseResultPayloadFn, FindCaseResultPayloadFn, CompareResultPayloadFn]:
-    with _script_dir_on_path():
-        module = importlib.import_module("compare_result")
-
-    return (
-        cast(LoadCaseResultPayloadFn, getattr(module, "load_case_result_payload")),
-        cast(FindCaseResultPayloadFn, getattr(module, "find_case_result_payload")),
-        cast(CompareResultPayloadFn, getattr(module, "compare_result_payload_objects")),
     )
 
 

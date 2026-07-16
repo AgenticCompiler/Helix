@@ -1,4 +1,5 @@
 import json
+import os
 import pickle
 import subprocess
 import sys
@@ -11,7 +12,15 @@ from types import ModuleType, SimpleNamespace
 from typing import Optional
 from unittest.mock import patch
 
-from tests.run_skill_test_utils import load_compare_result_module, load_test_runner_module
+from helix.skills.loader import load_operator_eval_script_module
+
+from tests.run_skill_test_utils import (
+    load_compare_result_module,
+    load_local_test_api_module,
+    load_local_test_worker_module,
+    load_remote_api_module,
+    load_test_contract_module,
+)
 
 _WARNING_LINE = "[WARNING] Please DO NOT tune args ['num_warps']!\n"
 _ANOTHER_WARNING_LINE = "[WARNING] autotune fallback was used\n"
@@ -49,8 +58,18 @@ def _without_preloaded_modules(*names: str):
 
 
 class LocalTestRunnerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._remote_runner = load_remote_api_module()
+        self._batch_copy_patcher = patch.object(self._remote_runner, "copy_files_to_remote")
+        self._batch_copy = self._batch_copy_patcher.start()
+
+    def tearDown(self) -> None:
+        self._batch_copy_patcher.stop()
+        super().tearDown()
+
     def test_load_module_registers_temporary_module_in_sys_modules_during_exec(self) -> None:
-        module = load_test_runner_module()
+        module = load_test_contract_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             script = root / "temp_module.py"
@@ -60,13 +79,13 @@ class LocalTestRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            loaded = module._load_module(script, "temp_runtime")
+            loaded = module.load_module(script, "temp_runtime")
 
         self.assertTrue(loaded.SEEN_DURING_EXEC)
         self.assertNotIn(loaded.__name__, sys.modules)
 
     def test_load_differential_test_cases_bootstraps_torch_before_user_module_exec(self) -> None:
-        module = load_test_runner_module()
+        module = load_test_contract_module()
         import_events: list[str] = []
 
         def fake_import(name: str, package: Optional[str] = None):
@@ -106,7 +125,7 @@ class LocalTestRunnerTests(unittest.TestCase):
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
 
     def test_load_differential_test_cases_selects_requested_case_id(self) -> None:
-        module = load_test_runner_module()
+        module = load_test_contract_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -127,13 +146,13 @@ class LocalTestRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.object(module, "_bootstrap_torch_npu"):
+            with patch.object(module, "bootstrap_torch_npu"):
                 cases = module.load_differential_test_cases(test_file, operator, case_id="case-b")
 
         self.assertEqual([case.case_id for case in cases], ["case-b"])
 
     def test_load_differential_test_cases_rejects_unknown_case_id(self) -> None:
-        module = load_test_runner_module()
+        module = load_test_contract_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -154,7 +173,7 @@ class LocalTestRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.object(module, "_bootstrap_torch_npu"):
+            with patch.object(module, "bootstrap_torch_npu"):
                 with self.assertRaisesRegex(
                     ValueError,
                     "Unknown differential test case id 'case-z'. Available case ids: case-a, case-b",
@@ -162,7 +181,7 @@ class LocalTestRunnerTests(unittest.TestCase):
                     module.load_differential_test_cases(test_file, operator, case_id="case-z")
 
     def test_run_import_only_standalone_test_bootstraps_torch_before_user_module_exec(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_worker_module()
         import_events: list[str] = []
 
         def fake_import(name: str, package: Optional[str] = None):
@@ -201,7 +220,7 @@ def main(operator_api):
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
 
     def test_run_declarative_differential_test_bootstraps_before_importing_torch(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_worker_module()
         events: list[str] = []
 
         def fake_bootstrap(*_args: object) -> None:
@@ -254,7 +273,7 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(events[0:2], ["bootstrap", "import:torch"])
 
     def test_run_local_test_prints_visible_devices_when_debug_enabled(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -275,7 +294,7 @@ def main(operator_api):
             stdout = StringIO()
 
             with patch.dict(
-                module.os.environ,
+                os.environ,
                 {
                     "HELIX_DEBUG": "1",
                     "ASCEND_RT_VISIBLE_DEVICES": "3",
@@ -294,7 +313,7 @@ def main(operator_api):
         self.assertIn("[HELIX_DEBUG] ASCEND_RT_VISIBLE_DEVICES=3", stdout.getvalue())
 
     def test_run_local_test_launches_worker_subprocess_and_reads_result_file(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             test_file = root / "test_abs.py"
@@ -316,6 +335,7 @@ def main(operator_api):
                 self.assertEqual(workdir, str(root.resolve()))
                 self.assertEqual(stall_timeout_seconds, 0)
                 self.assertEqual(timeout_seconds, 300)
+                self.assertTrue(command[1].endswith("run_test_local_worker.py"))
                 self.assertIn("local-test-worker", command)
                 result_file = Path(command[command.index("--result-file") + 1])
                 result_file_holder["path"] = result_file
@@ -350,8 +370,49 @@ def main(operator_api):
         self.assertIn("path", result_file_holder)
         self.assertEqual(result_file_holder["path"].name, "local-test-result.json")
 
+    def test_local_worker_script_executes_standalone_test_and_writes_result_file(self) -> None:
+        worker = load_local_test_worker_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            test_file = root / "test_abs.py"
+            operator = root / "abs.py"
+            result_file = root / "result.json"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text(
+                "# test-mode: standalone\n"
+                "# compute-kind: compute\n"
+                "# api-name: abs_entry\n"
+                "# api-kind: torch-function\n\n"
+                "def main(operator_api):\n"
+                "    assert operator_api() == 1\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(worker.__file__ or "")),
+                    "local-test-worker",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--test-mode",
+                    "standalone",
+                    "--result-file",
+                    str(result_file),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            payload = json.loads(result_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["result"]["return_code"], 0)
+        self.assertIsNone(payload["archived_result"])
+
     def test_run_local_test_reads_archived_result_path_from_worker_payload(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             archived_path = root / "abs_result.pt"
@@ -402,7 +463,7 @@ def main(operator_api):
         self.assertEqual(archived, archived_path.resolve())
 
     def test_run_local_test_executes_declarative_differential_cases(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_worker_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -437,13 +498,15 @@ def build_differential_test_cases(operator_api):
                 Path(path).write_bytes(pickle.dumps(obj))
 
             with patch.dict(sys.modules, {"torch": SimpleNamespace(save=fake_save)}, clear=False):
-                result, archived = module.run_local_test(test_file, operator, "differential")
+                result = module._run_declarative_differential_test(
+                    test_file,
+                    operator,
+                    root / "abs_result.pt",
+                )
 
-            torch = module.importlib.import_module("torch")
-            payload = torch.load(root / "abs_result.pt")
+            payload = pickle.loads((root / "abs_result.pt").read_bytes())
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(archived, (root / "abs_result.pt").resolve())
         self.assertEqual(
             payload,
             {
@@ -457,7 +520,7 @@ def build_differential_test_cases(operator_api):
         self.assertFalse((root / "TEST_RESULT.pt").exists())
 
     def test_run_local_test_case_payload_returns_selected_case_without_archive(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -510,7 +573,7 @@ def build_differential_test_cases(operator_api):
         self.assertFalse((root / "abs_result.pt").exists())
 
     def test_serialize_payload_object_normalizes_tensor_payloads_to_cpu(self) -> None:
-        module = load_test_runner_module()
+        module = load_test_contract_module()
         tensor = _FakeTensor("B", "npu:0")
 
         def fake_import(name: str, package: Optional[str] = None):
@@ -520,14 +583,14 @@ def build_differential_test_cases(operator_api):
             raise AssertionError(f"unexpected import: {name}")
 
         with patch.object(module.importlib, "import_module", side_effect=fake_import):
-            serialized_payload = module._serialize_payload_object(
+            serialized_payload = load_test_contract_module().serialize_payload_object(
                 {
                     "compute": True,
                     "cases": [{"id": "case-b", "inputs": ("b",), "result": tensor}],
                 }
             )
 
-        payload = module._deserialize_payload_object(serialized_payload)
+        payload = module.deserialize_payload_object(serialized_payload)
         result_tensor = payload["cases"][0]["result"]
         self.assertIsInstance(result_tensor, _FakeTensor)
         self.assertEqual(result_tensor.value, "B")
@@ -535,7 +598,7 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(tensor.device, "npu:0")
 
     def test_run_local_test_imports_standalone_module_and_calls_main_with_operator_api(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -579,7 +642,7 @@ def main(operator_api):
         self.assertIsNone(archived)
 
     def test_run_local_test_passes_accuracy_mode_to_worker_env(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -625,7 +688,7 @@ def main(operator_api):
         )
 
     def test_run_local_test_reports_missing_differential_hooks_without_legacy_fallback(self) -> None:
-        module = load_test_runner_module()
+        module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -639,7 +702,7 @@ def main(operator_api):
         self.assertIsNone(archived)
 
     def test_run_local_test_filters_warning_prefix_lines_by_default(self) -> None:
-        module = load_test_runner_module()
+        module = load_operator_eval_script_module("run_test_result")
         fake_result = {
             "return_code": 0,
             "stdout": _WARNING_LINE + "useful stdout\n" + _ANOTHER_WARNING_LINE,
@@ -647,13 +710,13 @@ def main(operator_api):
             "stalled": False,
             "session_id": None,
         }
-        result = module._filter_result_payload(fake_result, verbose=False)
+        result = module.filter_result_payload(fake_result, verbose=False)
 
         self.assertEqual(result["stdout"], "useful stdout\n")
         self.assertEqual(result["stderr"], "useful stderr\n")
 
     def test_run_local_test_preserves_warning_prefix_lines_in_verbose_mode(self) -> None:
-        module = load_test_runner_module()
+        module = load_operator_eval_script_module("run_test_result")
         fake_result = {
             "return_code": 0,
             "stdout": _WARNING_LINE + "useful stdout\n",
@@ -661,12 +724,12 @@ def main(operator_api):
             "stalled": False,
             "session_id": None,
         }
-        result = module._filter_result_payload(fake_result, verbose=True)
+        result = module.filter_result_payload(fake_result, verbose=True)
 
         self.assertEqual(result, fake_result)
 
     def test_run_remote_test_executes_declarative_differential_cases(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -721,22 +784,23 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(result, fake_result)
         self.assertEqual(archived, root / "abs_result.pt")
         self.assertEqual(remote_workspace, "/tmp/remote")
-        self.assertEqual(recorded_command[0:2], ["python3", "-c"])
-        self.assertIn("build_differential_test_cases", recorded_command[2])
-        self.assertIn('"compute": compute', recorded_command[2])
-        self.assertIn('"inputs"', recorded_command[2])
-        self.assertIn('"cases"', recorded_command[2])
-        self.assertNotIn('"results"', recorded_command[2])
+        self.assertEqual(
+            recorded_command,
+            [
+                "python3", "run_test_remote_worker.py", "--test-file", test_file.name,
+                "--operator-file", operator.name, "--test-mode", "differential",
+            ],
+        )
 
     def test_run_remote_test_case_payload_parses_serialized_payload_without_archive(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
             test_file = root / "differential_test_abs.py"
             operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\n", encoding="utf-8")
-            serialized_payload = module._serialize_payload_object(
+            serialized_payload = load_test_contract_module().serialize_payload_object(
                 {
                     "compute": True,
                     "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
@@ -753,28 +817,10 @@ def build_differential_test_cases(operator_api):
                 "stalled": False,
                 "session_id": None,
             }
-            copied_targets: list[str] = []
-
             with patch.object(
                 module,
                 "create_remote_workspace",
                 return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
-            ), patch.object(
-                module,
-                "copy_file_to_remote",
-                side_effect=lambda _spec, _src, dst, **_kwargs: copied_targets.append(dst),
-            ), patch.object(
-                module,
-                "copy_npu_compare_runtime_to_remote",
-                side_effect=lambda _spec, _script_dir, remote_workspace, **_kwargs: copied_targets.extend(
-                    [
-                        f"{remote_workspace}/npu_compare.py",
-                        f"{remote_workspace}/dtype_close_compare.py",
-                        f"{remote_workspace}/npu_compare_common.py",
-                        f"{remote_workspace}/npu_contract_compare.py",
-                        f"{remote_workspace}/env_registry.py",
-                    ]
-                ),
             ), patch.object(
                 module,
                 "run_remote_command_streaming",
@@ -803,27 +849,30 @@ def build_differential_test_cases(operator_api):
         )
         self.assertEqual(remote_workspace, "/tmp/remote")
         self.assertEqual(
-            copied_targets,
+            [path.name for path in self._batch_copy.call_args.args[1]],
             [
-                "/tmp/remote/differential_test_abs.py",
-                "/tmp/remote/abs.py",
-                "/tmp/remote/npu_compare.py",
-                "/tmp/remote/dtype_close_compare.py",
-                "/tmp/remote/npu_compare_common.py",
-                "/tmp/remote/npu_contract_compare.py",
-                "/tmp/remote/env_registry.py",
+                "differential_test_abs.py",
+                "abs.py",
+                "npu_compare.py",
+                "dtype_close_compare.py",
+                "npu_compare_common.py",
+                "npu_contract_compare.py",
+                "env_registry.py",
+                "run_test_remote_worker.py",
+                "test_contract.py",
+                "torch_npu_warnings.py",
             ],
         )
 
     def test_run_remote_test_case_payload_parses_crlf_serialized_payload_without_archive(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
             test_file = root / "differential_test_abs.py"
             operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\n", encoding="utf-8")
-            serialized_payload = module._serialize_payload_object(
+            serialized_payload = load_test_contract_module().serialize_payload_object(
                 {
                     "compute": True,
                     "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
@@ -845,14 +894,7 @@ def build_differential_test_cases(operator_api):
                 module,
                 "create_remote_workspace",
                 return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "copy_npu_compare_runtime_to_remote",
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                return_value=fake_result,
-            ), patch.object(
+            ), patch.object(module, "run_remote_command_streaming", return_value=fake_result), patch.object(
                 module,
                 "_copy_remote_differential_archive",
                 side_effect=AssertionError("remote archive copy should not run in case payload mode"),
@@ -877,14 +919,14 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(remote_workspace, "/tmp/remote")
 
     def test_run_remote_test_case_payload_ignores_warning_lines_inside_payload_markers(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
             test_file = root / "differential_test_abs.py"
             operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\n", encoding="utf-8")
-            serialized_payload = module._serialize_payload_object(
+            serialized_payload = load_test_contract_module().serialize_payload_object(
                 {
                     "compute": True,
                     "cases": [{"id": "case-b", "inputs": ("b",), "result": "B"}],
@@ -907,14 +949,7 @@ def build_differential_test_cases(operator_api):
                 module,
                 "create_remote_workspace",
                 return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "copy_npu_compare_runtime_to_remote",
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                return_value=fake_result,
-            ), patch.object(
+            ), patch.object(module, "run_remote_command_streaming", return_value=fake_result), patch.object(
                 module,
                 "_copy_remote_differential_archive",
                 side_effect=AssertionError("remote archive copy should not run in case payload mode"),
@@ -939,7 +974,7 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(remote_workspace, "/tmp/remote")
 
     def test_run_remote_test_uses_shared_eval_timeout(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -965,8 +1000,9 @@ def main(operator_api):
                 "session_id": None,
             }
 
+            contract = load_test_contract_module()
             with patch.dict(
-                module.os.environ,
+                contract.os.environ,
                 {
                     "HELIX_EVAL_TIMEOUT_SECONDS": "300",
                     "HELIX_TEST_TIMEOUT_SECONDS": "900",
@@ -996,7 +1032,7 @@ def main(operator_api):
         self.assertEqual(remote_run.call_args.kwargs["stall_timeout_seconds"], 300)
 
     def test_run_remote_test_forwards_accuracy_env_to_remote_command(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -1011,8 +1047,9 @@ def main(operator_api):
                 "session_id": None,
             }
 
+            contract = load_test_contract_module()
             with patch.dict(
-                module.os.environ,
+                contract.os.environ,
                 {
                     "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
                     "HELIX_RUN_TEST_ATOL": "0",
@@ -1050,7 +1087,7 @@ def main(operator_api):
         )
 
     def test_remote_differential_generated_script_executes_successfully(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -1088,9 +1125,15 @@ def build_differential_test_cases(operator_api):
                 encoding="utf-8",
             )
 
-            command = module._build_remote_differential_command(test_file.name, operator.name)
+            command = [
+                sys.executable,
+                str(Path(module.__file__ or "").with_name("run_test_remote_worker.py")),
+                "--test-file", test_file.name,
+                "--operator-file", operator.name,
+                "--test-mode", "differential",
+            ]
             completed = subprocess.run(
-                [sys.executable, *command[1:]],
+                command,
                 cwd=root,
                 text=True,
                 capture_output=True,
@@ -1110,7 +1153,7 @@ def build_differential_test_cases(operator_api):
         )
 
     def test_remote_differential_generated_script_accepts_mapping_cases(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -1150,9 +1193,15 @@ def build_differential_test_cases(operator_api):
                 encoding="utf-8",
             )
 
-            command = module._build_remote_differential_command(test_file.name, operator.name)
+            command = [
+                sys.executable,
+                str(Path(module.__file__ or "").with_name("run_test_remote_worker.py")),
+                "--test-file", test_file.name,
+                "--operator-file", operator.name,
+                "--test-mode", "differential",
+            ]
             completed = subprocess.run(
-                [sys.executable, *command[1:]],
+                command,
                 cwd=root,
                 text=True,
                 capture_output=True,
@@ -1171,7 +1220,7 @@ def build_differential_test_cases(operator_api):
         )
 
     def test_run_remote_test_executes_import_only_standalone_main(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -1207,58 +1256,43 @@ def main(operator_api):
                 "stalled": False,
                 "session_id": None,
             }
-            copied_targets: list[str] = []
             recorded_command: list[str] = []
 
             with patch.object(module, "create_remote_workspace", return_value=({"user_host": "user@host", "port": None}, "/tmp/remote")):
-                with patch.object(module, "copy_file_to_remote", side_effect=lambda _spec, _src, dst, **_kwargs: copied_targets.append(dst)):
-                    with patch.object(
-                        module,
-                        "copy_npu_compare_runtime_to_remote",
-                        side_effect=lambda _spec, _script_dir, remote_workspace, **_kwargs: copied_targets.extend(
-                            [
-                                f"{remote_workspace}/npu_compare.py",
-                                f"{remote_workspace}/dtype_close_compare.py",
-                                f"{remote_workspace}/npu_compare_common.py",
-                                f"{remote_workspace}/npu_contract_compare.py",
-                                f"{remote_workspace}/env_registry.py",
-                            ]
-                        ),
-                    ):
-                        with patch.object(module, "run_remote_command_streaming", side_effect=lambda _spec, _workspace, command, **_kwargs: recorded_command.extend(command) or fake_result):
-                            with patch.object(module, "cleanup_remote_workspace"):
-                                result, archived, remote_workspace = module.run_remote_test(
-                                    test_file,
-                                    operator,
-                                    "standalone",
-                                    "user@host",
-                                    None,
-                                    keep_remote_workdir=False,
-                                    verbose=False,
-                                    stderr=None,
-                                )
+                with patch.object(module, "run_remote_command_streaming", side_effect=lambda _spec, _workspace, command, **_kwargs: recorded_command.extend(command) or fake_result):
+                    with patch.object(module, "cleanup_remote_workspace"):
+                        result, archived, remote_workspace = module.run_remote_test(
+                            test_file,
+                            operator,
+                            "standalone",
+                            "user@host",
+                            None,
+                            keep_remote_workdir=False,
+                            verbose=False,
+                            stderr=None,
+                        )
 
         self.assertEqual(result, fake_result)
         self.assertIsNone(archived)
         self.assertEqual(remote_workspace, "/tmp/remote")
         self.assertEqual(
-            copied_targets,
+            [path.name for path in self._batch_copy.call_args.args[1]],
             [
-                "/tmp/remote/test_abs.py",
-                "/tmp/remote/abs.py",
-                "/tmp/remote/npu_compare.py",
-                "/tmp/remote/dtype_close_compare.py",
-                "/tmp/remote/npu_compare_common.py",
-                "/tmp/remote/npu_contract_compare.py",
-                "/tmp/remote/env_registry.py",
+                "test_abs.py", "abs.py", "npu_compare.py", "dtype_close_compare.py",
+                "npu_compare_common.py", "npu_contract_compare.py", "env_registry.py",
+                "run_test_remote_worker.py", "test_contract.py", "torch_npu_warnings.py",
             ],
         )
-        self.assertEqual(recorded_command[0:2], ["python3", "-c"])
-        self.assertIn("main_fn(operator_api)", recorded_command[2])
-        self.assertNotIn(test_file.name, recorded_command[2].split())
+        self.assertEqual(
+            recorded_command,
+            [
+                "python3", "run_test_remote_worker.py", "--test-file", test_file.name,
+                "--operator-file", operator.name, "--test-mode", "standalone",
+            ],
+        )
 
     def test_run_remote_test_filters_warning_prefix_lines_by_default(self) -> None:
-        module = load_test_runner_module()
+        module = load_remote_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"

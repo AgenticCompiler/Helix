@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Server Workflows"
+  short_description: "Validate project workflows on a server"
+  default_prompt: "Use $verify-project-server-workflows to validate the changed project workflows on the server I specify, covering local and remote modes with evidence-backed results."

@@ -42,8 +42,8 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertEqual(path.parent.parent.name, "ascend-npu-run-eval")
 
     def test_load_operator_eval_script_module_returns_cached_module(self) -> None:
-        first = load_operator_eval_script_module("test_runner")
-        second = load_operator_eval_script_module("test_runner")
+        first = load_operator_eval_script_module("run_test_api")
+        second = load_operator_eval_script_module("run_test_api")
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "run_local_test"))
 

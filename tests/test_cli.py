@@ -4438,7 +4438,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked_loader.assert_called_with("test_runner")
+            mocked_loader.assert_called_with("run_test_api")
 
     def test_main_gen_test_differential_uses_differential_default_output_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
