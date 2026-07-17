@@ -28,6 +28,28 @@ from helix.transient_failures import contains_transient_agent_failure_text
 from helix.terminal.verbose import emit_command_block
 
 
+_USER_PROMPT_PATH = "USER_PROMPT.md"
+
+
+@contextmanager
+def _windows_prompt_file(request: AgentRequest) -> Iterator[AgentRequest]:
+    if sys.platform != "win32":
+        yield request
+        return
+
+    prompt_path = request.workdir / _USER_PROMPT_PATH
+    prompt_path.write_text(request.prompt, encoding="utf-8")
+    try:
+        launch_prompt = (
+            "Read and follow the complete task instructions in "
+            f"`{prompt_path.absolute()}` before doing any work."
+        )
+        yield request.with_prompt(launch_prompt)
+    finally:
+        if prompt_path.exists():
+            prompt_path.unlink()
+
+
 class AgentRunner(ABC):
     _OPTIMIZE_INTERRUPT_POLICY = InterruptPolicy()
 
@@ -67,12 +89,13 @@ class AgentRunner(ABC):
                 stdout="",
                 stderr=f"{request.agent_name} backend does not support request-scoped MCP servers.",
             )
-        with self._prepare_run_context(request, stderr=stderr):
-            command = self.build_command(request)
-            if request.verbose:
-                self._log_launch_command(command, stderr or sys.stderr)
+        with _windows_prompt_file(request) as launch_request:
+            with self._prepare_run_context(launch_request, stderr=stderr):
+                command = self.build_command(launch_request)
+                if launch_request.verbose:
+                    self._log_launch_command(command, stderr or sys.stderr)
 
-            return self._run_with_retry(command, request, stdout=stdout)
+                return self._run_with_retry(command, launch_request, stdout=stdout)
 
     def _extra_allowed_read_roots(self, request: AgentRequest) -> tuple[Path, ...]:
         if request.compiler_source_path is None:
