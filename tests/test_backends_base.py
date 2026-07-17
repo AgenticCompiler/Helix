@@ -48,6 +48,105 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertEqual(mocked.call_args.kwargs["mode"], "streaming")
             self.assertEqual(mocked.call_args.kwargs["stall_timeout_seconds"], 123)
 
+    def test_windows_runner_passes_prompt_file_instruction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="Long task prompt\n" * 10_000,
+                workdir=workspace,
+            )
+
+            def _run_process(command: list[str], *_args: object, **_kwargs: object) -> AgentResult:
+                launch_prompt = command[-1]
+                self.assertNotIn(request.prompt, launch_prompt)
+                self.assertTrue(launch_prompt.startswith("Read and follow the complete task instructions in `"))
+                prompt_path = Path(launch_prompt.split("`", 2)[1])
+                self.assertEqual(prompt_path.read_text(encoding="utf-8"), request.prompt)
+                return _ok_result()
+
+            with (
+                patch("helix.backends.base.sys.platform", "win32"),
+                patch("helix.backends.base.run_process", side_effect=_run_process),
+            ):
+                runner.run(request)
+
+            self.assertFalse((workspace / "USER_PROMPT.md").exists())
+
+    def test_windows_interactive_runner_passes_prompt_file_instruction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=True,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            with (
+                patch("helix.backends.base.sys.platform", "win32"),
+                patch("helix.backends.base.run_process", return_value=_ok_result()) as mocked,
+            ):
+                runner.run(request)
+
+            launch_prompt = mocked.call_args.args[0][-1]
+            self.assertNotEqual(launch_prompt, request.prompt)
+            self.assertTrue(launch_prompt.startswith("Read and follow the complete task instructions in `"))
+            self.assertFalse((workspace / "USER_PROMPT.md").exists())
+
+    def test_windows_prompt_file_is_cleaned_up_after_launch_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            with (
+                patch("helix.backends.base.sys.platform", "win32"),
+                patch("helix.backends.base.run_process", side_effect=OSError("launch failed")),
+                self.assertRaisesRegex(OSError, "launch failed"),
+            ):
+                runner.run(request)
+
+            self.assertFalse((workspace / "USER_PROMPT.md").exists())
+
     def test_base_runner_passes_request_extra_env_to_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
