@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
 import os
-import sys
 from pathlib import Path
 
 from bench_contract import resolve_bench_kernel_resolution
@@ -12,6 +10,7 @@ from env_registry import (
     TRITON_ALWAYS_COMPILE,
 )
 from result_payload import ResultPayload
+import run_bench_execution
 from run_runtime import env_int, local_python_executable, run_streaming_process
 
 
@@ -23,30 +22,8 @@ def _simulator_soc_version() -> str:
     return os.environ.get(HELIX_SIMULATOR_SOC_VERSION, "Ascend950PR_9599")
 
 
-def _bench_runtime_script_path() -> Path:
-    return Path(__file__).resolve().with_name("bench_runtime.py")
-
-
-def _load_bench_runtime_module():
-    script_path = _bench_runtime_script_path()
-    module_name = f"helix_simulator_runtime_{script_path.stem}"
-    spec = importlib.util.spec_from_file_location(module_name, script_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load bench runtime helper: {script_path}")
-    module = importlib.util.module_from_spec(spec)
-    script_dir = str(script_path.parent)
-    added = False
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
-        added = True
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.modules.pop(module_name, None)
-        if added:
-            sys.path.remove(script_dir)
-    return module
+def _run_bench_execution_script_path() -> Path:
+    return Path(__file__).resolve().with_name("run_bench_execution.py")
 
 
 def _resolve_selected_case_id(
@@ -54,9 +31,8 @@ def _resolve_selected_case_id(
     operator_file: Path,
     case_id: str | None,
 ) -> str:
-    runtime = _load_bench_runtime_module()
-    cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
-    case = runtime.select_bench_case(cases, case_id)
+    cases, _resolution = run_bench_execution.load_bench_cases(bench_file, operator_file)
+    case = run_bench_execution.select_bench_case(cases, case_id)
     return str(case.case_id)
 
 
@@ -98,7 +74,7 @@ def run_local_simulator(
         f"--soc-version={_simulator_soc_version()}",
         f"--kernel-name={selected_kernel}",
         local_python_executable(),
-        str(_bench_runtime_script_path()),
+        str(_run_bench_execution_script_path()),
         "run-one",
         "--bench-file",
         bench_file.name,

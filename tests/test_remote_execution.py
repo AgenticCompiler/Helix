@@ -4,7 +4,6 @@ import json
 from io import StringIO
 from os import environ
 from pathlib import Path
-from typing import Optional
 from unittest.mock import patch
 import tempfile
 import subprocess
@@ -17,7 +16,8 @@ from helix.remote import env as remote_env_module
 from helix.skills.loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
-    load_bench_runner_module,
+    load_bench_modes_module,
+    load_bench_remote_api_module,
     load_remote_api_module,
     make_skill_result,
 )
@@ -59,7 +59,7 @@ def build_bench_case_fn(operator_api, case):
 class RemoteExecutionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls._bench_module = load_bench_runner_module()
+        cls._bench_module = load_bench_modes_module()
         cls._monotonic_patcher = patch.object(cls._bench_module.time, "monotonic", return_value=0.0)
         cls._monotonic_patcher.start()
 
@@ -219,7 +219,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertNotIn(remote_env_module.remote_workdir_env_name(), env)
 
     def test_parse_standalone_case_payload_accepts_metrics_on_python39_runtime(self) -> None:
-        module = load_bench_runner_module()
+        module = load_bench_modes_module()
 
         result = make_skill_result(
             0,
@@ -251,7 +251,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path.cwd() / "src"))
 from helix.skills.loader import load_operator_eval_script_module
-module = load_operator_eval_script_module("bench_runner")
+module = load_operator_eval_script_module("run_bench_modes")
 result = {
     "return_code": 0,
     "stdout": '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\\n',
@@ -727,7 +727,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 return_value=("spec", "/tmp/remote-differential"),
             ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
                 module, "copy_files_to_remote"
-            ) as copy_files_to_remote, patch.object(
+            ) as copy_files_to_remote, patch.object(module, "_stage_remote_python_bundle") as stage_bundle, patch.object(
                 module,
                 "copy_file_from_remote",
             ) as copy_from_remote, patch.object(
@@ -752,14 +752,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIn(ref_operator, copied_sources)
         self.assertIn(operator, copied_sources)
         self.assertNotIn(ref_operator.with_name("reference kernel_result.pt"), copied_sources)
-        self.assertEqual(
-            [path.name for path in copy_files_to_remote.call_args.args[1]],
-            [
-                "npu_compare.py", "dtype_close_compare.py", "npu_compare_common.py",
-                "npu_contract_compare.py", "env_registry.py", "run_test_remote_worker.py",
-                "test_contract.py", "torch_npu_warnings.py", "compare_result.py",
-            ],
-        )
+        copy_files_to_remote.assert_not_called()
+        stage_bundle.assert_called_once()
         self.assertEqual(remote_run.call_count, 3)
         reference_command = remote_run.call_args_list[0].args[2]
         candidate_command = remote_run.call_args_list[1].args[2]
@@ -789,7 +783,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
     def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
         module = load_compare_result_module()
-        runtime = module._load_run_runtime_module()
+        runtime = module.run_runtime
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -853,1245 +847,100 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             ],
         )
 
-    def test_run_remote_bench_torch_npu_profiler_uses_runtime_helper_and_copies_perf_back(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: k\n", encoding="utf-8")
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-            local_perf_path = root / "kernel_perf.txt"
-
-            with patch.object(
+    def test_run_bench_remote_api_owns_workspace_staging_and_cleanup(self) -> None:
+        module = load_bench_remote_api_module()
+        bench_file = Path("bench.py")
+        operator_file = Path("operator.py")
+        result = make_skill_result(0, "", "")
+        with patch.object(module, "create_remote_workspace", return_value=("spec", "/tmp/remote")), \
+            patch.object(module, "copy_file_to_remote") as copy_file, \
+            patch.object(module, "stage_remote_bench_input_files") as stage_support, \
+            patch.object(
                 module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-clean"),
-            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
-                module,
-                "run_remote_command_streaming",
-                return_value=make_skill_result(0, "bench stdout\n", ""),
-            ) as remote_run, patch.object(
-                module,
-                "copy_file_from_remote",
-                create=True,
-                side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n',
-                    encoding="utf-8",
-                ),
-                ) as copy_back, patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "standalone",
-                    "alice@example.com",
-                    None,
-                )
+                "execute_remote_bench_workspace",
+                return_value=(result, Path("operator_perf.txt"), "/tmp/remote"),
+            ) as execute, \
+            patch.object(module, "cleanup_remote_workspace") as cleanup:
+            actual, perf_path, workspace = module.run_remote_bench(
+                bench_file, operator_file, "standalone", "user@host", None
+            )
 
-
-        self.assertEqual(result["return_code"], 0)
-        self.assertEqual(perf_path, local_perf_path)
-        self.assertEqual(remote_workspace, "/tmp/remote-clean")
-        self.assertIsNotNone(remote_run.call_args.kwargs.get("stdout"))
-        copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
-        self.assertIn("bench_runtime.py", copy_targets)
-        self.assertIn("profile_csv_parser.py", copy_targets)
-        self.assertIn("env_registry.py", copy_targets)
+        self.assertEqual(actual, result)
+        self.assertEqual(perf_path, Path("operator_perf.txt"))
+        self.assertEqual(workspace, "/tmp/remote")
         self.assertEqual(
-            remote_run.call_args.args[2],
+            [call.args[2] for call in copy_file.call_args_list],
             [
-                "python3",
-                "-c",
-                remote_run.call_args.args[2][2],
-                "bench_kernel.py",
-                "kernel.py",
-                "kernel_perf.txt",
+                "/tmp/remote/bench_contract.py",
+                "/tmp/remote/env_registry.py",
+                "/tmp/remote/perf_artifacts.py",
+                "/tmp/remote/profile_csv_parser.py",
+                "/tmp/remote/result_payload.py",
+                "/tmp/remote/run_bench_execution.py",
+                "/tmp/remote/run_bench_remote_worker.py",
+                "/tmp/remote/torch_npu_warnings.py",
+                "/tmp/remote/bench.py",
+                "/tmp/remote/operator.py",
             ],
         )
-        self.assertIn("profile_all_bench_cases", remote_run.call_args.args[2][2])
-        copy_back.assert_called_once_with(
-            "spec",
-            "/tmp/remote-clean/kernel_perf.txt",
-            local_perf_path,
-            verbose=False,
-            stderr=None,
-        )
-        cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
+        stage_support.assert_called_once()
+        self.assertEqual(execute.call_args.args[:5], (bench_file, operator_file, "standalone", "spec", "/tmp/remote"))
+        cleanup.assert_called_once_with("spec", "/tmp/remote", verbose=False, stderr=None)
 
-    def test_run_remote_bench_torch_npu_profiler_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_case.py"
-            operator_file = root / "operator_case.py"
-            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
-            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
-
-            streamed_commands: list[tuple[str, Optional[str], list[str]]] = []
-            buffered_case_dirs: list[str] = []
-            mirrored_root = root.name
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-standalone/case-case-a"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-standalone")
-                    buffered_case_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-standalone/case-case-b"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-standalone")
-                    buffered_case_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == [
-                    "mkdir",
-                    "-p",
-                    f"/tmp/remote-standalone/case-case-a/{mirrored_root}",
-                ]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-standalone/case-case-a")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == [
-                    "mkdir",
-                    "-p",
-                    f"/tmp/remote-standalone/case-case-b/{mirrored_root}",
-                ]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-standalone/case-case-b")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-standalone")
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_copy(spec, local_path, remote_path, **kwargs):
-                del spec, local_path, kwargs
-                self.assertTrue(
-                    remote_path.endswith("/bench_case.py")
-                    or remote_path.endswith("/operator_case.py")
-                    or remote_path.endswith("/result_payload.py")
-                    or remote_path.endswith("/bench_runtime.py")
-                    or remote_path.endswith("/bench_contract.py")
-                    or remote_path.endswith("/perf_artifacts.py")
-                    or remote_path.endswith("/profile_csv_parser.py")
-                )
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                del spec
-                streamed_commands.append(
-                    (
-                        remote_workspace,
-                        (kwargs.get("extra_env") or {}).get("ASCEND_RT_VISIBLE_DEVICES"),
-                        command,
-                    )
-                )
-                case_id = (
-                    command[command.index("--case-id") + 1]
-                    if "--case-id" in command
-                    else command[-2]
-                )
-                return make_skill_result(
-                    0,
-                    (
-                        '{"case_label":"'
-                        + case_id
-                        + '","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                    ),
-                    "",
-                )
-
-            with patch.object(
-                module,
-                "_load_bench_runtime_module",
-            ) as load_runtime:
-                load_runtime.return_value = type(
-                    "_FakeRuntime",
-                    (),
-                    {
-                        "load_bench_cases": staticmethod(
-                            lambda *_args, **_kwargs: (
-                                [
-                                    type("_Case", (), {"case_id": "case-a"})(),
-                                    type("_Case", (), {"case_id": "case-b"})(),
-                                ],
-                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
-                            )
-                        ),
-                        "runtime_support_paths": staticmethod(lambda: []),
-                    },
-                )()
-                with patch.object(
-                    module,
-                    "create_remote_workspace",
-                    return_value=("spec", "/tmp/remote-standalone"),
-                ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
-                    module,
-                    "run_remote_command_buffered",
-                    side_effect=_fake_remote_buffered,
-                ), patch.object(
-                    module,
-                    "run_remote_command_streaming",
-                    side_effect=_fake_remote_streaming,
-                ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                    result, perf_path, remote_workspace = module.run_remote_bench(
-                        bench_file,
-                        operator_file,
-                        "standalone",
-                        "alice@example.com",
-                        None,
-                        npu_devices="0,2",
-                    )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-standalone")
-            self.assertEqual(
-                set(buffered_case_dirs),
-                {"/tmp/remote-standalone/case-case-a", "/tmp/remote-standalone/case-case-b"},
-            )
-            self.assertEqual(
-                {remote_workspace for remote_workspace, _, _ in streamed_commands},
-                {
-                    f"/tmp/remote-standalone/case-case-a/{mirrored_root}",
-                    f"/tmp/remote-standalone/case-case-b/{mirrored_root}",
-                },
-            )
-            self.assertEqual({device for _, device, _ in streamed_commands}, {"0", "2"})
-            self.assertEqual(
-                {command[3] for _, _, command in streamed_commands},
-                {"bench_case.py"},
-            )
-            if perf_path is None:
-                self.fail("expected standalone perf path")
-            perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
-            cleanup.assert_called_once_with("spec", "/tmp/remote-standalone", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_sums_avg_time_from_remote_csv_and_cleans_profiler_tmpdirs(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelB",),
-                case_ids=("case-1", "case-2"),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            issued_tmp_dirs: list[str] = []
-            removed_tmp_dirs: list[str] = []
-            next_tmp_index = 0
-            next_payload_index = 0
-            temp_dirs = ["/tmp/msprof-case-1", "/tmp/msprof-case-2"]
-            metric_payloads = [
-                '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}]}\n',
-            ]
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                nonlocal next_tmp_index, next_payload_index
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                if command == ["mktemp", "-d"]:
-                    value = temp_dirs[next_tmp_index]
-                    next_tmp_index += 1
-                    return make_skill_result(0, f"{value}\n", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    value = metric_payloads[next_payload_index]
-                    next_payload_index += 1
-                    return make_skill_result(0, value, "")
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    removed_tmp_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                self.assertEqual(command[0], "msprof")
-                self.assertTrue(command[1].startswith("--output="))
-                self.assertEqual(command[2:5], ["python3", "bench_runtime.py", "run-one"])
-                issued_tmp_dirs.append(command[1].split("=", 1)[1])
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertEqual(issued_tmp_dirs, temp_dirs)
-            self.assertEqual(removed_tmp_dirs, temp_dirs)
-            copied_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
-            self.assertIn("bench_runtime.py", copied_targets)
-            self.assertIn("profile_csv_parser.py", copied_targets)
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            self.assertEqual(
-                perf_path.read_text(encoding="utf-8"),
-                (
-                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                ),
-            )
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelB",),
-                case_ids=("case-1", "case-2"),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            streamed_commands: list[tuple[str, Optional[str], list[str]]] = []
-            buffered_case_dirs: list[str] = []
-            mirrored_root = root.name
-            metric_payloads = {
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/msprof-output": '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                f"/tmp/remote-msprof/case-case-2/{mirrored_root}/msprof-output": '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n',
-            }
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-msprof/case-case-1"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    buffered_case_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-msprof/case-case-2"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    buffered_case_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == [
-                    "mkdir",
-                    "-p",
-                    f"/tmp/remote-msprof/case-case-1/{mirrored_root}",
-                ]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof/case-case-1")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:3] == [
-                    "mkdir",
-                    "-p",
-                    f"/tmp/remote-msprof/case-case-2/{mirrored_root}",
-                ]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof/case-case-2")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    self.assertIn(
-                        remote_workspace,
-                        {
-                            f"/tmp/remote-msprof/case-case-1/{mirrored_root}",
-                            f"/tmp/remote-msprof/case-case-2/{mirrored_root}",
-                        },
-                    )
-                    output_dir = command[3]
-                    return make_skill_result(0, metric_payloads[output_dir], "")
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_copy(spec, local_path, remote_path, **kwargs):
-                del spec, local_path, kwargs
-                self.assertTrue(
-                    remote_path.endswith("/bench_kernel.py")
-                    or remote_path.endswith("/kernel.py")
-                    or remote_path.endswith("/bench_kernel.json")
-                    or remote_path.endswith("/result_payload.py")
-                    or remote_path.endswith("/bench_runtime.py")
-                    or remote_path.endswith("/bench_contract.py")
-                    or remote_path.endswith("/perf_artifacts.py")
-                    or remote_path.endswith("/profile_csv_parser.py")
-                    or remote_path.endswith("/env_registry.py")
-                    or remote_path.endswith("/torch_npu_warnings.py")
-                )
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                del spec
-                self.assertIn(
-                    remote_workspace,
-                    {
-                        f"/tmp/remote-msprof/case-case-1/{mirrored_root}",
-                        f"/tmp/remote-msprof/case-case-2/{mirrored_root}",
-                    },
-                )
-                self.assertEqual(command[0], "msprof")
-                output_dir = command[1].split("=", 1)[1]
-                extra_env = kwargs.get("extra_env") or {}
-                streamed_commands.append((output_dir, extra_env.get("ASCEND_RT_VISIBLE_DEVICES"), command))
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                    npu_devices="0,2",
-                )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertEqual(
-                set(buffered_case_dirs),
-                {"/tmp/remote-msprof/case-case-1", "/tmp/remote-msprof/case-case-2"},
-            )
-            self.assertEqual({device for _, device, _ in streamed_commands}, {"0", "2"})
-            self.assertEqual(
-                {output_dir for output_dir, _, _ in streamed_commands},
-                {
-                    f"/tmp/remote-msprof/case-case-1/{mirrored_root}/msprof-output",
-                    f"/tmp/remote-msprof/case-case-2/{mirrored_root}/msprof-output",
-                },
-            )
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertLess(
-                perf_text.index('"case_label":"case-1"'),
-                perf_text.index('"case_label":"case-2"'),
-            )
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_parallel_stages_discovered_case_json_files(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_all_cases.py"
-            operator_file = root / "kernel.py"
-            discovered_json = root / "5_MoeInitRouting.json"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelB",),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-            discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
-
-            copied_remote_paths: list[str] = []
-            mirrored_root = root.name
-            streamed_commands: list[tuple[str, list[str]]] = []
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                if command == ["mkdir", "-p", "/tmp/remote-msprof/case-case-1"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    return make_skill_result(0, "", "")
-                if command == ["mkdir", "-p", f"/tmp/remote-msprof/case-case-1/{mirrored_root}"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof/case-case-1")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    self.assertEqual(remote_workspace, f"/tmp/remote-msprof/case-case-1/{mirrored_root}")
-                    return make_skill_result(
-                        0,
-                        '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                        "",
-                    )
-                if command == ["rm", "-rf", "/tmp/remote-msprof/case-case-1"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_copy(spec, local_path, remote_path, **kwargs):
-                del spec, local_path, kwargs
-                copied_remote_paths.append(remote_path)
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                del spec, kwargs
-                streamed_commands.append((remote_workspace, command))
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                    npu_devices="1",
-                )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/bench_all_cases.py",
-                copied_remote_paths,
-            )
-            self.assertIn(f"/tmp/remote-msprof/case-case-1/{mirrored_root}/kernel.py", copied_remote_paths)
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/5_MoeInitRouting.json",
-                copied_remote_paths,
-            )
-            self.assertEqual(
-                streamed_commands,
-                [
-                    (
-                        f"/tmp/remote-msprof/case-case-1/{mirrored_root}",
-                        [
-                            "msprof",
-                            f"--output=/tmp/remote-msprof/case-case-1/{mirrored_root}/msprof-output",
-                            "python3",
-                            "bench_runtime.py",
-                            "run-one",
-                            "--bench-file",
-                            "bench_all_cases.py",
-                            "--operator-file",
-                            "kernel.py",
-                            "--case-id",
-                            "case-1",
-                            "--iterations",
-                            "55",
-                        ],
-                    )
-                ],
-            )
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            self.assertIn('"kernel_avg_time_us":2.5', perf_path.read_text(encoding="utf-8"))
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_parallel_preserves_relative_operator_layout(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_all_cases.py"
-            operator_dir = root / "opt-round-13"
-            operator_dir.mkdir()
-            operator_file = operator_dir / "opt_kernel.py"
-            operator_json = operator_dir / "5_MoeInitRouting.json"
-            discovered_json = root / "5_MoeInitRouting.json"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelB",),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-            operator_json.write_text('{"from":"operator-dir"}\n', encoding="utf-8")
-            discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
-
-            copied_remote_paths: list[str] = []
-            streamed_commands: list[tuple[str, list[str]]] = []
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                if command == ["mkdir", "-p", "/tmp/remote-msprof/case-case-1"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    return make_skill_result(0, "", "")
-                if command == ["mkdir", "-p", f"/tmp/remote-msprof/case-case-1/{root.name}"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof/case-case-1")
-                    return make_skill_result(0, "", "")
-                if command == ["mkdir", "-p", f"/tmp/remote-msprof/case-case-1/{root.name}/opt-round-13"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof/case-case-1")
-                    return make_skill_result(0, "", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    self.assertEqual(remote_workspace, f"/tmp/remote-msprof/case-case-1/{root.name}")
-                    return make_skill_result(
-                        0,
-                        '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                        "",
-                    )
-                if command == ["rm", "-rf", "/tmp/remote-msprof/case-case-1"]:
-                    self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_copy(spec, local_path, remote_path, **kwargs):
-                del spec, local_path, kwargs
-                copied_remote_paths.append(remote_path)
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                del spec, kwargs
-                streamed_commands.append((remote_workspace, command))
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                    npu_devices="1",
-                )
-
-            mirrored_root = root.name
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/bench_all_cases.py",
-                copied_remote_paths,
-            )
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/opt-round-13/opt_kernel.py",
-                copied_remote_paths,
-            )
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/opt-round-13/5_MoeInitRouting.json",
-                copied_remote_paths,
-            )
-            self.assertIn(
-                f"/tmp/remote-msprof/case-case-1/{mirrored_root}/5_MoeInitRouting.json",
-                copied_remote_paths,
-            )
-            self.assertEqual(
-                streamed_commands,
-                [
-                    (
-                        f"/tmp/remote-msprof/case-case-1/{mirrored_root}",
-                        [
-                            "msprof",
-                            f"--output=/tmp/remote-msprof/case-case-1/{mirrored_root}/msprof-output",
-                            "python3",
-                            "bench_runtime.py",
-                            "run-one",
-                            "--bench-file",
-                            "bench_all_cases.py",
-                            "--operator-file",
-                            "opt-round-13/opt_kernel.py",
-                            "--case-id",
-                            "case-1",
-                            "--iterations",
-                            "55",
-                        ],
-                    )
-                ],
-            )
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_continues_after_failed_case_and_persists_perf(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelB",),
-                case_ids=("case-1", "case-2"),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            removed_tmp_dirs: list[str] = []
-            next_tmp_index = 0
-            next_payload_index = 0
-            temp_dirs = ["/tmp/msprof-case-1", "/tmp/msprof-case-2"]
-            metric_payloads = [
-                '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n',
-            ]
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                nonlocal next_tmp_index, next_payload_index
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                if command == ["mktemp", "-d"]:
-                    value = temp_dirs[next_tmp_index]
-                    next_tmp_index += 1
-                    return make_skill_result(0, f"{value}\n", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    value = metric_payloads[next_payload_index]
-                    next_payload_index += 1
-                    return make_skill_result(0, value, "")
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    removed_tmp_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(command[0], "msprof")
-                case_id = command[command.index("--case-id") + 1]
-                if case_id == "case-1":
-                    return make_skill_result(1, "", "case one failed\n")
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                )
-
-            self.assertEqual(result["return_code"], 1)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertEqual(removed_tmp_dirs, temp_dirs)
-            if perf_path is None:
-                self.fail("expected msprof perf path even when one remote case fails")
-            self.assertEqual(
-                perf_path.read_text(encoding="utf-8"),
-                (
-                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                ),
-            )
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_read_remote_msprof_metrics_supports_kernel_suffix_alias_and_total_op(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            remote_workspace = Path(tmp) / "remote-workspace"
-            remote_workspace.mkdir()
-            for support_path in module._bench_runtime_support_paths():
-                shutil.copy2(support_path, remote_workspace / support_path.name)
-
-            output_dir = remote_workspace / "ASCEND_PROFILER_OUTPUT"
-            output_dir.mkdir()
-            (output_dir / "op_statistic_1.csv").write_text(
-                "\n".join(
-                    [
-                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
-                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
-                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
+    def test_run_bench_modes_uses_fixed_remote_worker(self) -> None:
+        module = load_bench_modes_module()
+        result = make_skill_result(0, "", "")
+        with patch.object(module, "run_remote_command_streaming", return_value=result) as run_remote, \
+            patch.object(module, "copy_file_from_remote"):
+            actual, _perf_path, _workspace = module._run_remote_bench_torch_npu_profiler(
+                "spec", "/tmp/remote", Path("bench.py"), Path("operator.py"), execution_limits=(1, 3)
             )
 
-            def _fake_remote_buffered(spec, remote_workspace_arg, command, **kwargs):
-                del kwargs
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace_arg, str(remote_workspace))
-                self.assertEqual(command[:2], ["python3", "-c"])
-                completed = subprocess.run(
-                    command,
-                    cwd=remote_workspace,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                return make_skill_result(completed.returncode, completed.stdout, completed.stderr)
+        self.assertEqual(actual, result)
+        command = run_remote.call_args.args[2]
+        self.assertEqual(command[:3], ["python3", "run_bench_remote_worker.py", "profile-all"])
+        self.assertIn("--warmup-cap", command)
+        self.assertIn("--repeats-cap", command)
 
-            with patch.object(module, "run_remote_command_buffered", side_effect=_fake_remote_buffered):
-                metrics = module._read_remote_msprof_metrics(
-                    "spec",
-                    str(remote_workspace),
-                    str(output_dir),
-                    ["KernelA"],
-                )
+    def test_run_bench_modes_reads_msprof_metrics_through_fixed_worker(self) -> None:
+        module = load_bench_modes_module()
+        payload = '{"kernel_avg_time_us": 2.5, "ops": [], "total_op_avg_time_us": 2.5}'
+        with patch.object(
+            module,
+            "run_remote_command_buffered",
+            return_value=make_skill_result(0, payload + "\n", ""),
+        ) as run_remote:
+            metrics = module._read_remote_msprof_metrics(
+                "spec", "/tmp/remote", "/tmp/metrics", ["KernelA"]
+            )
 
-        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
+        self.assertEqual(metrics["kernel_avg_time_us"], 2.5)
         self.assertEqual(
-            metrics["ops"],
-            [
-                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
-                {"op_type": "HelperKernel", "avg_time_us": 3.5},
-            ],
+            run_remote.call_args.args[2][:3],
+            ["python3", "run_bench_remote_worker.py", "msprof-metrics"],
         )
-        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
-
-    def test_run_remote_bench_msprof_records_na_when_remote_kernel_row_is_missing(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("MissingKernel",),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            removed_tmp_dirs: list[str] = []
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                if command == ["mktemp", "-d"]:
-                    return make_skill_result(0, "/tmp/msprof-case-1\n", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    return make_skill_result(
-                        0,
-                        '{"kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                        "",
-                    )
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    removed_tmp_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(command[0], "msprof")
-                self.assertTrue(command[1].startswith("--output="))
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertEqual(removed_tmp_dirs, ["/tmp/msprof-case-1"])
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            self.assertEqual(
-                perf_path.read_text(encoding="utf-8"),
-                (
-                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                ),
-            )
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_msprof_sums_multiple_declared_kernels(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="kernel",
-                kernel_names=("KernelA", "KernelB"),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            removed_tmp_dirs: list[str] = []
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(spec, "spec")
-                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-                if command == ["mktemp", "-d"]:
-                    return make_skill_result(0, "/tmp/msprof-case-1\n", "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    return make_skill_result(
-                        0,
-                        '{"kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n',
-                        "",
-                    )
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    removed_tmp_dirs.append(command[2])
-                    return make_skill_result(0, "", "")
-                self.fail(f"unexpected buffered remote command: {command}")
-
-            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
-                self.assertEqual(command[0], "msprof")
-                self.assertTrue(command[1].startswith("--output="))
-                return make_skill_result(0, "profile stdout\n", "")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "run_remote_command_buffered",
-                side_effect=_fake_remote_buffered,
-            ), patch.object(
-                module,
-                "run_remote_command_streaming",
-                side_effect=_fake_remote_streaming,
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
-                result, perf_path, remote_workspace = module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    "alice@example.com",
-                    None,
-                )
-
-            self.assertEqual(result["return_code"], 0)
-            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
-            self.assertEqual(removed_tmp_dirs, ["/tmp/msprof-case-1"])
-            if perf_path is None:
-                self.fail("expected msprof perf path")
-            self.assertEqual(
-                perf_path.read_text(encoding="utf-8"),
-                (
-                    '{"case_label":"case-1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
-                ),
-            )
-            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
-
-    def test_run_remote_bench_quotes_filenames_with_spaces(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench kernel.py"
-            operator_file = root / "kernel op.py"
-            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: k\n", encoding="utf-8")
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-bench-space"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
-                module,
-                "run_remote_command_streaming",
-                return_value=make_skill_result(0, "bench stdout\n", ""),
-            ) as remote_run, patch.object(
-                module,
-                "copy_file_from_remote",
-                create=True,
-                side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n',
-                    encoding="utf-8",
-                ),
-            ), patch.object(module, "cleanup_remote_workspace"):
-                module.run_remote_bench(
-                    bench_file,
-                    operator_file,
-                    "standalone",
-                    "alice@example.com",
-                    None,
-                )
-
-        self.assertEqual(
-            remote_run.call_args.args[2],
-            [
-                "python3",
-                "-c",
-                remote_run.call_args.args[2][2],
-                "bench kernel.py",
-                "kernel op.py",
-                "kernel op_perf.txt",
-            ],
-        )
-        self.assertIn("profile_all_bench_cases", remote_run.call_args.args[2][2])
-
-    def test_run_remote_bench_msprof_case_wall_clock_seconds_in_perf_output_success(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_abs.py"
-            operator_file = root / "abs.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="abs_",
-                kernel_names=("OpB",),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
-
-            buffered_payloads = [
-                "/tmp/msprof-case-1\n",
-                '{"kernel_avg_time_us":3.0,"ops":[{"op_type":"OpB","avg_time_us":3.0}]}\n',
-            ]
-
-            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                if command == ["mktemp", "-d"]:
-                    return make_skill_result(0, buffered_payloads.pop(0), "")
-                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    return make_skill_result(0, buffered_payloads.pop(0), "")
-                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
-                    return make_skill_result(0, "", "")
-                return make_skill_result(1, "", "unexpected command")
-
-            self._monotonic_patcher.stop()
-            try:
-                with patch.object(
-                    module,
-                    "create_remote_workspace",
-                    return_value=("spec", "/tmp/remote-msprof"),
-                ), patch.object(module, "copy_file_to_remote"), patch.object(
-                    module,
-                    "run_remote_command_buffered",
-                    side_effect=_fake_remote_buffered,
-                ), patch.object(
-                    module,
-                    "run_remote_command_streaming",
-                    return_value=make_skill_result(0, "", ""),
-                ), patch.object(
-                    module.time, "monotonic", side_effect=[0.0, 1.5]
-                ), patch.object(module, "copy_file_from_remote"), patch.object(
-                    module, "cleanup_remote_workspace"
-                ):
-                    result, perf_path, _ws = module.run_remote_bench(
-                        bench_file,
-                        operator_file,
-                        "msprof",
-                        "alice@example.com",
-                        None,
-                    )
-            finally:
-                self._monotonic_patcher.start()
-
-            self.assertEqual(result["return_code"], 0)
-            if perf_path is None:
-                self.fail("expected remote msprof perf path")
-            perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertIn('"case_label":"case-1"', perf_text)
-            self.assertIn('"kernel_avg_time_us":3.0', perf_text)
-            self.assertIn('"case_wall_clock_seconds":1.5', perf_text)
-
-    def test_run_remote_bench_msprof_case_wall_clock_seconds_in_perf_output_failure(self) -> None:
-        module = load_bench_runner_module()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_abs.py"
-            operator_file = root / "abs.py"
-            _write_hooked_bench_file(
-                bench_file,
-                mode="msprof",
-                api_name="abs_",
-                kernel_names=("OpB",),
-                case_ids=("case-1",),
-            )
-            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
-
-            self._monotonic_patcher.stop()
-            try:
-                with patch.object(
-                    module,
-                    "create_remote_workspace",
-                    return_value=("spec", "/tmp/remote-msprof"),
-                ), patch.object(module, "copy_file_to_remote"), patch.object(
-                    module,
-                    "run_remote_command_buffered",
-                    side_effect=lambda _spec, _workspace, command, **_kwargs: (
-                        make_skill_result(0, "/tmp/msprof-case-1\n", "")
-                        if command == ["mktemp", "-d"]
-                        else make_skill_result(0, "", "")
-                    ),
-                ), patch.object(
-                    module,
-                    "run_remote_command_streaming",
-                    return_value=make_skill_result(1, "", "command failed"),
-                ), patch.object(
-                    module.time, "monotonic", side_effect=[0.0, 2.5]
-                ), patch.object(module, "copy_file_from_remote"), patch.object(
-                    module, "cleanup_remote_workspace"
-                ):
-                    result, perf_path, _ws = module.run_remote_bench(
-                        bench_file,
-                        operator_file,
-                        "msprof",
-                        "alice@example.com",
-                        None,
-                    )
-            finally:
-                self._monotonic_patcher.start()
-
-            self.assertEqual(result["return_code"], 1)
-            if perf_path is None:
-                self.fail("expected remote msprof perf path for failed case")
-            perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertIn('"kernel_avg_time_us":null', perf_text)
-            self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
 
 
 class RemoteProbeTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.bench = load_bench_runner_module()
-        run_runtime = load_operator_eval_script_module("run_runtime")
-        self.spec = run_runtime.parse_remote_spec("user@host")
-
-    def test_probe_remote_script_includes_clamp_and_preloaded(self) -> None:
-        script = self.bench._build_remote_torch_npu_profiler_probe_run_all_script(
-            verbose=False, warmup_cap=1, repeats_cap=3
-        )
-        self.assertIn("dataclasses.replace", script)
-        self.assertIn("min(c.warmup, 1)", script)
-        self.assertIn("min(c.repeats, 3)", script)
-        self.assertIn("preloaded=(clamped, resolution)", script)
-        self.assertIn("runtime.load_bench_cases", script)
-
-    def test_canonical_remote_script_does_not_clamp(self) -> None:
-        script = self.bench._build_remote_torch_npu_profiler_run_all_script(verbose=False)
-        self.assertNotIn("dataclasses.replace", script)
-        self.assertNotIn("preloaded=", script)
-
-    def test_remote_profiler_uses_probe_script_when_caps_set(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-            )
-        command = mocked_run.call_args.args[2]
-        script = command[2]
-        self.assertIn("preloaded=(clamped, resolution)", script)
-        self.assertIn("min(c.warmup, 1)", script)
-
-    def test_remote_profiler_uses_canonical_script_without_caps(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-            )
-        command = mocked_run.call_args.args[2]
-        script = command[2]
-        self.assertNotIn("preloaded=", script)
-        self.assertNotIn("dataclasses.replace", script)
-
-    def test_run_remote_probe_threads_probe_caps(self) -> None:
-        sentinel = ({"return_code": 0, "stdout": "", "stderr": ""}, None, "ws")
-        with patch.object(self.bench, "run_remote_bench", return_value=sentinel) as mocked:
-            self.bench.run_remote_probe(
+    def test_run_remote_bench_with_limits_threads_limits_through_remote_api(self) -> None:
+        module = load_bench_remote_api_module()
+        sentinel = (make_skill_result(0, "", ""), None, "workspace")
+        with patch.object(module, "execute_remote_bench_workspace", return_value=sentinel) as run_bench, \
+             patch.object(module, "create_remote_workspace", return_value=("spec", "workspace")), \
+             patch.object(module, "_stage_remote_bench_inputs"), \
+             patch.object(module, "cleanup_remote_workspace"):
+            actual = module.run_remote_bench_with_limits(
                 Path("bench.py"),
-                Path("op.py"),
+                Path("operator.py"),
                 "torch-npu-profiler",
                 "user@host",
                 None,
                 warmup_cap=1,
                 repeats_cap=3,
             )
-        self.assertEqual(mocked.call_args.kwargs.get("probe_caps"), (1, 3))
 
-    def test_remote_profiler_passes_devices_env_when_caps_set(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-                devices=("4", "5"),
-            )
-        self.assertEqual(
-            mocked_run.call_args.kwargs["extra_env"]["ASCEND_RT_VISIBLE_DEVICES"],
-            "4,5",
-        )
-
-    def test_remote_profiler_omits_devices_env_without_devices(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            self.bench, "_stage_remote_bench_runtime_support_files"
-        ), patch.object(
-            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
-        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
-            self.bench._run_remote_bench_torch_npu_profiler(
-                self.spec,
-                "ws",
-                Path(tmp) / "bench.py",
-                Path(tmp) / "op.py",
-                probe_caps=(1, 3),
-            )
-        self.assertNotIn(
-            "ASCEND_RT_VISIBLE_DEVICES",
-            mocked_run.call_args.kwargs["extra_env"],
-        )
+        self.assertEqual(actual, sentinel)
+        self.assertEqual(run_bench.call_args.kwargs["execution_limits"], (1, 3))
 
 
 if __name__ == "__main__":

@@ -60,8 +60,8 @@ directory is placed on `sys.path`.
 | Module | Responsibility |
 | --- | --- |
 | `test_contract.py` | Test metadata parsing, dynamic module loading, Torch/NPU bootstrap helpers, differential case normalization and selection, `compute-kind` interpretation, and payload serialization/deserialization. |
-| `run_local_api.py` | Parent-process API for local worker invocation, result-file recovery, single-case payload execution, and local warning filtering. |
-| `run_remote_api.py` | Remote workspace lifecycle, transfers, remote worker invocation, archive copying, serialized payload extraction, and remote differential comparison. |
+| `run_test_local_api.py` | Parent-process API for local worker invocation, result-file recovery, single-case payload execution, and local warning filtering. |
+| `run_test_remote_api.py` | Remote workspace lifecycle, transfers, remote worker invocation, archive copying, serialized payload extraction, and remote differential comparison. |
 | `run_test_local_worker.py` | Fixed local executable: loads test/operator hooks and runs standalone or differential work in the isolated local process. |
 | `run_test_result.py` | Shared differential archive naming and warning filtering for local and remote APIs. |
 | `run_test_remote_worker.py` | Fixed remote executable: loads test/operator hooks and runs standalone or differential work after it has been copied to the remote workspace. |
@@ -120,7 +120,7 @@ it is not a supported long-term API and must not receive new behavior.
 ### Fixed remote worker
 
 Remote execution must not construct the standalone or differential Python
-program as a large `python3 -c` string. Instead, `run_remote_api.py` copies
+program as a large `python3 -c` string. Instead, `run_test_remote_api.py` copies
 the versioned `run_test_remote_worker.py` script and its explicit runtime
 dependencies into the remote workspace, then invokes it with normal arguments:
 
@@ -146,9 +146,9 @@ type-checkable, and directly testable as source code.
 ```text
 run-test-* CLI arguments
   -> run_test_command validates paths, mode, and reference policy
-  -> run_local_api starts run_test_local_worker.py
+  -> run_test_local_api starts run_test_local_worker.py
   -> test_contract loads test/operator hooks and validates differential cases
-  -> run_local_api returns result plus optional archive
+  -> run_test_local_api returns result plus optional archive
   -> run_test_command renders, compares, cleans up, records timing, and returns an exit code
 ```
 
@@ -157,9 +157,9 @@ run-test-* CLI arguments
 ```text
 run-test-* CLI arguments
   -> run_test_command validates remote/reference constraints
-  -> run_remote_api creates workspace and transfers runtime/test/operator files
+  -> run_test_remote_api creates workspace and transfers runtime/test/operator files
   -> run_test_remote_worker.py loads hooks and executes the requested test mode
-  -> run_remote_api filters output and optionally copies archive back
+  -> run_test_remote_api filters output and optionally copies archive back
   -> run_test_command renders, compares, records timing, and returns an exit code
 ```
 
@@ -179,11 +179,11 @@ run-test-* CLI arguments
 
 - `test_contract.py` must not create subprocesses, transfer files, or decide
   command-level reference policy.
-- `run_local_api.py` owns local worker transport and result recovery; it must
+- `run_test_local_api.py` owns local worker transport and result recovery; it must
   not execute user test hooks or parse worker arguments.
 - `run_test_local_worker.py` owns local standalone/differential execution and
   the worker-only argument parser; it must not perform reference comparisons.
-- `run_remote_api.py` owns remote transport and result recovery, not test
+- `run_test_remote_api.py` owns remote transport and result recovery, not test
   implementation source generation.
 - `run_test_remote_worker.py` owns remote standalone/differential execution;
   its inputs are explicit files and arguments, never interpolated source code.
@@ -279,11 +279,11 @@ uv run python -m pytest -q --tb=short --no-header -p no:warnings \
 bash scripts/run-skill-script-pyright.sh \
   skills/common/ascend-npu-run-eval/scripts/test_contract.py
 bash scripts/run-skill-script-pyright.sh \
-  skills/common/ascend-npu-run-eval/scripts/run_local_api.py
+  skills/common/ascend-npu-run-eval/scripts/run_test_local_api.py
 bash scripts/run-skill-script-pyright.sh \
   skills/common/ascend-npu-run-eval/scripts/run_test_local_worker.py
 bash scripts/run-skill-script-pyright.sh \
-  skills/common/ascend-npu-run-eval/scripts/run_remote_api.py
+  skills/common/ascend-npu-run-eval/scripts/run_test_remote_api.py
 bash scripts/run-skill-script-pyright.sh \
   skills/common/ascend-npu-run-eval/scripts/run_test_remote_worker.py
 bash scripts/run-skill-script-pyright.sh \

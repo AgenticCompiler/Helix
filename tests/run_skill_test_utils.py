@@ -10,35 +10,71 @@ from helix.skills.loader import load_operator_eval_script_module
 
 
 def load_local_test_api_module():
-    return load_operator_eval_script_module("run_local_api")
+    return load_operator_eval_script_module("run_test_local_api")
 
 
 def load_remote_api_module():
-    return load_operator_eval_script_module("run_remote_api")
+    return load_operator_eval_script_module("run_test_remote_api")
 
 
 def load_local_test_worker_module():
     return load_operator_eval_script_module("run_test_local_worker")
 
 
+def load_test_execution_module():
+    return load_operator_eval_script_module("run_test_execution")
+
+
 def load_test_contract_module():
     return load_operator_eval_script_module("test_contract")
 
 
-def load_bench_runner_module():
-    return load_operator_eval_script_module("bench_runner")
+def load_bench_modes_module():
+    return load_operator_eval_script_module("run_bench_modes")
+
+
+def load_run_bench_api_module():
+    return load_operator_eval_script_module("run_bench_api")
+
+
+def load_local_bench_api_module():
+    return load_operator_eval_script_module("run_bench_local_api")
+
+
+def load_bench_remote_api_module():
+    return load_operator_eval_script_module("run_bench_remote_api")
+
+
+def load_remote_python_bundle_module():
+    return load_operator_eval_script_module("remote_python_bundle")
+
+
+def load_probe_local_api_module():
+    return load_operator_eval_script_module("run_probe_local_api")
+
+
+def load_probe_remote_api_module():
+    return load_operator_eval_script_module("run_probe_remote_api")
 
 
 def load_perf_artifacts_module():
     return load_operator_eval_script_module("perf_artifacts")
 
 
-def load_profile_runner_module():
-    return load_operator_eval_script_module("profile_runner")
+def load_profile_execution_module():
+    return load_operator_eval_script_module("run_profile_execution")
 
 
-def load_probe_runner_module():
-    return load_operator_eval_script_module("probe_runner")
+def load_local_profile_api_module():
+    return load_operator_eval_script_module("run_profile_local_api")
+
+
+def load_remote_profile_api_module():
+    return load_operator_eval_script_module("run_profile_remote_api")
+
+
+def load_probe_execution_module():
+    return load_operator_eval_script_module("run_probe_execution")
 
 
 def load_simulator_runner_module():
@@ -53,8 +89,12 @@ def load_npu_compare_module():
     return load_operator_eval_script_module("npu_compare")
 
 
-def load_bench_runtime_module():
-    return load_operator_eval_script_module("bench_runtime")
+def load_bench_execution_module():
+    return load_operator_eval_script_module("run_bench_execution")
+
+
+def load_run_bench_execution_module():
+    return load_bench_execution_module()
 
 
 def load_profile_csv_parser_module():

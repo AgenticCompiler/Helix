@@ -1,9 +1,35 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.run_skill_test_utils import load_profile_runner_module, make_skill_result
+from tests.run_skill_test_utils import (
+    load_profile_execution_module,
+    load_local_profile_api_module,
+    load_remote_profile_api_module,
+    make_skill_result,
+)
+
+
+def _local_profile_worker_success(command, *_args, profile_dir: Path, **_kwargs):
+    result_file = Path(command[command.index("--result-file") + 1])
+    result_file.write_text(
+        json.dumps(
+            {
+                "result": {
+                    "return_code": 0,
+                    "stdout": "profile stdout\n",
+                    "stderr": "",
+                    "stalled": False,
+                    "session_id": None,
+                },
+                "profile_dir": str(profile_dir),
+            }
+        ),
+        encoding="utf-8",
+    )
+    return make_skill_result(0, "", "")
 
 
 class ProfileRunnerTests(unittest.TestCase):
@@ -11,8 +37,20 @@ class ProfileRunnerTests(unittest.TestCase):
     # local profile-bench (always torch-npu-profiler)
     # ------------------------------------------------------------------
 
+    def test_resolve_local_profile_dir_finds_nested_valid_profiler_output(self) -> None:
+        module = load_profile_execution_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outer = root / "PROF_outer"
+            nested = outer / "device-run" / "PROF_nested"
+            output = nested / "mindstudio_profiler_output"
+            output.mkdir(parents=True)
+            (output / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
+
+            self.assertEqual(module.resolve_local_profile_dir(root), nested)
+
     def test_run_local_profile_bench_uses_case_id_runtime(self) -> None:
-        module = load_profile_runner_module()
+        module = load_local_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -23,13 +61,10 @@ class ProfileRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "profile_local_torch_npu_profiler_case",
-                create=True,
-                return_value=make_skill_result(0, "profile stdout\n", ""),
-            ) as helper, patch.object(
-                module,
-                "_resolve_local_profile_dir",
-                return_value=profile_dir,
+                "run_streaming_process",
+                side_effect=lambda *args, **kwargs: _local_profile_worker_success(
+                    *args, profile_dir=profile_dir, **kwargs
+                ),
             ):
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
@@ -38,11 +73,24 @@ class ProfileRunnerTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(resolved_profile_dir, profile_dir)
-        helper.assert_called_once_with(bench_file, operator_file, "case-b")
+        self.assertEqual(resolved_profile_dir, profile_dir.resolve())
+
+    def test_run_local_profile_bench_labels_profile_timeout(self) -> None:
+        module = load_local_profile_api_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("# api-name: kernel\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with patch.object(module, "run_streaming_process", return_value=make_skill_result(1, "", "")) as run:
+                module.run_local_profile_bench(bench_file, operator_file, case_id="case-a")
+
+        self.assertEqual(run.call_args.kwargs["timeout_env_name"], "HELIX_PROFILE_TIMEOUT_SECONDS")
 
     def test_run_local_profile_bench_requires_case_id(self) -> None:
-        module = load_profile_runner_module()
+        module = load_local_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -57,7 +105,7 @@ class ProfileRunnerTests(unittest.TestCase):
                 )
 
     def test_run_local_profile_bench_ignores_kernel_name(self) -> None:
-        module = load_profile_runner_module()
+        module = load_local_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -68,13 +116,10 @@ class ProfileRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "profile_local_torch_npu_profiler_case",
-                create=True,
-                return_value=make_skill_result(0, "profile stdout\n", ""),
-            ) as helper, patch.object(
-                module,
-                "_resolve_local_profile_dir",
-                return_value=profile_dir,
+                "run_streaming_process",
+                side_effect=lambda *args, **kwargs: _local_profile_worker_success(
+                    *args, profile_dir=profile_dir, **kwargs
+                ),
             ):
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
@@ -84,11 +129,10 @@ class ProfileRunnerTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(resolved_profile_dir, profile_dir)
-        helper.assert_called_once_with(bench_file, operator_file, "case-b")
+        self.assertEqual(resolved_profile_dir, profile_dir.resolve())
 
     def test_run_local_profile_bench_with_multi_kernel_metadata(self) -> None:
-        module = load_profile_runner_module()
+        module = load_local_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -102,13 +146,10 @@ class ProfileRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "profile_local_torch_npu_profiler_case",
-                create=True,
-                return_value=make_skill_result(0, "profile stdout\n", ""),
-            ) as helper, patch.object(
-                module,
-                "_resolve_local_profile_dir",
-                return_value=profile_dir,
+                "run_streaming_process",
+                side_effect=lambda *args, **kwargs: _local_profile_worker_success(
+                    *args, profile_dir=profile_dir, **kwargs
+                ),
             ):
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
@@ -117,11 +158,10 @@ class ProfileRunnerTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(resolved_profile_dir, profile_dir)
-        helper.assert_called_once_with(bench_file, operator_file, "case-a")
+        self.assertEqual(resolved_profile_dir, profile_dir.resolve())
 
     def test_run_local_profile_bench_selects_case_by_id(self) -> None:
-        module = load_profile_runner_module()
+        module = load_local_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -147,13 +187,10 @@ def build_bench_case_fn(operator_api, case):
 
             with patch.object(
                 module,
-                "profile_local_torch_npu_profiler_case",
-                create=True,
-                return_value=make_skill_result(0, "profile stdout\n", ""),
-            ) as helper, patch.object(
-                module,
-                "_resolve_local_profile_dir",
-                return_value=profile_dir,
+                "run_streaming_process",
+                side_effect=lambda *args, **kwargs: _local_profile_worker_success(
+                    *args, profile_dir=profile_dir, **kwargs
+                ),
             ):
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
@@ -162,15 +199,14 @@ def build_bench_case_fn(operator_api, case):
                 )
 
         self.assertEqual(result["return_code"], 0)
-        self.assertEqual(resolved_profile_dir, profile_dir)
-        helper.assert_called_once_with(bench_file, operator_file, "case-b")
+        self.assertEqual(resolved_profile_dir, profile_dir.resolve())
 
     # ------------------------------------------------------------------
     # remote profile-bench (always torch-npu-profiler)
     # ------------------------------------------------------------------
 
     def test_run_remote_profile_bench_uses_case_id_runtime_helper(self) -> None:
-        module = load_profile_runner_module()
+        module = load_remote_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -195,7 +231,22 @@ def build_bench_case_fn(operator_api, case):
             ) as remote_run, patch.object(
                 module,
                 "run_remote_command_buffered",
-                return_value=make_skill_result(0, "PROF_remote\n", ""),
+                return_value=make_skill_result(
+                    0,
+                    json.dumps(
+                        {
+                            "result": {
+                                "return_code": 0,
+                                "stdout": "profile stdout\n",
+                                "stderr": "",
+                                "stalled": False,
+                                "session_id": None,
+                            },
+                            "profile_name": "PROF_remote",
+                        }
+                    ),
+                    "",
+                ),
             ), patch.object(
                 module,
                 "copy_directory_from_remote",
@@ -214,11 +265,12 @@ def build_bench_case_fn(operator_api, case):
         self.assertEqual(resolved_profile_dir, copied_profile_dir)
         self.assertEqual(remote_workspace, "/tmp/remote-profile")
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
-        self.assertIn("bench_runtime.py", copy_targets)
+        self.assertIn("run_bench_execution.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
-        self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("profile_bench_case_quick", remote_command[2])
-        self.assertEqual(remote_command[3:], ["bench_kernel.py", "kernel.py", "case-b"])
+        self.assertEqual(remote_command[0:2], ["python3", "run_profile_remote_worker.py"])
+        self.assertIn("--case-id", remote_command)
+        self.assertIn("case-b", remote_command)
+        self.assertEqual(remote_run.call_args.kwargs["timeout_env_name"], "HELIX_PROFILE_TIMEOUT_SECONDS")
         copy_back.assert_called_once_with(
             "spec",
             "/tmp/remote-profile/PROF_remote",
@@ -228,8 +280,22 @@ def build_bench_case_fn(operator_api, case):
         )
         cleanup.assert_not_called()
 
+    def test_remote_profile_payload_ignores_remote_shell_preamble(self) -> None:
+        module = load_remote_profile_api_module()
+        payload = {
+            "result": {"return_code": 0, "stdout": "", "stderr": "", "stalled": False, "session_id": None},
+            "profile_name": "PROF_remote",
+        }
+
+        result, profile_name = module._read_payload(
+            make_skill_result(0, "The environment has been set\n" + json.dumps(payload) + "\n", "")
+        )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(profile_name, "PROF_remote")
+
     def test_run_remote_profile_bench_selects_case_and_ignores_kernel_name(self) -> None:
-        module = load_profile_runner_module()
+        module = load_remote_profile_api_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
@@ -258,7 +324,16 @@ def build_bench_case_fn(operator_api, case):
             ) as remote_run, patch.object(
                 module,
                 "run_remote_command_buffered",
-                return_value=make_skill_result(0, "PROF_remote\n", ""),
+                return_value=make_skill_result(
+                    0,
+                    json.dumps(
+                        {
+                            "result": {"return_code": 0, "stdout": "", "stderr": "", "stalled": False, "session_id": None},
+                            "profile_name": "PROF_remote",
+                        }
+                    ),
+                    "",
+                ),
             ), patch.object(
                 module,
                 "copy_directory_from_remote",
@@ -278,7 +353,6 @@ def build_bench_case_fn(operator_api, case):
         self.assertEqual(resolved_profile_dir, copied_profile_dir)
         self.assertEqual(remote_workspace, "/tmp/remote-profile")
         remote_command = remote_run.call_args.args[2]
-        self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("profile_bench_case_quick", remote_command[2])
-        self.assertEqual(remote_command[3:], ["bench_kernel.py", "kernel.py", "case-b"])
+        self.assertEqual(remote_command[0:2], ["python3", "run_profile_remote_worker.py"])
+        self.assertIn("case-b", remote_command)
         cleanup.assert_not_called()

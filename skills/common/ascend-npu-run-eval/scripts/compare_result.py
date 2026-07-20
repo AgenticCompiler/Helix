@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import importlib.util
 import os
 from collections.abc import Mapping
-from functools import lru_cache
 from pathlib import Path
-import sys
-from types import ModuleType
 from typing import Any, TextIO, cast
 
 from env_registry import (
@@ -16,6 +12,8 @@ from env_registry import (
     HELIX_DTYPE_CLOSE_ATOL,
     HELIX_DTYPE_CLOSE_RTOL,
 )
+import npu_compare
+import run_runtime
 
 
 def main() -> int:
@@ -31,48 +29,12 @@ def main() -> int:
     return compare_result_files(args.ref_result, args.new_result, accuracy_mode=args.accuracy_mode)
 
 
-@lru_cache(maxsize=1)
-def _load_npu_compare_module() -> ModuleType:
-    return _load_sibling_module("npu_compare.py", "compare_result_npu_compare")
-
-
-@lru_cache(maxsize=1)
-def _load_run_runtime_module() -> ModuleType:
-    return _load_sibling_module("run_runtime.py", "compare_result_run_runtime")
-
-
-def _load_sibling_module(filename: str, module_name: str) -> ModuleType:
-    module_path = Path(__file__).resolve().with_name(filename)
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load module from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    scripts_root = str(module_path.parent)
-    added = False
-    if scripts_root not in sys.path:
-        sys.path.insert(0, scripts_root)
-        added = True
-    previous_module = sys.modules.get(spec.name)
-    sys.modules[spec.name] = module
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        if previous_module is None:
-            sys.modules.pop(spec.name, None)
-        else:
-            sys.modules[spec.name] = previous_module
-        if added:
-            sys.path.remove(scripts_root)
-    return module
-
-
 def compare_result_payload_objects(
     ref_payload: object,
     new_payload: object,
     *,
     accuracy_mode: str | None = None,
 ) -> int:
-    npu_compare = _load_npu_compare_module()
     compare_result_payloads = getattr(npu_compare, "compare_result_payloads")
     format_artifact_compare_result = getattr(npu_compare, "format_artifact_compare_result")
     result = compare_result_payloads(
@@ -107,7 +69,6 @@ def compare_remote_result_files(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> int:
-    run_runtime = _load_run_runtime_module()
     cleanup_remote_workspace = getattr(run_runtime, "cleanup_remote_workspace")
     copy_file_to_remote = getattr(run_runtime, "copy_file_to_remote")
     copy_npu_compare_runtime_to_remote = getattr(run_runtime, "copy_npu_compare_runtime_to_remote")

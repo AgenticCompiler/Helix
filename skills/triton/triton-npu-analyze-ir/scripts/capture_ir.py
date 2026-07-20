@@ -478,7 +478,7 @@ def build_execution_command(
     if bench_file.parent != operator_file.parent:
         operator_arg = os.path.relpath(operator_file, bench_file.parent)
     interpreter = sys.executable if python_executable is None else python_executable
-    helper_script = _bench_runtime_script_path() if python_executable is None else Path("bench_runtime.py")
+    helper_script = _run_bench_execution_script_path() if python_executable is None else Path("run_bench_execution.py")
     return [
         interpreter,
         str(helper_script),
@@ -527,7 +527,7 @@ def _stage_required_files(
         verbose=verbose,
         stderr=stderr,
     )
-    for helper_path in _bench_runtime_support_paths():
+    for helper_path in _run_bench_execution_bundle_paths():
         copy_file_to_remote(
             spec,
             helper_path,
@@ -561,20 +561,20 @@ def _find_common_skill_script(skill_name: str, script_name: str) -> Path:
     )
 
 
-def _bench_runtime_script_path() -> Path:
-    return _find_common_skill_script("ascend-npu-run-eval", "bench_runtime.py")
+def _run_bench_execution_script_path() -> Path:
+    return _find_common_skill_script("ascend-npu-run-eval", "run_bench_execution.py")
 
 
-def _bench_runtime_support_paths() -> list[Path]:
-    runtime = _load_bench_runtime_module()
-    return list(runtime.runtime_support_paths())
+def _run_bench_execution_bundle_paths() -> list[Path]:
+    bundle_module = _load_run_eval_script_module("remote_python_bundle.py")
+    return list(bundle_module.resolve_remote_python_bundle([_run_bench_execution_script_path()]))
 
 
-def _load_bench_runtime_module() -> Any:
-    script_path = _bench_runtime_script_path()
-    spec = importlib.util.spec_from_file_location("capture_ir_bench_runtime", script_path)
+def _load_run_eval_script_module(script_name: str) -> Any:
+    script_path = _find_common_skill_script("ascend-npu-run-eval", script_name)
+    spec = importlib.util.spec_from_file_location(f"capture_ir_{script_path.stem}", script_path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load bench runtime helper: {script_path}")
+        raise ImportError(f"Unable to load run-eval helper: {script_path}")
     module = importlib.util.module_from_spec(spec)
     script_dir = str(script_path.parent)
     added_path = False
