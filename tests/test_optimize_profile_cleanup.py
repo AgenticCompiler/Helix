@@ -7,7 +7,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from helix.optimize import checks as optimize_checks
+from helix.skill_bridges import optimize_state
 from helix.optimize.session_artifacts import OptimizeSessionArtifactsManager
 
 
@@ -125,7 +125,7 @@ class OptimizeProfileCleanupTests(unittest.TestCase):
             (workdir / "PROF_workspace_root").mkdir()
             (workdir / "OPPROF_workspace_root").mkdir()
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(

@@ -5,51 +5,13 @@ import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Protocol, cast
+from typing import cast
 
-from helix.optimize.baseline import baseline_dir, load_baseline_state
+from helix.optimize.baseline import baseline_dir
 from helix.optimize.batch import resolve_batch_optimize_operator_file
 from helix.optimize.models import RoundState
-from helix.optimize.round_contract import load_round_state
 from helix.status.models import OptimizeStatusRound, OptimizeStatusWorkspace
-from helix.skills.loader import load_operator_eval_script_module
-
-
-class BenchPerfParserModule(Protocol):
-    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
-
-    def parse_required_perf_file(
-        self,
-        path: Path,
-        required_latency_ids: Iterable[str],
-    ) -> dict[str, float]: ...
-
-    def parse_perf_file_for_metric_source(
-        self,
-        path: Path,
-        *,
-        metric_source: str = "auto",
-    ) -> dict[str, float]: ...
-
-    def parse_required_perf_file_for_metric_source(
-        self,
-        path: Path,
-        required_latency_ids: Iterable[str],
-        *,
-        metric_source: str = "auto",
-    ) -> dict[str, float]: ...
-
-    def parse_perf_pair_for_comparison(
-        self,
-        baseline_perf: Path,
-        compare_perf: Path,
-        *,
-        metric_source: str = "auto",
-    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
-
-
-def _load_bench_perf_parser() -> BenchPerfParserModule:
-    return cast(BenchPerfParserModule, load_operator_eval_script_module("perf_artifacts"))
+from helix.skill_bridges import optimize_state, run_eval_comparison
 
 
 def inspect_optimize_status_workspace(
@@ -85,7 +47,7 @@ def inspect_optimize_status_workspace(
     has_any_baseline_values = False
     if baseline_path is not None:
         try:
-            _load_bench_perf_parser().parse_perf_file(baseline_path)
+            run_eval_comparison.parse_perf_file(baseline_path)
             has_any_baseline_values = True
         except ValueError as exc:
             warnings.append(str(exc))
@@ -322,7 +284,7 @@ def _optional_float(value: object) -> float | None:
 
 def resolve_declared_baseline_perf_file(workspace: Path) -> tuple[Path | None, str | None, bool]:
     try:
-        baseline_state = load_baseline_state(workspace)
+        baseline_state = optimize_state.load_baseline_state(workspace)
     except ValueError:
         return None, None, False
 
@@ -413,7 +375,7 @@ def _load_comparable_round_state(round_dir: Path) -> tuple[RoundState | None, st
     if not state_path.is_file():
         return None, f"skipping {round_dir.name} because round-state.json is missing"
     try:
-        state = load_round_state(round_dir)
+        state = optimize_state.load_round_state(round_dir)
     except ValueError as exc:
         return None, f"skipping {round_dir.name} because round-state.json is invalid: {exc}"
     if state.correctness_status != "passed":
@@ -451,10 +413,9 @@ def _parse_baseline_values_for_metric_source(
 ) -> dict[str, float]:
     if baseline_path is None:
         raise ValueError("missing baseline perf data")
-    parser = _load_bench_perf_parser()
     if metric_source == "auto":
-        return parser.parse_perf_file(baseline_path)
-    return parser.parse_perf_file_for_metric_source(
+        return run_eval_comparison.parse_perf_file(baseline_path)
+    return run_eval_comparison.parse_perf_file_for_metric_source(
         baseline_path,
         metric_source=metric_source,
     )
@@ -469,9 +430,8 @@ def _parse_perf_pair_for_metric_source(
 ) -> tuple[dict[str, float], dict[str, float]]:
     if baseline_path is None:
         raise ValueError("missing baseline perf data")
-    parser = _load_bench_perf_parser()
     if metric_source == "auto":
-        baseline_values, round_values, _comparison_modes = parser.parse_perf_pair_for_comparison(
+        baseline_values, round_values, _comparison_modes = run_eval_comparison.parse_perf_pair_for_comparison(
             baseline_path,
             perf_path,
             metric_source=metric_source,
@@ -498,10 +458,9 @@ def _parse_round_values_for_metric_source(
     *,
     metric_source: str,
 ) -> dict[str, float]:
-    parser = _load_bench_perf_parser()
     if metric_source == "auto":
-        return parser.parse_required_perf_file(perf_path, baseline_values)
-    return parser.parse_required_perf_file_for_metric_source(
+        return run_eval_comparison.parse_required_perf_file(perf_path, baseline_values)
+    return run_eval_comparison.parse_required_perf_file_for_metric_source(
         perf_path,
         baseline_values,
         metric_source=metric_source,

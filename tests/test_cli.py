@@ -4455,7 +4455,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("helix.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("helix.skill_bridges.run_eval_test._api", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -4467,7 +4467,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked_loader.assert_called_with("run_test_api")
+            self.assertGreaterEqual(mocked_loader.call_count, 1)
 
     def test_main_gen_test_differential_uses_differential_default_output_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -6216,7 +6216,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("helix.eval.runners.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
+            with patch("helix.skill_bridges.run_eval_bench._api", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",
@@ -6228,7 +6228,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked_loader.assert_called_with("run_bench_api")
+            mocked_loader.assert_called_once()
 
     def test_main_run_bench_uses_remote_runner_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

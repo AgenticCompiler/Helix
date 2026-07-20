@@ -2,12 +2,13 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from helix.optimize.round_contract import inspect_round_artifacts, load_round_state
+from helix.skill_bridges.optimize_state import inspect_round_artifacts, load_round_state
 from helix.skills.loader import load_skill_script_module
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -101,10 +102,10 @@ class OptimizeRoundContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertEqual(load_round_state(round_dir), module.load_round_state(round_dir))
+            self.assertEqual(asdict(load_round_state(round_dir)), asdict(module.load_round_state(round_dir)))
             self.assertEqual(
-                inspect_round_artifacts(round_dir),
-                module.inspect_round_artifacts(round_dir),
+                asdict(inspect_round_artifacts(round_dir)),
+                asdict(module.inspect_round_artifacts(round_dir)),
             )
 
     def test_load_round_state_requires_core_fields(self) -> None:

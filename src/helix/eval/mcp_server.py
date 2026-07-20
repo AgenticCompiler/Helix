@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 from helix.batch.affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
-from helix.skills.loader import operator_eval_script_path
+from helix.skill_bridges.run_eval_cli import cli_script_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -456,7 +456,7 @@ def _run_subcommand(
     leased_device: str | None,
     workspace: Path,
 ) -> dict[str, object]:
-    run_eval_cli = operator_eval_script_path("cli")
+    run_eval_cli = cli_script_path()
     command = [sys.executable, str(run_eval_cli), subcommand, *arguments]
     env = dict(os.environ)
     if leased_device is not None:

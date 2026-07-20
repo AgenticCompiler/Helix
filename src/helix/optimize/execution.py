@@ -8,16 +8,9 @@ from typing import Any, TextIO, cast
 
 from helix.backends.base import AgentRunner
 from helix.models import AgentRequest, AgentResult, CommandKind
-from helix.optimize.checks import (
-    best_completed_round_geomean_speedup,
-    check_baseline,
-    check_round,
-    count_completed_round_directories,
-    count_terminal_round_directories,
-)
 from helix.optimize.recovery import build_optimize_progress_probe
 from helix.prompts import append_additional_user_instructions, build_prompt
-from helix.skills.loader import load_skill_script_module
+from helix.skill_bridges import optimize_state
 from helix.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
@@ -73,12 +66,8 @@ def _request_user_prompt(request: AgentRequest) -> str | None:
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:
-    module = load_skill_script_module(
-        "ascend-npu-optimize-state",
-        "round/check",
-    )
     round_dirs = sorted(
-        cast(tuple[Path, ...], module.iter_terminal_round_directories(workdir)),
+        optimize_state.iter_terminal_round_directories(workdir),
         key=lambda path: _round_sort_key(path.name),
     )
     if not round_dirs:
@@ -267,7 +256,7 @@ class MultiInvocationOptimizeController:
                 state=BaselinePreflightState.NEEDS_PREPARE,
                 issues=("baseline/ directory does not exist",),
             )
-        check_result = check_baseline(baseline_dir)
+        check_result = optimize_state.check_baseline(baseline_dir)
         if check_result.status == "pass":
             return BaselinePreflightResult(
                 state=BaselinePreflightState.READY,
@@ -572,7 +561,7 @@ class MultiInvocationOptimizeController:
                 status = "fail"
             else:
                 if request.min_speedup is not None:
-                    check_result = check_round(
+                    check_result = optimize_state.check_round(
                         round_dir,
                         current_round=round_number,
                         final_round=batch_end,
@@ -580,7 +569,7 @@ class MultiInvocationOptimizeController:
                         min_speedup=request.min_speedup,
                     )
                 else:
-                    check_result = check_round(
+                    check_result = optimize_state.check_round(
                         round_dir,
                         current_round=round_number,
                         final_round=batch_end,
@@ -849,9 +838,9 @@ class MultiInvocationOptimizeController:
 
     def _load_session_progress(self, workdir: Path) -> _SessionProgress:
         return _SessionProgress(
-            terminal_round_count=count_terminal_round_directories(workdir),
-            completed_round_count=count_completed_round_directories(workdir),
-            best_speedup=best_completed_round_geomean_speedup(workdir),
+            terminal_round_count=optimize_state.count_terminal_round_directories(workdir),
+            completed_round_count=optimize_state.count_completed_round_directories(workdir),
+            best_speedup=optimize_state.best_completed_round_geomean_speedup(workdir),
         )
 
     def _speedup_target_met(self, request: AgentRequest, best_speedup: float | None) -> bool:

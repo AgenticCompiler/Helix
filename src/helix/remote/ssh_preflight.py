@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import locale
 import subprocess
-from typing import Protocol, TypedDict, cast
+from typing import TypedDict
 
-from helix.skills.loader import load_operator_eval_script_module
+from helix.skill_bridges.run_eval_remote import parse_remote_spec
 
 
 class RemoteSpec(TypedDict):
     user_host: str
     port: int | None
-
-
-class RunRuntimeModule(Protocol):
-    def parse_remote_spec(self, raw: str) -> RemoteSpec: ...
 
 
 _AUTH_FAILURE_MARKERS = (
@@ -27,8 +23,7 @@ _PRECHECK_TIMEOUT_SECONDS = 10
 
 
 def _parse_remote_spec(remote: str) -> RemoteSpec:
-    module = cast(RunRuntimeModule, load_operator_eval_script_module("run_runtime"))
-    return module.parse_remote_spec(remote)
+    return parse_remote_spec(remote)
 
 
 def build_remote_ssh_preflight_command(remote: str) -> list[str]:

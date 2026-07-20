@@ -14,18 +14,15 @@ from helix.cli import build_parser
 import helix.commands.comparison as comparison_module
 from helix.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
 from helix.remote.env import remote_target_env_name, remote_workdir_env_name
-from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
+from tests.run_skill_test_utils import load_perf_artifacts_module
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
     def test_package_bridge_module_is_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("helix.comparison"))
 
-    def test_load_compare_result_reuses_compare_module(self) -> None:
-        self.assertIs(comparison_module._load_compare_result(), load_compare_result_module())
-
-    def test_load_compare_perf_reuses_perf_artifacts_module(self) -> None:
-        self.assertIs(comparison_module._load_compare_perf(), load_perf_artifacts_module())
+    def test_comparison_commands_use_skill_bridge(self) -> None:
+        self.assertIsNotNone(comparison_module.run_eval_comparison)
 
     def test_compare_perf_files_runs_via_skill_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -101,11 +98,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         )
 
     def test_compare_perf_files_forwards_skip_latency_errors_flag(self) -> None:
-        module = comparison_module._load_compare_perf()
         baseline = Path("/tmp/baseline_perf.txt")
         compare = Path("/tmp/candidate_perf.txt")
 
-        with patch.object(module, "compare_perf_files", return_value=1) as mocked:
+        with patch.object(comparison_module.run_eval_comparison, "compare_perf_files", return_value=1) as mocked:
             exit_code = comparison_module.compare_perf_files(
                 baseline,
                 compare,
@@ -121,11 +117,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         )
 
     def test_compare_perf_files_forwards_metric_source_flag(self) -> None:
-        module = comparison_module._load_compare_perf()
         baseline = Path("/tmp/baseline_perf.txt")
         compare = Path("/tmp/candidate_perf.txt")
 
-        with patch.object(module, "compare_perf_files", return_value=1) as mocked:
+        with patch.object(comparison_module.run_eval_comparison, "compare_perf_files", return_value=1) as mocked:
             exit_code = comparison_module.compare_perf_files(
                 baseline,
                 compare,
@@ -141,11 +136,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         )
 
     def test_compare_perf_files_forwards_metric_source_all_flag(self) -> None:
-        module = comparison_module._load_compare_perf()
         baseline = Path("/tmp/baseline_perf.txt")
         compare = Path("/tmp/candidate_perf.txt")
 
-        with patch.object(module, "compare_perf_files", return_value=1) as mocked:
+        with patch.object(comparison_module.run_eval_comparison, "compare_perf_files", return_value=1) as mocked:
             exit_code = comparison_module.compare_perf_files(
                 baseline,
                 compare,
@@ -161,11 +155,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         )
 
     def test_compare_result_files_runs_via_skill_wrapper(self) -> None:
-        module = comparison_module._load_compare_result()
         oracle = Path("/tmp/oracle.pt")
         new = Path("/tmp/new.pt")
 
-        with patch.object(module, "compare_result_files", return_value=0) as mocked:
+        with patch.object(comparison_module.run_eval_comparison, "compare_result_files", return_value=0) as mocked:
             exit_code = comparison_module.compare_result_files(
                 oracle,
                 new,
@@ -176,11 +169,10 @@ class PerfArtifactsStructureTests(unittest.TestCase):
         mocked.assert_called_once_with(oracle, new, accuracy_mode="dtype-close")
 
     def test_compare_remote_result_files_runs_via_skill_wrapper(self) -> None:
-        module = comparison_module._load_compare_result()
         oracle = Path("/tmp/oracle.pt")
         new = Path("/tmp/new.pt")
 
-        with patch.object(module, "compare_remote_result_files", return_value=0) as mocked:
+        with patch.object(comparison_module.run_eval_comparison, "compare_remote_result_files", return_value=0) as mocked:
             exit_code = comparison_module.compare_remote_result_files(
                 oracle,
                 new,

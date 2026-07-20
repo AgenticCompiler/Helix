@@ -2,11 +2,12 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from helix.optimize.baseline import (
+from helix.skill_bridges.optimize_state import (
     baseline_gate_issues,
     inspect_baseline_artifacts,
     load_baseline_state,
@@ -46,10 +47,13 @@ class OptimizeBaselineTests(unittest.TestCase):
             (baseline_dir / "perf.txt").write_text("latency-0: 1.0\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
-            self.assertEqual(load_baseline_state(workspace), module.load_baseline_state(workspace))
             self.assertEqual(
-                inspect_baseline_artifacts(workspace),
-                module.inspect_baseline_artifacts(workspace),
+                asdict(load_baseline_state(workspace)),
+                asdict(module.load_baseline_state(workspace)),
+            )
+            self.assertEqual(
+                asdict(inspect_baseline_artifacts(workspace)),
+                asdict(module.inspect_baseline_artifacts(workspace)),
             )
             self.assertEqual(baseline_gate_issues(workspace), module.baseline_gate_issues(workspace))
 
