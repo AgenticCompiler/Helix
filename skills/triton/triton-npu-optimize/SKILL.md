@@ -39,6 +39,12 @@ Optimize target modes:
 - After the first canonical `run-bench` plus `compare-perf` conclusion for that attempt, stop editing the current round.
 - record the round outcome
 
+## Triton Cache
+
+- The runner assigns each Triton optimize session a private `TRITON_CACHE_DIR` and already sets `TRITON_ALWAYS_COMPILE=1` for evaluation work.
+- Do not read, write, or delete `~/.triton` or another session's cache directory.
+- You may clear only the assigned cache directory, and only while no evaluation subprocess is running.
+
 ## Stage 0: Baseline Setup
 
 - Reuse the existing `baseline/` only when it remains canonical for the current operator workspace.

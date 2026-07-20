@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional, cast
 
@@ -63,6 +64,7 @@ def run_local_test(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     maybe_print_visible_devices()
@@ -80,6 +82,7 @@ def run_local_test(
             ),
             test_file,
             accuracy_mode=accuracy_mode,
+            extra_env=extra_env,
             verbose=verbose,
         )
         if not result_succeeded(runner_result):
@@ -96,6 +99,7 @@ def run_local_test_case_payload(
     *,
     case_id: str,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, object | None]:
     maybe_print_visible_devices()
@@ -113,6 +117,7 @@ def run_local_test_case_payload(
             ),
             test_file,
             accuracy_mode=accuracy_mode,
+            extra_env=extra_env,
             verbose=verbose,
         )
         if not result_succeeded(runner_result):
@@ -139,6 +144,7 @@ def _run_local_worker_process(
     test_file: Path,
     *,
     accuracy_mode: str | None,
+    extra_env: Mapping[str, str] | None,
     verbose: bool,
 ) -> ResultPayload:
     run_process = run_streaming_process if verbose else run_buffered_process
@@ -146,7 +152,7 @@ def _run_local_worker_process(
         command,
         str(test_file.resolve().parent),
         stall_timeout_seconds=0,
-        extra_env=run_test_accuracy_env(accuracy_mode),
+        extra_env={**run_test_accuracy_env(accuracy_mode), **(extra_env or {})},
         timeout_seconds=eval_timeout_seconds(),
     )
 

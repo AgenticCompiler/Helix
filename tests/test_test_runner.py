@@ -690,6 +690,52 @@ def main(operator_api):
             {"HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close"},
         )
 
+    def test_run_local_test_merges_workflow_extra_env(self) -> None:
+        module = load_local_test_api_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            observed_env: Optional[dict[str, str]] = None
+            fake_result = {
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "worker stopped before payload",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            def fake_run_buffered_process(
+                _command: list[str],
+                _workdir: str,
+                stall_timeout_seconds: int,
+                extra_env: Optional[dict[str, str]] = None,
+                *,
+                timeout_seconds: Optional[float] = None,
+            ) -> dict[str, object]:
+                self.assertEqual(stall_timeout_seconds, 0)
+                self.assertEqual(timeout_seconds, 300)
+                nonlocal observed_env
+                observed_env = extra_env
+                return fake_result
+
+            with patch.object(module, "run_buffered_process", side_effect=fake_run_buffered_process):
+                result, archived = module.run_local_test(
+                    test_file,
+                    operator,
+                    "standalone",
+                    extra_env={"TRITON_CACHE_DIR": "/tmp/private-cache", "TRITON_ALWAYS_COMPILE": "1"},
+                )
+
+        self.assertEqual(result, fake_result)
+        self.assertIsNone(archived)
+        self.assertEqual(
+            observed_env,
+            {"TRITON_CACHE_DIR": "/tmp/private-cache", "TRITON_ALWAYS_COMPILE": "1"},
+        )
+
     def test_run_local_test_reports_missing_differential_hooks_without_legacy_fallback(self) -> None:
         module = load_local_test_api_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1075,6 +1121,48 @@ def main(operator_api):
                 "HELIX_RUN_TEST_ACCURACY_MODE": "dtype-close",
                 "HELIX_RUN_TEST_ATOL": "0",
                 "HELIX_RUN_TEST_RTOL": "0.01",
+            },
+        )
+
+    def test_run_remote_test_forwards_workflow_isolation_signal(self) -> None:
+        module = load_remote_api_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            fake_result = {
+                "return_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=({"user_host": "user@host", "port": None}, "/tmp/remote"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=fake_result,
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                module.run_remote_test(
+                    test_file,
+                    operator,
+                    "standalone",
+                    "user@host",
+                    None,
+                    extra_env={"HELIX_REMOTE_TRITON_CACHE": "1", "TRITON_CACHE_DIR": "/local/cache"},
+                )
+
+        self.assertEqual(
+            remote_run.call_args.kwargs["extra_env"],
+            {
+                "TRITON_ALWAYS_COMPILE": "1",
+                "HELIX_REMOTE_TRITON_CACHE": "1",
+                "TRITON_CACHE_DIR": "/local/cache",
             },
         )
 

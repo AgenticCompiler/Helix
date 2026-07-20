@@ -41,6 +41,7 @@ from helix.trace.core import (
     append_trace_event,
 )
 from helix.terminal.verbose import emit_verbose, emit_verbose_lines
+from helix.eval.triton_runtime import triton_runtime_env, triton_runtime_prompt
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
@@ -731,6 +732,8 @@ class MultiInvocationOptimizeController:
         run_id = self._artifacts_state.archive.run_id
         launch_label = show_output_label or "run"
         env = dict(request.extra_env or {})
+        if self._artifacts_state.triton_runtime is not None:
+            env = triton_runtime_env(self._artifacts_state.triton_runtime, env)
         env[TRACE_RUN_ID_ENV] = run_id
         env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
         if request.log_tools:
@@ -739,6 +742,11 @@ class MultiInvocationOptimizeController:
             request,
             run_id=run_id,
             extra_env=env,
+            prompt=(
+                request.prompt
+                if self._artifacts_state.triton_runtime is None
+                else f"{request.prompt}\n\n{triton_runtime_prompt(self._artifacts_state.triton_runtime)}"
+            ),
             show_output_label=show_output_label,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )

@@ -238,7 +238,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             mock_upload.assert_called_once()
             mock_report.assert_called_once_with(
                 workspace=workspace.resolve(),
-                agent_name="codex",
+                agent_name="opencode",
                 show_output=True,
             )
 

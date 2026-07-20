@@ -66,6 +66,35 @@ class CliParserTests(unittest.TestCase):
     def test_command_definitions_cover_every_command_kind(self) -> None:
         self.assertEqual(set(cli_module._COMMAND_SPECS), set(CommandKind))
 
+    def test_all_agent_commands_default_to_opencode(self) -> None:
+        parser = build_parser()
+        inputs = {
+            "gen-eval": "kernel.py",
+            "gen-eval-batch": "kernels",
+            "convert": "kernel.py",
+            "convert-batch": "kernels",
+            "gen-test": "kernel.py",
+            "gen-bench": "kernel.py",
+            "log-check": "workspace",
+            "log-check-batch": "workspaces",
+            "optimize": "kernel.py",
+            "optimize-batch": "kernels",
+            "distill": "workspaces",
+            "report": "workspace",
+            "report-batch": "workspaces",
+        }
+        agent_commands = {
+            command_kind.value
+            for command_kind, spec in cli_module._COMMAND_SPECS.items()
+            if spec.has_agent
+        }
+
+        self.assertEqual(agent_commands, set(inputs))
+        for command in agent_commands:
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", inputs[command]])
+                self.assertEqual(args.agent, "opencode")
+
     def test_gen_eval_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
@@ -74,7 +103,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
         self.assertEqual(args.bench_mode, "torch-npu-profiler")
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
 
@@ -228,7 +257,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL)
         self.assertEqual(args.test_mode, "differential")
         self.assertEqual(args.bench_mode, "torch-npu-profiler")
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(args.interact)
 
     def test_gen_eval_accepts_user_prompt(self) -> None:
@@ -359,7 +388,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.CONVERT)
         self.assertEqual(args.test_mode, "differential")
         self.assertFalse(hasattr(args, "bench_mode"))
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(args.interact)
 
     def test_convert_batch_maps_to_command_kind(self) -> None:
@@ -369,7 +398,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.CONVERT_BATCH)
         self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
 
@@ -451,7 +480,7 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-test", "-i", "kernel.py"])
         self.assertEqual(args.command, "gen-test")
         self.assertEqual(args.command_kind, CommandKind.GEN_TEST)
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(args.interact)
 
     def test_gen_eval_batch_accepts_user_prompt(self) -> None:
@@ -630,7 +659,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertIn("convert-batch", help_text)
         self.assertIn("Examples:", help_text)
         self.assertIn("helix gen-test -i kernel.py", help_text)
-        self.assertIn("helix optimize -i kernel.py --agent codex", help_text)
+        self.assertIn("helix optimize -i kernel.py -l triton", help_text)
         self.assertIn("helix verify -i .", help_text)
         self.assertIn("helix status -i .", help_text)
 
@@ -2038,7 +2067,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_BATCH)
         self.assertEqual(args.concurrency, 1)
-        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.agent, "opencode")
         self.assertFalse(hasattr(args, "interact"))
         self.assertTrue(args.stream_output)
 

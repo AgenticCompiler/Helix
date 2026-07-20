@@ -292,8 +292,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
             self.assertIsNone(state_without_hooks.workflow_state_path)
             self.assertFalse((workdir / ".helix").exists())
+            assert state_without_hooks.triton_runtime is not None
+            self.assertTrue(state_without_hooks.triton_runtime.cache_dir.exists())
             warnings = manager.cleanup_checked_session(state_without_hooks)
             self.assertEqual(warnings, [])
+            self.assertFalse((workdir / ".helix-triton-cache").exists())
 
             state_with_hooks = manager.prepare_checked_session(
                 workdir,
@@ -308,6 +311,21 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_checked_session(state_with_hooks)
             self.assertEqual(warnings, [])
             self.assertFalse((workdir / ".helix").exists())
+
+    def test_prepare_checked_session_skips_triton_runtime_for_tilelang(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = OptimizeSessionArtifactsManager()
+
+            state = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                language="tilelang",
+            )
+
+            self.assertIsNone(state.triton_runtime)
+            self.assertFalse((workdir / ".helix-triton-cache").exists())
+            self.assertEqual(manager.cleanup_checked_session(state), [])
 
     def test_prepare_checked_session_rebuilds_state_from_resumable_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

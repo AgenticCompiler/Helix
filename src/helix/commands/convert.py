@@ -10,6 +10,7 @@ from helix.commands.input_resolution import resolve_single_operator_input
 from helix.convert.batch import resolve_batch_convert_operator_file, run_convert_batch
 from helix.convert.models import ConvertOptions
 from helix.convert.orchestration import build_convert_request, run_convert_request
+from helix.convert.orchestration import prepare_convert_triton_cache_request
 from helix.convert.outputs import prepare_convert_target
 from helix.eval.runners import (
     parse_test_metadata,
@@ -22,6 +23,7 @@ from helix.batch.affinity import resolve_batch_concurrency
 from helix.terminal.render import render_result
 from helix.paths import default_generated_output_path
 from helix.terminal.verbose import emit_verbose_lines
+from helix.eval.triton_runtime import cleanup_triton_runtime_session
 
 _MAX_CONVERT_AGENT_ATTEMPTS = 2
 
@@ -77,6 +79,7 @@ def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.exit(2, f"{exc}\n")
     if options.verbose:
         emit_verbose_lines(sys.stderr, "files", file_messages)
+    request, triton_cache = prepare_convert_triton_cache_request(request)
     try:
         loop_result = _run_convert_with_verification_loop(request)
     except FileNotFoundError as exc:
@@ -84,6 +87,10 @@ def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
+    finally:
+        if triton_cache is not None:
+            for warning in cleanup_triton_runtime_session(triton_cache):
+                print(f"Warning: {warning}", file=sys.stderr)
     render_result(loop_result.agent_result, skip_stdout=request.stream_output)
     if loop_result.validation_summary is not None:
         print(loop_result.validation_summary, file=sys.stderr)
@@ -207,6 +214,7 @@ def _verify_converted_output(
             converted_output,
             request.remote,
             request.remote_workdir,
+            extra_env=request.extra_env,
             verbose=request.verbose,
             stderr=sys.stderr,
         )
@@ -456,6 +464,7 @@ def _run_convert_validation_test(
                 test_mode,
                 request.remote,
                 request.remote_workdir,
+                extra_env=request.extra_env,
                 keep_remote_workdir=False,
                 verbose=request.verbose,
                 stderr=sys.stderr,
@@ -465,6 +474,7 @@ def _run_convert_validation_test(
                 test_file,
                 operator_file,
                 test_mode,
+                extra_env=request.extra_env,
                 verbose=request.verbose,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:

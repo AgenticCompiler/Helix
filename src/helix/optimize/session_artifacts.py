@@ -13,6 +13,11 @@ from helix.optimize.workflow_state import (
     prepare_or_restore_optimize_workflow_state,
 )
 from helix.optimize.subagents import SubagentManager, SubagentStageSet
+from helix.eval.triton_runtime import (
+    TritonRuntimeSession,
+    cleanup_triton_runtime_session,
+    prepare_triton_runtime_session,
+)
 
 
 @dataclass
@@ -21,6 +26,7 @@ class OptimizeSessionArtifactsState:
 
     memory_file: MemoryFileState
     archive: ArchiveState
+    triton_runtime: TritonRuntimeSession | None = None
     subagent_stage_set: SubagentStageSet | None = None
 
     hidden_helix_dir: Path | None = None
@@ -116,15 +122,21 @@ class OptimizeSessionArtifactsManager:
                 state_path=workflow_state_path,
                 run_id=archive_state.run_id,
             )
-        subagent_stage_set = self._prepare_subagents(
-            agent_name=agent_name,
-            workdir=workdir,
+        triton_runtime = self._prepare_triton_runtime(
+            workdir,
+            run_id=archive_state.run_id,
             language=language,
-            optimize_target=optimize_target,
-            enable_cann_ext_api=enable_cann_ext_api,
-            enable_subagent=enable_subagent,
         )
+        subagent_stage_set: SubagentStageSet | None = None
         try:
+            subagent_stage_set = self._prepare_subagents(
+                agent_name=agent_name,
+                workdir=workdir,
+                language=language,
+                optimize_target=optimize_target,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+            )
             memory_file_state = self._memory_files.prepare_round_gated(
                 workdir,
                 agent_name=agent_name,
@@ -142,11 +154,14 @@ class OptimizeSessionArtifactsManager:
         except Exception:
             if subagent_stage_set is not None:
                 self._subagents.cleanup(subagent_stage_set)
+            if triton_runtime is not None:
+                cleanup_triton_runtime_session(triton_runtime)
             self._cleanup_hidden_helix_dir(hidden_helix_dir)
             raise
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,
             archive=archive_state,
+            triton_runtime=triton_runtime,
             subagent_stage_set=subagent_stage_set,
             hidden_helix_dir=hidden_helix_dir,
             workflow_state_path=workflow_state_path,
@@ -191,6 +206,11 @@ class OptimizeSessionArtifactsManager:
                 state_path=workflow_state_path,
                 run_id=archive_state.run_id,
             )
+        triton_runtime = self._prepare_triton_runtime(
+            workdir,
+            run_id=archive_state.run_id,
+            language=language,
+        )
         subagent_stage_set: SubagentStageSet | None = None
         try:
             subagent_stage_set = self._prepare_subagents(
@@ -217,11 +237,14 @@ class OptimizeSessionArtifactsManager:
         except Exception:
             if subagent_stage_set is not None:
                 self._subagents.cleanup(subagent_stage_set)
+            if triton_runtime is not None:
+                cleanup_triton_runtime_session(triton_runtime)
             self._cleanup_hidden_helix_dir(hidden_helix_dir)
             raise
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,
             archive=archive_state,
+            triton_runtime=triton_runtime,
             subagent_stage_set=subagent_stage_set,
             hidden_helix_dir=hidden_helix_dir,
             supervisor_report_path=supervisor_report_path,
@@ -280,6 +303,8 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
         warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
+        if state.triton_runtime is not None:
+            warnings.extend(cleanup_triton_runtime_session(state.triton_runtime))
         warnings.extend(self._cleanup_supervisor_report_path(state.supervisor_report_path))
         warnings.extend(self._cleanup_hidden_helix_dir(state.hidden_helix_dir))
         warnings.extend(self.cleanup_session(state))
@@ -294,6 +319,8 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
         warnings.extend(self._cleanup_workspace_profile_artifacts(state.run_archive_dir.parent.parent))
+        if state.triton_runtime is not None:
+            warnings.extend(cleanup_triton_runtime_session(state.triton_runtime))
         warnings.extend(self._cleanup_hidden_helix_dir(state.hidden_helix_dir))
         warnings.extend(self.cleanup_session(state))
         return warnings
@@ -309,6 +336,8 @@ class OptimizeSessionArtifactsManager:
         messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
         if state.supervisor_report_path is not None:
             messages.append(f"wrote optimize supervisor report {state.supervisor_report_path}")
+        if state.triton_runtime is not None:
+            messages.append(f"created isolated Triton cache {state.triton_runtime.cache_dir}")
         return messages
 
     def describe_prepare_checked_session(
@@ -320,6 +349,8 @@ class OptimizeSessionArtifactsManager:
             description="checked optimize guidance file",
         )
         messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
+        if state.triton_runtime is not None:
+            messages.append(f"created isolated Triton cache {state.triton_runtime.cache_dir}")
         return messages
 
     def describe_cleanup_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
@@ -339,6 +370,8 @@ class OptimizeSessionArtifactsManager:
                 "removing temporary optimize runtime directory tree "
                 f"{state.hidden_helix_dir}"
             )
+        if state.triton_runtime is not None:
+            messages.append(f"removing isolated Triton cache {state.triton_runtime.cache_dir}")
         messages.extend(self.describe_cleanup_session(state))
         return messages
 
@@ -374,6 +407,8 @@ class OptimizeSessionArtifactsManager:
                 "removing temporary optimize runtime directory tree "
                 f"{state.hidden_helix_dir}"
             )
+        if state.triton_runtime is not None:
+            messages.append(f"removing isolated Triton cache {state.triton_runtime.cache_dir}")
         messages.extend(self.describe_cleanup_session(state))
         return messages
 
@@ -436,6 +471,17 @@ class OptimizeSessionArtifactsManager:
             )
         hidden_helix_dir.mkdir(parents=True, exist_ok=True)
         return hidden_helix_dir
+
+    def _prepare_triton_runtime(
+        self,
+        workdir: Path,
+        *,
+        run_id: str,
+        language: str,
+    ) -> TritonRuntimeSession | None:
+        if language != "triton":
+            return None
+        return prepare_triton_runtime_session(workdir, run_id)
 
     def _cleanup_hidden_helix_dir(self, hidden_helix_dir: Path | None) -> list[str]:
         if hidden_helix_dir is None:

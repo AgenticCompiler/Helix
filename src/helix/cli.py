@@ -63,7 +63,7 @@ _TOP_LEVEL_EXAMPLES = (
     "helix status -i .",
     "helix log-check -i .",
     "helix log-check-batch -i kernels",
-    "helix optimize -i kernel.py --agent codex -l triton",
+    "helix optimize -i kernel.py -l triton",
     "helix distill -i kernels",
     "helix report-batch -i kernels",
     "helix clean -i .",
@@ -680,7 +680,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_log_tools:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
-            agent_default = spec.agent_default if spec.agent_default is not None else "codex"
+            agent_default = spec.agent_default if spec.agent_default is not None else "opencode"
             subparser.add_argument("--agent", default=agent_default, choices=_AGENT_CHOICES)
             if command_kind in mcp_enabled_commands:
                 subparser.add_argument(

@@ -30,6 +30,7 @@ Use this skill when the user wants a new converted operator artifact instead of 
 - Keep the public API PyTorch-facing when needed, but keep the converted computation on a real Triton Ascend NPU kernel path.
 - Target Ascend NPU only for this conversion flow; do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.
 - Do not introduce unnecessary wrappers, compatibility branches, helper layers, or standalone or differential test code inside the converted operator file.
+- The runner assigns each Triton convert session a private `TRITON_CACHE_DIR` and already sets `TRITON_ALWAYS_COMPILE=1` for evaluation work. Do not access `~/.triton` or another session's cache directory; clear only the assigned cache while no evaluation subprocess is running.
 
 ## Required Workflow
 

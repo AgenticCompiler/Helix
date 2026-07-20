@@ -323,15 +323,24 @@ class ConvertRuntimeTests(unittest.TestCase):
             archived_candidate = workspace / "triton_kernel_result.pt"
 
             observed_test_calls: list[tuple[Path, Path, str]] = []
+            observed_cache_paths: list[Path] = []
 
             def _fake_run_convert(request):
                 assert request.output_path is not None
+                assert request.extra_env is not None
+                cache_dir = Path(request.extra_env["TRITON_CACHE_DIR"])
+                self.assertTrue(cache_dir.exists())
+                self.assertEqual(request.extra_env["TRITON_ALWAYS_COMPILE"], "1")
+                self.assertIn(str(cache_dir), request.prompt)
                 request.output_path.write_text("print('dst')\n", encoding="utf-8")
                 self.assertEqual(request.output_path, (workspace / "triton_kernel.py").resolve())
                 return run_result
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
                 del verbose
+                assert extra_env is not None
+                observed_cache_paths.append(Path(extra_env["TRITON_CACHE_DIR"]))
+                self.assertEqual(extra_env["TRITON_ALWAYS_COMPILE"], "1")
                 observed_test_calls.append((test_path, operator_path, test_mode))
                 if operator_path == operator.resolve():
                     return AgentResult(return_code=0, stdout="oracle\n", stderr=""), archived_oracle
@@ -354,6 +363,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 archived_oracle,
                 archived_candidate,
             )
+            self.assertEqual(len(set(observed_cache_paths)), 1)
+            self.assertFalse(observed_cache_paths[0].exists())
 
     def test_resolve_convert_test_file_falls_back_to_unique_standalone_test(self) -> None:
         from helix.commands.convert import _resolve_convert_test_file
@@ -484,8 +495,8 @@ class ConvertRuntimeTests(unittest.TestCase):
             observed_modes: list[str] = []
             observed_targets: list[Path] = []
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del test_path, verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del test_path, extra_env, verbose
                 observed_modes.append(test_mode)
                 observed_targets.append(operator_path)
                 return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
@@ -532,8 +543,8 @@ class ConvertRuntimeTests(unittest.TestCase):
 
             observed_test_calls: list[tuple[Path, Path, str]] = []
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del extra_env, verbose
                 observed_test_calls.append((test_path, operator_path, test_mode))
                 return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
 
@@ -577,8 +588,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 workdir=workspace.resolve(),
             )
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del test_path, test_mode, verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del test_path, test_mode, extra_env, verbose
                 self.assertEqual(operator_path, converted.resolve())
                 return AgentResult(return_code=7, stdout="", stderr="boom\n"), None
 
@@ -624,8 +635,8 @@ class ConvertRuntimeTests(unittest.TestCase):
 
             observed_test_calls: list[tuple[Path, Path, str]] = []
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del extra_env, verbose
                 observed_test_calls.append((test_path, operator_path, test_mode))
                 candidate_result.write_text("candidate\n", encoding="utf-8")
                 return AgentResult(return_code=0, stdout="candidate\n", stderr=""), candidate_result
@@ -690,6 +701,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             converted.resolve(),
             "alice@example.com",
             "/tmp/helix",
+            extra_env=None,
             verbose=False,
             stderr=sys.stderr,
         )
@@ -717,8 +729,8 @@ class ConvertRuntimeTests(unittest.TestCase):
 
             call_index = {"value": 0}
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del extra_env, verbose
                 observed_test_calls.append((test_path, operator_path, test_mode))
                 call_index["value"] += 1
                 current = call_index["value"]
@@ -769,8 +781,8 @@ class ConvertRuntimeTests(unittest.TestCase):
 
             run_calls = {"count": 0}
 
-            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
-                del test_path, operator_path, test_mode, verbose
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, extra_env=None, verbose=False):
+                del test_path, operator_path, test_mode, extra_env, verbose
                 run_calls["count"] += 1
                 archive = workspace / f"archive_{run_calls['count']}.pt"
                 if run_calls["count"] == 1:
@@ -973,6 +985,51 @@ class ConvertBatchTests(unittest.TestCase):
             for prompt in captured_prompts:
                 self.assertIn("Additional user instructions:", prompt)
                 self.assertIn("Avoid changing numerics.", prompt)
+
+    def test_run_convert_batch_assigns_an_isolated_cache_to_each_workspace(self) -> None:
+        from helix.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspaces = []
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+                workspaces.append(workspace)
+            cache_paths: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                assert request.extra_env is not None
+                cache_path = Path(request.extra_env["TRITON_CACHE_DIR"])
+                self.assertTrue(cache_path.exists())
+                cache_paths.append(cache_path)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            exit_code = run_convert_batch(
+                root,
+                ConvertOptions(
+                    interact=False,
+                    verbose=False,
+                    stream_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    output=None,
+                    test_mode="differential",
+                    prompt=None,
+                ),
+                max_concurrency=2,
+                run_request=_fake_run,
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(cache_paths), 2)
+            self.assertEqual(len(set(cache_paths)), 2)
+            self.assertTrue(all(not path.exists() for path in cache_paths))
+            self.assertTrue(all(not (workspace / ".helix-triton-cache").exists() for workspace in workspaces))
 
     def test_run_convert_batch_assigns_affinity_env_per_workspace(self) -> None:
         from helix.convert.batch import run_convert_batch
