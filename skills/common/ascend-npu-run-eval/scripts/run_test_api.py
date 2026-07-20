@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from test_contract import parse_test_metadata
-from run_local_api import (
+from run_test_local_api import (
     run_local_test,
     run_local_test_case_payload,
 )
-from run_remote_api import (
+from run_test_remote_api import (
     run_remote_differential_comparison,
     run_remote_test,
     run_remote_test_case_payload,

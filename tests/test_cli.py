@@ -6199,7 +6199,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked_loader.assert_called_with("bench_runner")
+            mocked_loader.assert_called_with("run_bench_api")
 
     def test_main_run_bench_uses_remote_runner_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

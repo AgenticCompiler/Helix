@@ -70,7 +70,7 @@ This is useful when you want to:
     ```
   - Runtime command shape inside the helper:
     ```bash
-    python3 bench_runtime.py profile-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    python3 run_bench_execution.py profile-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - Do not pass `--bench` or `--num-bench`.
   - The helper profiles one selected `--case-id <id>` case with `torch_npu.profiler`.
@@ -82,7 +82,7 @@ This is useful when you want to:
     ```
   - Runtime command shape inside the helper:
     ```bash
-    msprof python3 bench_runtime.py run-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    msprof python3 run_bench_execution.py run-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - The helper profiles the requested `--case-id <id>` case and may auto-select only when the benchmark declares exactly one case.
   - This mode requires benchmark metadata with `# kernels: <resolved_kernel_names>`.
@@ -152,7 +152,7 @@ profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-
 Fallback manual profiling when you intentionally bypass the helper:
 
 ```bash
-msprof python3 bench_runtime.py run-one --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
+msprof python3 run_bench_execution.py run-one --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
 ```
 
 Then re-summarize the copied-back profile through the `ascend-npu-run-eval` skill's `profile-report` helper, for example `profile-report --profile-dir PROF_000001_.../ --target-op MatMul`.

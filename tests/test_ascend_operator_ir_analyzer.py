@@ -177,7 +177,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     / "common"
                     / "ascend-npu-run-eval"
                     / "scripts"
-                    / "bench_runtime.py"
+                    / "run_bench_execution.py"
                 ),
                 "run-one",
                 "--bench-file",
@@ -187,12 +187,12 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             ],
         )
 
-    def test_standalone_runtime_support_paths_include_profile_csv_parser(self) -> None:
+    def test_bench_execution_bundle_includes_profile_csv_parser(self) -> None:
         module = _load_capture_ir_module()
 
-        support_names = {path.name for path in module._bench_runtime_support_paths()}
+        support_names = {path.name for path in module._run_bench_execution_bundle_paths()}
 
-        self.assertIn("bench_runtime.py", support_names)
+        self.assertIn("run_bench_execution.py", support_names)
         self.assertIn("profile_csv_parser.py", support_names)
 
     def test_build_execution_command_forwards_case_id_without_bench_mode_header(self) -> None:
@@ -220,7 +220,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     / "common"
                     / "ascend-npu-run-eval"
                     / "scripts"
-                    / "bench_runtime.py"
+                    / "run_bench_execution.py"
                 ),
                 "run-one",
                 "--bench-file",
@@ -471,17 +471,17 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             [
                 "bench.py",
                 "kernel.py",
-                "result_payload.py",
-                "bench_runtime.py",
                 "bench_contract.py",
+                "env_registry.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
-                "env_registry.py",
+                "result_payload.py",
+                "run_bench_execution.py",
                 "torch_npu_warnings.py",
             ],
         )
         self.assertIn(
-            "python3 bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",
+            "python3 run_bench_execution.py run-one --bench-file bench.py --operator-file kernel.py",
             remote_run.call_args_list[1].args[2],
         )
         cleanup.assert_not_called()
@@ -547,17 +547,17 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             [
                 "bench.py",
                 "kernel.py",
-                "result_payload.py",
-                "bench_runtime.py",
                 "bench_contract.py",
+                "env_registry.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
-                "env_registry.py",
+                "result_payload.py",
+                "run_bench_execution.py",
                 "torch_npu_warnings.py",
             ],
         )
         self.assertIn(
-            "python3 bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py --case-id case-5",
+            "python3 run_bench_execution.py run-one --bench-file bench.py --operator-file kernel.py --case-id case-5",
             remote_run.call_args_list[1].args[2],
         )
 
@@ -621,12 +621,12 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             [
                 "bench.py",
                 "kernel.py",
-                "result_payload.py",
-                "bench_runtime.py",
                 "bench_contract.py",
+                "env_registry.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
-                "env_registry.py",
+                "result_payload.py",
+                "run_bench_execution.py",
                 "torch_npu_warnings.py",
             ],
         )

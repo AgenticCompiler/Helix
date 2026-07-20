@@ -6,7 +6,7 @@ import importlib
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Any, Iterator, Protocol, TextIO, cast
+from typing import Any, Iterator, Protocol, cast
 
 from execution_lifecycle import (
     active_optimize_round_context as _active_optimize_round_context,
@@ -39,33 +39,6 @@ class ResolveRemoteExecutionFn(Protocol):
     ) -> tuple[str | None, str | None]: ...
 
 
-class RunLocalBenchFn(Protocol):
-    def __call__(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        bench_mode: str,
-        npu_devices: str | None = None,
-        output: str | None = None,
-    ) -> tuple[ResultPayload, Path | None]: ...
-
-
-class RunRemoteBenchFn(Protocol):
-    def __call__(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        bench_mode: str,
-        remote: str,
-        remote_workdir: str | None,
-        npu_devices: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-        output: str | None = None,
-    ) -> tuple[ResultPayload, Path | None, str]: ...
-
-
 class ComparePerfFn(Protocol):
     def __call__(
         self,
@@ -75,31 +48,6 @@ class ComparePerfFn(Protocol):
         skip_latency_errors: bool = False,
         metric_source: str = "auto",
     ) -> int: ...
-
-
-class RunLocalProfileBenchFn(Protocol):
-    def __call__(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        case_id: str | None = None,
-        kernel_name: str | None = None,
-    ) -> tuple[ResultPayload, Path | None]: ...
-
-
-class RunRemoteProfileBenchFn(Protocol):
-    def __call__(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        remote: str,
-        remote_workdir: str | None,
-        case_id: str | None = None,
-        kernel_name: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
 class ProfileSummaryModule(Protocol):
@@ -189,7 +137,9 @@ def _add_run_test_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--accuracy-mode",
         choices=["npu-contract", "dtype-close"],
-        default="npu-contract",
+        # Leave the policy unset so managed MCP invocations can inherit the
+        # HELIX_RUN_TEST_* controls supplied by their parent process.
+        default=None,
     )
 
 
@@ -222,6 +172,8 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         run_local_payload, run_remote_payload = _load_test_payload_functions()
         load_case_payload, find_case_payload, compare_payloads = _load_compare_result_payload_functions()
         compare_result, compare_remote_result = _load_compare_result_functions()
+        # Keep CLI dependencies late-bound to the active skill-script environment;
+        # run_test_command uses direct imports for standalone calls and test injection.
         return handle_run_test_command(
             parser,
             args,
@@ -243,42 +195,21 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         )
 
     if args.command == "profile-bench":
-        run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
-        bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
-        operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-        remote_workspace: str | None = None
-        try:
-            if remote is not None:
-                result, profile_dir, remote_workspace = run_remote_profile_bench(
-                    bench_file,
-                    operator_file,
-                    remote,
-                    remote_workdir,
-                    case_id=args.case_id,
-                    kernel_name=args.kernel_name,
-                    keep_remote_workdir=args.keep_remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            else:
-                result, profile_dir = run_local_profile_bench(
-                    bench_file,
-                    operator_file,
-                    case_id=args.case_id,
-                    kernel_name=args.kernel_name,
-                )
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-        _render_result(result, skip_stdout=remote is not None and args.verbose)
-        print(f"Return code: {result['return_code']}")
-        if profile_dir is not None:
-            print(f"Profile directory: {profile_dir}")
-            print(_build_profile_report(profile_dir, args.target_op))
-            print(_profile_bench_hint(profile_dir))
-        if remote is not None and args.keep_remote_workdir:
-            print(f"Remote workspace: {remote_workspace}")
-        return int(result["return_code"])
+        from run_profile_command import RunProfileDependencies, handle_run_profile_command
+
+        return handle_run_profile_command(
+            parser,
+            args,
+            remote,
+            remote_workdir,
+            RunProfileDependencies(
+                load_profile_functions=_load_profile_functions,
+                resolve_existing_path=_resolve_existing_path,
+                render_result=_render_result,
+                build_profile_report=_build_profile_report,
+                profile_hint=_profile_bench_hint,
+            ),
+        )
 
     if args.command == "profile-report":
         report = _build_profile_report(
@@ -290,125 +221,25 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         print(report)
         return 0
 
-    bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
-    operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-    timing_context = _active_optimize_round_context(bench_file, operator_file)
-    baseline_operator_file = _resolve_optional_existing_path(
-        parser,
-        getattr(args, "baseline_operator_file", None),
-        "Baseline operator file",
-    )
-    _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
-    resolved_bench_mode = args.bench_mode or "torch-npu-profiler"
-    remote_workspace: str | None = None
-    baseline_remote_workspace: str | None = None
-    baseline_perf_path = _derived_perf_path(baseline_operator_file) if baseline_operator_file is not None else None
-    if baseline_perf_path is not None and baseline_perf_path.exists():
-        print(f"Baseline perf file: {baseline_perf_path}")
-    _append_optimize_timing_event(
-        timing_context,
-        event="run_bench_start",
-        command=args.command,
-        bench_file=bench_file,
-        operator_file=operator_file,
-    )
-    try:
-        if baseline_operator_file is not None and baseline_perf_path is not None and not baseline_perf_path.exists():
-            baseline_result, baseline_generated_perf, baseline_remote_workspace = _run_bench_once(
-                run_local_bench,
-                run_remote_bench,
-                bench_file,
-                baseline_operator_file,
-                resolved_bench_mode,
-                remote,
-                remote_workdir,
-                npu_devices=args.npu_devices,
-                keep_remote_workdir=args.keep_remote_workdir,
-                verbose=args.verbose,
-                stderr=sys.stderr,
-                output=None,
-            )
-            if int(baseline_result["return_code"]) != 0:
-                _render_result(baseline_result, skip_stdout=remote is not None and args.verbose)
-            if baseline_generated_perf is not None:
-                baseline_perf_path = baseline_generated_perf
-                print(f"Baseline perf file: {baseline_perf_path}")
-            if int(baseline_result["return_code"]) != 0 or baseline_generated_perf is None:
-                if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
-                    print(f"Remote workspace: {baseline_remote_workspace}")
-                final_code = int(baseline_result["return_code"]) or 1
-                _append_optimize_timing_event(
-                    timing_context,
-                    event="run_bench_end",
-                    command=args.command,
-                    return_code=final_code,
-                    bench_file=bench_file,
-                    operator_file=operator_file,
-                )
-                return final_code
-            if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
-                print(f"Remote workspace: {baseline_remote_workspace}")
+    from run_bench_command import RunBenchDependencies, handle_run_bench_command
 
-        result, perf_path, remote_workspace = _run_bench_once(
-            run_local_bench,
-            run_remote_bench,
-            bench_file,
-            operator_file,
-            resolved_bench_mode,
-            remote,
-            remote_workdir,
-            npu_devices=args.npu_devices,
-            keep_remote_workdir=args.keep_remote_workdir,
-            verbose=args.verbose,
-            stderr=sys.stderr,
-            output=args.output,
-        )
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        _append_optimize_timing_event(
-            timing_context,
-            event="run_bench_end",
-            command=args.command,
-            return_code=1,
-            bench_file=bench_file,
-            operator_file=operator_file,
-        )
-        print(str(exc), file=sys.stderr)
-        return 1
-    if result["return_code"] != 0:
-        _render_result(result, skip_stdout=remote is not None and args.verbose)
-    if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
-        print(f"Remote workspace: {remote_workspace}")
-    if perf_path is not None:
-        print(f"Perf file: {perf_path}")
-        if baseline_perf_path is None:
-            print(_RUN_BENCH_HINT)
-        else:
-            compare_perf_files = _load_compare_perf_function()
-            final_code = compare_perf_files(
-                baseline_perf_path,
-                perf_path,
-                skip_latency_errors=args.skip_latency_errors,
-                metric_source=args.metric_source,
-            )
-            _append_optimize_timing_event(
-                timing_context,
-                event="run_bench_end",
-                command=args.command,
-                return_code=final_code,
-                bench_file=bench_file,
-                operator_file=operator_file,
-            )
-            return final_code
-    final_code = int(result["return_code"])
-    _append_optimize_timing_event(
-        timing_context,
-        event="run_bench_end",
-        command=args.command,
-        return_code=final_code,
-        bench_file=bench_file,
-        operator_file=operator_file,
+    return handle_run_bench_command(
+        parser,
+        args,
+        remote,
+        remote_workdir,
+        RunBenchDependencies(
+            load_bench_functions=_load_bench_functions,
+            resolve_existing_path=_resolve_existing_path,
+            resolve_optional_existing_path=_resolve_optional_existing_path,
+            derived_perf_path=_derived_perf_path,
+            render_result=_render_result,
+            load_compare_perf=_load_compare_perf_function,
+            active_optimize_round_context=_active_optimize_round_context,
+            append_optimize_timing_event=_append_optimize_timing_event,
+            hint=_RUN_BENCH_HINT,
+        ),
     )
-    return final_code
 
 
 def _resolve_existing_path(
@@ -495,15 +326,15 @@ def _load_compare_result_payload_functions() -> tuple[Any, Any, Any]:
     )
 
 
-def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemoteBenchFn]:
+def _load_bench_functions() -> tuple[ParseMetadataFn, Any, Any]:
     with _script_dir_on_path():
         from bench_contract import parse_bench_metadata
-        from bench_runner import run_local_bench, run_remote_bench
+        from run_bench_api import run_local_bench, run_remote_bench
 
     return (
         cast(ParseMetadataFn, parse_bench_metadata),
-        cast(RunLocalBenchFn, run_local_bench),
-        cast(RunRemoteBenchFn, run_remote_bench),
+        run_local_bench,
+        run_remote_bench,
     )
 
 
@@ -514,45 +345,6 @@ def _load_compare_perf_function() -> ComparePerfFn:
     return cast(ComparePerfFn, compare_perf_files)
 
 
-def _run_bench_once(
-    run_local_bench: RunLocalBenchFn,
-    run_remote_bench: RunRemoteBenchFn,
-    bench_file: Path,
-    operator_file: Path,
-    resolved_bench_mode: str,
-    remote: str | None,
-    remote_workdir: str | None,
-    *,
-    npu_devices: str | None,
-    keep_remote_workdir: bool,
-    verbose: bool,
-    stderr: TextIO | None,
-    output: str | None,
-) -> tuple[ResultPayload, Path | None, str | None]:
-    if remote is not None:
-        result, perf_path, remote_workspace = run_remote_bench(
-            bench_file,
-            operator_file,
-            resolved_bench_mode,
-            remote,
-            remote_workdir,
-            npu_devices,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
-            stderr=stderr,
-            output=output,
-        )
-        return result, perf_path, remote_workspace
-    result, perf_path = run_local_bench(
-        bench_file,
-        operator_file,
-        resolved_bench_mode,
-        npu_devices,
-        output=output,
-    )
-    return result, perf_path, None
-
-
 def _load_remote_execution_function() -> ResolveRemoteExecutionFn:
     with _script_dir_on_path():
         from remote_execution_env import resolve_remote_execution
@@ -560,13 +352,13 @@ def _load_remote_execution_function() -> ResolveRemoteExecutionFn:
     return cast(ResolveRemoteExecutionFn, resolve_remote_execution)
 
 
-def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileBenchFn]:
+def _load_profile_functions() -> tuple[Any, Any]:
     with _script_dir_on_path():
-        module = importlib.import_module("profile_runner")
+        module = importlib.import_module("run_profile_api")
 
     return (
-        cast(RunLocalProfileBenchFn, getattr(module, "run_local_profile_bench")),
-        cast(RunRemoteProfileBenchFn, getattr(module, "run_remote_profile_bench")),
+        getattr(module, "run_local_profile_bench"),
+        getattr(module, "run_remote_profile_bench"),
     )
 
 

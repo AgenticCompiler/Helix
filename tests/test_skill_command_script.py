@@ -979,8 +979,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             [
                 "bash",
                 script,
-                "skills/common/ascend-npu-run-eval/scripts/bench_runner.py",
-                "skills/common/ascend-npu-run-eval/scripts/profile_runner.py",
+                "skills/common/ascend-npu-run-eval/scripts/run_bench_execution.py",
+                "skills/common/ascend-npu-run-eval/scripts/run_profile_execution.py",
             ],
             cwd=repo_root,
             capture_output=True,
@@ -2473,6 +2473,27 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(args.operator_file, "kernel.py")
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.case_id, "case-a")
+        self.assertIsNone(args.accuracy_mode)
+
+    def test_run_test_parser_leaves_accuracy_mode_unset_for_environment_policy(self) -> None:
+        script = _RUN_EVAL_SCRIPT_DIR / "cli.py"
+        spec = importlib.util.spec_from_file_location("run_command_accuracy_env_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-test-baseline",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+            ]
+        )
+
+        self.assertIsNone(args.accuracy_mode)
 
     def test_script_run_test_baseline_rejects_case_id_in_standalone_mode(self) -> None:
         script = (

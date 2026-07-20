@@ -9,13 +9,16 @@ import time
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TextIO, cast
+from typing import Callable, cast
 
-from bench_runner import normalize_bench_mode, run_local_probe, run_remote_probe
 from perf_artifacts import (
     MetricSource,
     parse_perf_pair_for_comparison,
 )
+
+
+ProbeMeasurement = tuple[dict[str, object], Path | None, str | None]
+MeasureProbe = Callable[[Path, int, int], ProbeMeasurement]
 
 _PER_CASE_IMPROVEMENT_THRESHOLD = 1.01
 _PER_CASE_REGRESSION_THRESHOLD = 0.99
@@ -412,61 +415,6 @@ def _compare_probe_artifacts(
     )
 
 
-@dataclass(frozen=True)
-class _LocalRun:
-    payload: dict[str, object]
-    perf_path: Path | None
-
-
-@dataclass(frozen=True)
-class _RemoteRun:
-    payload: dict[str, object]
-    perf_path: Path | None
-    remote_workspace: str
-
-
-def _run_one_probe(
-    bench_file: Path,
-    operator_file: Path,
-    bench_mode: str,
-    *,
-    warmup_cap: int,
-    repeats_cap: int,
-    npu_devices: str | None,
-    verbose: bool,
-    remote: str | None,
-    remote_workdir: str | None,
-    keep_remote_workdir: bool,
-    stderr: TextIO | None,
-) -> _LocalRun | _RemoteRun:
-    if remote is not None:
-        payload, perf_path, remote_workspace = run_remote_probe(
-            bench_file,
-            operator_file,
-            bench_mode,
-            remote,
-            remote_workdir,
-            warmup_cap=warmup_cap,
-            repeats_cap=repeats_cap,
-            npu_devices=npu_devices,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
-            stderr=stderr,
-        )
-        return _RemoteRun(payload=dict(payload), perf_path=perf_path, remote_workspace=remote_workspace)
-    payload, perf_path = run_local_probe(
-        bench_file,
-        operator_file,
-        bench_mode,
-        warmup_cap=warmup_cap,
-        repeats_cap=repeats_cap,
-        npu_devices=npu_devices,
-        verbose=verbose,
-        output=None,
-    )
-    return _LocalRun(payload=dict(payload), perf_path=perf_path)
-
-
 def _remote_verbose(payload: dict[str, object], verbose: bool) -> list[str]:
     lines: list[str] = []
     if not verbose:
@@ -477,21 +425,21 @@ def _remote_verbose(payload: dict[str, object], verbose: bool) -> list[str]:
     return lines
 
 
-def _execute_probe(
+def run_probe_bench(
     bench_file: Path,
     operator_file: Path,
     baseline_operator_file: Path,
     bench_mode: str,
+    measure: MeasureProbe,
     *,
     metric_source: str,
     npu_devices: str | None,
     verbose: bool,
     remote: str | None,
     remote_workdir: str | None,
-    keep_remote_workdir: bool,
-    stderr: TextIO | None,
 ) -> ProbeBenchResult:
-    bench_mode = normalize_bench_mode(bench_mode)
+    if bench_mode == "standalone":
+        bench_mode = "torch-npu-profiler"
     bench_file = bench_file.resolve()
     operator_file = operator_file.resolve()
     baseline_operator_file = baseline_operator_file.resolve()
@@ -535,75 +483,54 @@ def _execute_probe(
             cache_hit = True
         else:
             mismatch_reason = reason
-            baseline_run = _run_one_probe(
-                bench_file,
+            baseline_payload, baseline_perf, baseline_remote_workspace = measure(
                 baseline_operator_file,
-                bench_mode,
-                warmup_cap=_PROBE_WARMUP_CAP,
-                repeats_cap=_PROBE_REPEATS_CAP,
-                npu_devices=npu_devices,
-                verbose=verbose,
-                remote=remote,
-                remote_workdir=remote_workdir,
-                keep_remote_workdir=keep_remote_workdir,
-                stderr=stderr,
+                _PROBE_WARMUP_CAP,
+                _PROBE_REPEATS_CAP,
             )
-            if isinstance(baseline_run, _RemoteRun):
-                baseline_remote_workspace = baseline_run.remote_workspace
-            if baseline_run.payload.get("return_code") != 0:
+            if baseline_payload.get("return_code") != 0:
                 return ProbeBenchResult(
                     return_code=1,
                     default_lines=["FAIL: baseline probe execution failed"],
-                    verbose_lines=_remote_verbose(baseline_run.payload, verbose),
+                    verbose_lines=_remote_verbose(baseline_payload, verbose),
                     warnings=list(extra_warnings),
                     remote_workspace=baseline_remote_workspace,
                 )
-            if baseline_run.perf_path is None:
+            if baseline_perf is None:
                 return ProbeBenchResult(
                     return_code=1,
                     default_lines=["FAIL: baseline probe produced no perf artifact"],
-                    verbose_lines=_remote_verbose(baseline_run.payload, verbose),
+                    verbose_lines=_remote_verbose(baseline_payload, verbose),
                     warnings=list(extra_warnings),
                     remote_workspace=baseline_remote_workspace,
                 )
-            _atomic_copy(baseline_run.perf_path, baseline_perf_path)
+            _atomic_copy(baseline_perf, baseline_perf_path)
             _write_sidecar(baseline_sidecar_path, expected_sidecar)
         _atomic_copy(baseline_perf_path, baseline_snapshot_path)
 
     try:
-        candidate_run = _run_one_probe(
-            bench_file,
+        candidate_payload, candidate_perf, candidate_remote_workspace = measure(
             operator_file,
-            bench_mode,
-            warmup_cap=_PROBE_WARMUP_CAP,
-            repeats_cap=_PROBE_REPEATS_CAP,
-            npu_devices=npu_devices,
-            verbose=verbose,
-            remote=remote,
-            remote_workdir=remote_workdir,
-            keep_remote_workdir=keep_remote_workdir,
-            stderr=stderr,
+            _PROBE_WARMUP_CAP,
+            _PROBE_REPEATS_CAP,
         )
-        candidate_remote_workspace: str | None = None
-        if isinstance(candidate_run, _RemoteRun):
-            candidate_remote_workspace = candidate_run.remote_workspace
-        if candidate_run.payload.get("return_code") != 0:
+        if candidate_payload.get("return_code") != 0:
             return ProbeBenchResult(
                 return_code=1,
                 default_lines=["FAIL: candidate probe execution failed"],
-                verbose_lines=_remote_verbose(candidate_run.payload, verbose),
+                verbose_lines=_remote_verbose(candidate_payload, verbose),
                 warnings=list(extra_warnings),
                 remote_workspace=candidate_remote_workspace,
             )
-        if candidate_run.perf_path is None:
+        if candidate_perf is None:
             return ProbeBenchResult(
                 return_code=1,
                 default_lines=["FAIL: candidate probe produced no perf artifact"],
-                verbose_lines=_remote_verbose(candidate_run.payload, verbose),
+                verbose_lines=_remote_verbose(candidate_payload, verbose),
                 warnings=list(extra_warnings),
                 remote_workspace=candidate_remote_workspace,
             )
-        _atomic_copy(candidate_run.perf_path, candidate_perf_path)
+        _atomic_copy(candidate_perf, candidate_perf_path)
 
         comparison_result = _compare_probe_artifacts(
             baseline_perf_path,
@@ -618,57 +545,3 @@ def _execute_probe(
         return replace(comparison_result, remote_workspace=candidate_remote_workspace)
     finally:
         baseline_snapshot_path.unlink(missing_ok=True)
-
-
-def run_local_probe_bench(
-    bench_file: Path,
-    operator_file: Path,
-    baseline_operator_file: Path,
-    bench_mode: str,
-    *,
-    metric_source: str = "auto",
-    npu_devices: str | None = None,
-    verbose: bool = False,
-) -> ProbeBenchResult:
-    return _execute_probe(
-        bench_file,
-        operator_file,
-        baseline_operator_file,
-        bench_mode,
-        metric_source=metric_source,
-        npu_devices=npu_devices,
-        verbose=verbose,
-        remote=None,
-        remote_workdir=None,
-        keep_remote_workdir=False,
-        stderr=None,
-    )
-
-
-def run_remote_probe_bench(
-    bench_file: Path,
-    operator_file: Path,
-    baseline_operator_file: Path,
-    bench_mode: str,
-    remote: str,
-    remote_workdir: str | None,
-    *,
-    metric_source: str = "auto",
-    npu_devices: str | None = None,
-    keep_remote_workdir: bool = False,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> ProbeBenchResult:
-    return _execute_probe(
-        bench_file,
-        operator_file,
-        baseline_operator_file,
-        bench_mode,
-        metric_source=metric_source,
-        npu_devices=npu_devices,
-        verbose=verbose,
-        remote=remote,
-        remote_workdir=remote_workdir,
-        keep_remote_workdir=keep_remote_workdir,
-        stderr=stderr,
-    )

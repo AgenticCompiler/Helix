@@ -6,6 +6,7 @@ from typing import TextIO
 
 from debug_device import maybe_print_visible_devices
 from env_registry import TRITON_ALWAYS_COMPILE
+from remote_python_bundle import stage_remote_python_bundle
 from result_payload import ResultPayload, make_result
 from run_runtime import (
     RemoteSpec,
@@ -185,10 +186,10 @@ def run_remote_differential_comparison(
             spec, ref_operator_file, remote_ref_operator, verbose=verbose, stderr=stderr
         )
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
-        copy_files_to_remote(
+        _stage_remote_python_bundle(
             spec,
-            [*(SCRIPT_DIR / filename for filename in _RUN_TEST_RUNTIME_FILENAMES), compare_script],
             remote_workspace,
+            [SCRIPT_DIR / "run_test_remote_worker.py", compare_script],
             verbose=verbose,
             stderr=stderr,
         )
@@ -267,18 +268,6 @@ def _copy_remote_differential_archive(
     return archive_path
 
 
-_RUN_TEST_RUNTIME_FILENAMES = (
-    "npu_compare.py",
-    "dtype_close_compare.py",
-    "npu_compare_common.py",
-    "npu_contract_compare.py",
-    "env_registry.py",
-    "run_test_remote_worker.py",
-    "test_contract.py",
-    "torch_npu_warnings.py",
-)
-
-
 def _copy_run_test_runtime(
     spec: RemoteSpec,
     test_file: Path,
@@ -289,14 +278,34 @@ def _copy_run_test_runtime(
 ) -> None:
     copy_files_to_remote(
         spec,
-        [
-            test_file,
-            operator_file,
-            *(SCRIPT_DIR / filename for filename in _RUN_TEST_RUNTIME_FILENAMES),
-        ],
+        [test_file, operator_file],
         remote_workspace,
         verbose=verbose,
         stderr=stderr,
+    )
+    _stage_remote_python_bundle(
+        spec,
+        remote_workspace,
+        [SCRIPT_DIR / "run_test_remote_worker.py"],
+        verbose=verbose,
+        stderr=stderr,
+    )
+
+
+def _stage_remote_python_bundle(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    entry_scripts: list[Path],
+    *,
+    verbose: bool,
+    stderr: TextIO | None,
+) -> None:
+    stage_remote_python_bundle(
+        entry_scripts,
+        remote_workspace,
+        lambda source, target: copy_file_to_remote(
+            spec, source, target, verbose=verbose, stderr=stderr
+        ),
     )
 
 

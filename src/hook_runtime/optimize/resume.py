@@ -320,7 +320,7 @@ def _existing_unique_paths(paths: list[Path]) -> list[Path]:
 
 
 def _parse_test_mode(test_file: Path) -> str | None:
-    metadata = _test_runner_module().parse_test_metadata(test_file)
+    metadata = _test_api_module().parse_test_metadata(test_file)
     mode = metadata.get("test-mode")
     if mode not in {"standalone", "differential"}:
         return None
@@ -344,5 +344,5 @@ def _baseline_issue(workdir: Path) -> str | None:
 
 
 @lru_cache(maxsize=1)
-def _test_runner_module():
+def _test_api_module():
     return load_skill_script_module("ascend-npu-run-eval", "run_test_api")

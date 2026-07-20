@@ -139,16 +139,43 @@ class SimulatorRunnerModule(Protocol):
     ) -> _RunSkillPayload: ...
 
 
-def _load_test_runner() -> TestRunnerModule:
+class ProfileRunnerModule(Protocol):
+    def run_local_profile_bench(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        case_id: str | None = None,
+        kernel_name: str | None = None,
+    ) -> tuple[_RunSkillPayload, Path | None]: ...
+
+    def run_remote_profile_bench(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        remote: str,
+        remote_workdir: str | None,
+        case_id: str | None = None,
+        kernel_name: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> tuple[_RunSkillPayload, Path | None, str]: ...
+
+
+def _load_test_api() -> TestRunnerModule:
     return cast(TestRunnerModule, load_operator_eval_script_module("run_test_api"))
 
 
 def _load_bench_runner() -> BenchRunnerModule:
-    return cast(BenchRunnerModule, load_operator_eval_script_module("bench_runner"))
+    return cast(BenchRunnerModule, load_operator_eval_script_module("run_bench_api"))
 
 
 def _load_simulator_runner() -> SimulatorRunnerModule:
     return cast(SimulatorRunnerModule, load_operator_eval_script_module("simulator_runner"))
+
+
+def _load_profile_runner() -> ProfileRunnerModule:
+    return cast(ProfileRunnerModule, load_operator_eval_script_module("run_profile_api"))
 
 
 def run_local_test(
@@ -160,7 +187,7 @@ def run_local_test(
     accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[AgentResult, Path | None]:
-    result, archived = _load_test_runner().run_local_test(
+    result, archived = _load_test_api().run_local_test(
         test_file,
         operator_file,
         test_mode,
@@ -184,7 +211,7 @@ def run_remote_test(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[AgentResult, Path | None, str]:
-    result, archived, remote_workspace = _load_test_runner().run_remote_test(
+    result, archived, remote_workspace = _load_test_api().run_remote_test(
         test_file,
         operator_file,
         test_mode,
@@ -212,7 +239,7 @@ def run_remote_differential_comparison(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[AgentResult, str]:
-    result, remote_workspace = _load_test_runner().run_remote_differential_comparison(
+    result, remote_workspace = _load_test_api().run_remote_differential_comparison(
         test_file,
         ref_operator_file,
         operator_file,
@@ -235,7 +262,7 @@ def run_local_test_case_payload(
     accuracy_mode: str | None = None,
     verbose: bool = False,
 ) -> tuple[AgentResult, object | None]:
-    result, payload = _load_test_runner().run_local_test_case_payload(
+    result, payload = _load_test_api().run_local_test_case_payload(
         test_file,
         operator_file,
         case_id=case_id,
@@ -257,7 +284,7 @@ def run_remote_test_case_payload(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[AgentResult, object | None, str]:
-    result, payload, remote_workspace = _load_test_runner().run_remote_test_case_payload(
+    result, payload, remote_workspace = _load_test_api().run_remote_test_case_payload(
         test_file,
         operator_file,
         remote,
@@ -272,7 +299,7 @@ def run_remote_test_case_payload(
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:
-    return _load_test_runner().parse_test_metadata(test_file)
+    return _load_test_api().parse_test_metadata(test_file)
 
 
 def resolve_test_mode_from_metadata(test_file: Path) -> str:
@@ -342,6 +369,44 @@ def run_local_simulator(
     return _normalize_agent_result(result)
 
 
+def run_local_profile_bench(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str | None = None,
+    kernel_name: str | None = None,
+) -> tuple[AgentResult, Path | None]:
+    result, profile_dir = _load_profile_runner().run_local_profile_bench(
+        bench_file, operator_file, case_id=case_id, kernel_name=kernel_name
+    )
+    return _normalize_agent_result(result), profile_dir
+
+
+def run_remote_profile_bench(
+    bench_file: Path,
+    operator_file: Path,
+    remote: str,
+    remote_workdir: str | None,
+    case_id: str | None = None,
+    kernel_name: str | None = None,
+    *,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[AgentResult, Path | None, str]:
+    result, profile_dir, workspace = _load_profile_runner().run_remote_profile_bench(
+        bench_file,
+        operator_file,
+        remote,
+        remote_workdir,
+        case_id=case_id,
+        kernel_name=kernel_name,
+        keep_remote_workdir=keep_remote_workdir,
+        verbose=verbose,
+        stderr=stderr,
+    )
+    return _normalize_agent_result(result), profile_dir, workspace
+
+
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
     return _load_bench_runner().parse_bench_metadata(bench_file)
 
@@ -388,7 +453,7 @@ class ProbeRunnerModule(Protocol):
 
 
 def _load_probe_runner() -> ProbeRunnerModule:
-    return cast(ProbeRunnerModule, load_operator_eval_script_module("probe_runner"))
+    return cast(ProbeRunnerModule, load_operator_eval_script_module("run_probe_api"))
 
 
 def run_local_probe_bench(

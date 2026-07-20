@@ -20,6 +20,7 @@ from tests.run_skill_test_utils import (
     load_local_test_worker_module,
     load_remote_api_module,
     load_test_contract_module,
+    load_test_execution_module,
 )
 
 _WARNING_LINE = "[WARNING] Please DO NOT tune args ['num_warps']!\n"
@@ -63,9 +64,12 @@ class LocalTestRunnerTests(unittest.TestCase):
         self._remote_runner = load_remote_api_module()
         self._batch_copy_patcher = patch.object(self._remote_runner, "copy_files_to_remote")
         self._batch_copy = self._batch_copy_patcher.start()
+        self._bundle_patcher = patch.object(self._remote_runner, "_stage_remote_python_bundle")
+        self._bundle_patcher.start()
 
     def tearDown(self) -> None:
         self._batch_copy_patcher.stop()
+        self._bundle_patcher.stop()
         super().tearDown()
 
     def test_load_module_registers_temporary_module_in_sys_modules_during_exec(self) -> None:
@@ -180,8 +184,8 @@ class LocalTestRunnerTests(unittest.TestCase):
                 ):
                     module.load_differential_test_cases(test_file, operator, case_id="case-z")
 
-    def test_run_import_only_standalone_test_bootstraps_torch_before_user_module_exec(self) -> None:
-        module = load_local_test_worker_module()
+    def test_run_standalone_test_bootstraps_torch_before_user_module_exec(self) -> None:
+        module = load_test_execution_module()
         import_events: list[str] = []
 
         def fake_import(name: str, package: Optional[str] = None):
@@ -214,13 +218,13 @@ def main(operator_api):
             original_import = module.importlib.import_module
             with _without_preloaded_modules("torch", "torch_npu"):
                 with patch.object(module.importlib, "import_module", side_effect=fake_import):
-                    result = module._run_import_only_standalone_test(test_file, operator, verbose=False)
+                    result = module.run_standalone_test(test_file, operator, verbose=False)
 
         self.assertEqual(result["return_code"], 0)
         self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
 
-    def test_run_declarative_differential_test_bootstraps_before_importing_torch(self) -> None:
-        module = load_local_test_worker_module()
+    def test_run_differential_test_bootstraps_before_importing_torch(self) -> None:
+        module = load_test_execution_module()
         events: list[str] = []
 
         def fake_bootstrap(*_args: object) -> None:
@@ -257,12 +261,12 @@ def build_differential_test_cases(operator_api):
                 encoding="utf-8",
             )
             original_import = module.importlib.import_module
-            with patch.object(module, "_bootstrap_torch_npu", side_effect=fake_bootstrap), patch.object(
+            with patch.object(module, "bootstrap_torch_npu", side_effect=fake_bootstrap), patch.object(
                 module.importlib,
                 "import_module",
                 side_effect=fake_import,
             ):
-                result = module._run_declarative_differential_test(
+                result = module.run_differential_test(
                     test_file,
                     operator,
                     archive_path,
@@ -463,7 +467,6 @@ def main(operator_api):
         self.assertEqual(archived, archived_path.resolve())
 
     def test_run_local_test_executes_declarative_differential_cases(self) -> None:
-        module = load_local_test_worker_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "abs.py"
@@ -498,7 +501,7 @@ def build_differential_test_cases(operator_api):
                 Path(path).write_bytes(pickle.dumps(obj))
 
             with patch.dict(sys.modules, {"torch": SimpleNamespace(save=fake_save)}, clear=False):
-                result = module._run_declarative_differential_test(
+                result = load_test_execution_module().run_differential_test(
                     test_file,
                     operator,
                     root / "abs_result.pt",
@@ -850,18 +853,7 @@ def build_differential_test_cases(operator_api):
         self.assertEqual(remote_workspace, "/tmp/remote")
         self.assertEqual(
             [path.name for path in self._batch_copy.call_args.args[1]],
-            [
-                "differential_test_abs.py",
-                "abs.py",
-                "npu_compare.py",
-                "dtype_close_compare.py",
-                "npu_compare_common.py",
-                "npu_contract_compare.py",
-                "env_registry.py",
-                "run_test_remote_worker.py",
-                "test_contract.py",
-                "torch_npu_warnings.py",
-            ],
+            ["differential_test_abs.py", "abs.py"],
         )
 
     def test_run_remote_test_case_payload_parses_crlf_serialized_payload_without_archive(self) -> None:
@@ -1277,11 +1269,7 @@ def main(operator_api):
         self.assertEqual(remote_workspace, "/tmp/remote")
         self.assertEqual(
             [path.name for path in self._batch_copy.call_args.args[1]],
-            [
-                "test_abs.py", "abs.py", "npu_compare.py", "dtype_close_compare.py",
-                "npu_compare_common.py", "npu_contract_compare.py", "env_registry.py",
-                "run_test_remote_worker.py", "test_contract.py", "torch_npu_warnings.py",
-            ],
+            ["test_abs.py", "abs.py"],
         )
         self.assertEqual(
             recorded_command,

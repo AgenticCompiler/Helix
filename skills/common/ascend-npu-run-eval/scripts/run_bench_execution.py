@@ -158,17 +158,34 @@ def load_bench_cases(
     bench_path = bench_file.resolve()
     operator_path = operator_file.resolve()
     _bootstrap_torch_npu()
-    bench_module = _load_module(bench_path, f"bench_runtime_bench_{bench_path.stem}")
-    operator_module = _load_module(operator_path, f"bench_runtime_operator_{operator_path.stem}")
-    build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
-    build_cases = _require_callable(bench_module, "build_bench_cases", bench_path)
-    build_case_fn = _require_callable(bench_module, "build_bench_case_fn", bench_path)
-    operator_api = build_operator_api(operator_module)
-    raw_cases = build_cases()
+    with _temporary_sys_path_entries(bench_path.parent, operator_path.parent):
+        bench_module = _load_module(bench_path, f"run_bench_execution_bench_{bench_path.stem}")
+        operator_module = _load_module(operator_path, f"run_bench_execution_operator_{operator_path.stem}")
+        build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
+        build_cases = _require_callable(bench_module, "build_bench_cases", bench_path)
+        build_case_fn = _require_callable(bench_module, "build_bench_case_fn", bench_path)
+        operator_api = build_operator_api(operator_module)
+        raw_cases = build_cases()
     return _normalize_cases(raw_cases, operator_api, build_case_fn), resolve_bench_kernel_resolution(
         bench_path,
         operator_path,
     )
+
+
+@contextmanager
+def _temporary_sys_path_entries(*paths: Path) -> Iterator[None]:
+    added: list[str] = []
+    try:
+        for path in paths:
+            value = str(path.resolve())
+            if value not in sys.path:
+                sys.path.insert(0, value)
+                added.append(value)
+        yield
+    finally:
+        for value in reversed(added):
+            if value in sys.path:
+                sys.path.remove(value)
 
 
 def select_bench_case(cases: list[BenchCase], case_id: str | None) -> BenchCase:
@@ -320,7 +337,7 @@ def _time_case_iterations(
     return {"kernel_avg_time_us": avg_us, "ops": []}
 
 
-def _time_bench_case(
+def time_bench_case(
     case: BenchCase,
     resolution: KernelResolution,
     *,
@@ -370,7 +387,7 @@ def time_all_bench_cases(
         stderr_chunks: list[str] = []
 
         for case in cases:
-            record = _time_bench_case(
+            record = time_bench_case(
                 case,
                 resolution,
                 bench_mode=bench_mode,
@@ -704,19 +721,6 @@ def _cleanup_local_bench_extra_info(workdir: Path) -> None:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
-def runtime_support_paths() -> list[Path]:
-    script_dir = Path(__file__).resolve().parent
-    return [
-        script_dir / "result_payload.py",
-        script_dir / "bench_runtime.py",
-        script_dir / "bench_contract.py",
-        script_dir / "perf_artifacts.py",
-        script_dir / "profile_csv_parser.py",
-        script_dir / "env_registry.py",
-        script_dir / "torch_npu_warnings.py",
-    ]
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(

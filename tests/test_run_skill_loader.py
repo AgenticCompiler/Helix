@@ -32,8 +32,8 @@ class RunSkillLoaderTests(unittest.TestCase):
     def test_test_runner_wrapper_module_has_been_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("helix.test_runner"))
 
-    def test_bench_runner_wrapper_module_has_been_removed(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("helix.bench_runner"))
+    def test_bench_execution_wrapper_module_has_been_removed(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("helix.run_bench_execution"))
 
     def test_operator_eval_script_path_points_to_run_eval_cli(self) -> None:
         path = operator_eval_script_path("cli")
@@ -301,21 +301,21 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run_runtime.py"))
         self.assertNotIn("make_result", _top_level_defined_names(scripts_dir / "run_runtime.py"))
 
-    def test_bench_runner_no_longer_uses_globals_service_locator(self) -> None:
-        path = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "bench_runner.py"
+    def test_bench_execution_no_longer_uses_globals_service_locator(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts" / "run_bench_execution.py"
         content = path.read_text(encoding="utf-8")
 
         self.assertNotIn("globals()[name]", content)
         self.assertNotIn("_FACADE_COMPAT_EXPORTS", content)
 
-    def test_bench_runner_is_single_file_without_submodule_dependency_adapter(self) -> None:
+    def test_bench_execution_is_single_file_without_submodule_dependency_adapter(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
-        bench_runner = scripts_dir / "bench_runner.py"
-        content = bench_runner.read_text(encoding="utf-8")
+        run_bench_execution = scripts_dir / "run_bench_execution.py"
+        content = run_bench_execution.read_text(encoding="utf-8")
 
-        self.assertFalse((scripts_dir / "bench_runner_deps.py").exists())
-        self.assertFalse((scripts_dir / "bench_runner_msprof.py").exists())
-        self.assertFalse((scripts_dir / "bench_runner_standalone.py").exists())
+        self.assertFalse((scripts_dir / "bench_execution_deps.py").exists())
+        self.assertFalse((scripts_dir / "bench_execution_msprof.py").exists())
+        self.assertFalse((scripts_dir / "bench_execution_standalone.py").exists())
         self.assertNotIn("BenchRunnerDeps", content)
 
 

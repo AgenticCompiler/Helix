@@ -82,10 +82,10 @@ def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
     print(f"[{category}] {message}", file=stderr)
 
 
-def _timeout_message(timeout_seconds: float) -> str:
+def _timeout_message(timeout_seconds: float, timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS) -> str:
     return (
         f"Evaluation timed out after {timeout_seconds:g} seconds "
-        "(HELIX_EVAL_TIMEOUT_SECONDS); the current operator execution exceeded the limit.\n"
+        f"({timeout_env_name}); the current operator execution exceeded the limit.\n"
     )
 
 
@@ -173,6 +173,7 @@ def run_buffered_process(
     extra_env: dict[str, str] | None = None,
     *,
     timeout_seconds: float | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -217,7 +218,7 @@ def run_buffered_process(
                 return make_result(
                     return_code=1,
                     stdout="".join(stdout_lines),
-                    stderr="".join(stderr_lines) + _timeout_message(timeout_seconds),
+                    stderr="".join(stderr_lines) + _timeout_message(timeout_seconds, timeout_env_name),
                     stalled=True,
                 )
             if stall_timeout_seconds > 0:
@@ -261,6 +262,7 @@ def run_streaming_process(
     extra_env: dict[str, str] | None = None,
     *,
     timeout_seconds: float | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     if _IS_WINDOWS:
         return _run_streaming_windows(
@@ -270,6 +272,7 @@ def run_streaming_process(
             stdout,
             extra_env,
             timeout_seconds=timeout_seconds,
+            timeout_env_name=timeout_env_name,
         )
     return _run_streaming_pty(
         command,
@@ -278,6 +281,7 @@ def run_streaming_process(
         stdout,
         extra_env,
         timeout_seconds=timeout_seconds,
+        timeout_env_name=timeout_env_name,
     )
 
 
@@ -289,6 +293,7 @@ def _run_streaming_windows(
     extra_env: dict[str, str] | None = None,
     *,
     timeout_seconds: float | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -343,7 +348,11 @@ def _run_streaming_windows(
     return make_result(
         return_code=rc,
         stdout="".join(output_chunks),
-        stderr=_timeout_message(timeout_seconds) if timed_out_ref[0] and timeout_seconds is not None else "",
+        stderr=(
+            _timeout_message(timeout_seconds, timeout_env_name)
+            if timed_out_ref[0] and timeout_seconds is not None
+            else ""
+        ),
         stalled=stalled_ref[0],
     )
 
@@ -356,6 +365,7 @@ def _run_streaming_pty(
     extra_env: dict[str, str] | None = None,
     *,
     timeout_seconds: float | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     pty_module = pty
     select_module = select
@@ -410,7 +420,7 @@ def _run_streaming_pty(
                 return make_result(
                     return_code=1,
                     stdout="".join(output_chunks),
-                    stderr=_timeout_message(timeout_seconds),
+                    stderr=_timeout_message(timeout_seconds, timeout_env_name),
                     stalled=True,
                 )
             elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
@@ -578,6 +588,7 @@ def run_remote_command_streaming(
     stderr: TextIO | None = None,
     extra_env: dict[str, str] | None = None,
     stall_timeout_seconds: int | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     env_prefix = _shell_env_prefix(extra_env)
     command_text = _normalize_remote_command(remote_command)
@@ -593,6 +604,7 @@ def run_remote_command_streaming(
             ".",
             stall_timeout_seconds=0,
             timeout_seconds=timeout,
+            timeout_env_name=timeout_env_name,
         )
     return run_streaming_process(
         command,
@@ -600,6 +612,7 @@ def run_remote_command_streaming(
         stall_timeout_seconds=0,
         stdout=stdout,
         timeout_seconds=timeout,
+        timeout_env_name=timeout_env_name,
     )
 
 
@@ -611,6 +624,7 @@ def run_remote_command_buffered(
     stderr: TextIO | None = None,
     extra_env: dict[str, str] | None = None,
     stall_timeout_seconds: int | None = None,
+    timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
     env_prefix = _shell_env_prefix(extra_env)
     command_text = _normalize_remote_command(remote_command)
@@ -625,6 +639,7 @@ def run_remote_command_buffered(
         ".",
         stall_timeout_seconds=0,
         timeout_seconds=timeout,
+        timeout_env_name=timeout_env_name,
     )
 
 

@@ -21,6 +21,7 @@ from env_registry import (
 from torch_npu_warnings import suppress_torch_npu_owner_mismatch_warning
 
 
+# Shared with run_test_execution.py so dynamically loaded tests can import bundled helpers.
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 

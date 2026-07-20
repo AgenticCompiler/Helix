@@ -8,12 +8,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.run_skill_test_utils import load_perf_artifacts_module, load_probe_runner_module
+from tests.run_skill_test_utils import (
+    load_perf_artifacts_module,
+    load_probe_execution_module,
+    load_probe_local_api_module,
+    load_probe_remote_api_module,
+    make_skill_result,
+)
 
 
 class ProbeClassificationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def _classify(
         self,
@@ -92,7 +98,7 @@ class ProbeClassificationTests(unittest.TestCase):
 
 class ProbePerCaseDirectionTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def _direction(self, baseline: float, compare: float) -> str:
         return self.module.per_case_direction(baseline, compare)
@@ -118,7 +124,7 @@ class ProbePerCaseDirectionTests(unittest.TestCase):
 
 class ProbeComparisonAggregateTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def test_comparison_clear_gain(self) -> None:
         result = self.module.compute_probe_comparison(
@@ -182,7 +188,7 @@ class ProbeComparisonAggregateTests(unittest.TestCase):
 
 class ProbeCacheValidationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def _expected(self, **overrides: object) -> dict[str, object]:
         base: dict[str, object] = {
@@ -254,7 +260,7 @@ class ProbeCacheValidationTests(unittest.TestCase):
 
 class ProbeCapsWarningTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def _run_execute_probe(self, bench_mode: str, remote: str | None) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
@@ -267,10 +273,8 @@ class ProbeCapsWarningTests(unittest.TestCase):
             op.write_text("x", encoding="utf-8")
             base.write_text("y", encoding="utf-8")
             perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
-            local_run = self.module._LocalRun(
-                payload={"return_code": 0, "stdout": "", "stderr": ""},
-                perf_path=perf,
-            )
+            def measurement(*_args):
+                return {"return_code": 0, "stdout": "", "stderr": ""}, perf, None
 
             def fake_compare(
                 baseline_perf_path: object,
@@ -294,20 +298,18 @@ class ProbeCapsWarningTests(unittest.TestCase):
             orig_dir = os.getcwd()
             os.chdir(tmp)
             try:
-                with patch.object(self.module, "_run_one_probe", return_value=local_run), \
-                     patch.object(self.module, "_compare_probe_artifacts", side_effect=fake_compare):
-                    result = self.module._execute_probe(
+                with patch.object(self.module, "_compare_probe_artifacts", side_effect=fake_compare):
+                    result = self.module.run_probe_bench(
                         bench,
                         op,
                         base,
                         bench_mode,
+                        measurement,
                         metric_source="auto",
                         npu_devices=None,
                         verbose=False,
                         remote=remote,
                         remote_workdir=None,
-                        keep_remote_workdir=False,
-                        stderr=None,
                     )
             finally:
                 os.chdir(orig_dir)
@@ -345,7 +347,7 @@ class ProbeCapsWarningTests(unittest.TestCase):
 class ProbeBaselineSnapshotTests(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def test_comparison_uses_per_invocation_baseline_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -358,10 +360,8 @@ class ProbeBaselineSnapshotTests(unittest.TestCase):
             op.write_text("x", encoding="utf-8")
             base.write_text("y", encoding="utf-8")
             perf.write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
-            local_run = self.module._LocalRun(
-                payload={"return_code": 0, "stdout": "", "stderr": ""},
-                perf_path=perf,
-            )
+            def measurement(*_args):
+                return {"return_code": 0, "stdout": "", "stderr": ""}, perf, None
             captured: dict[str, object] = {}
 
             def capture_compare(
@@ -388,21 +388,18 @@ class ProbeBaselineSnapshotTests(unittest.TestCase):
             orig_dir = os.getcwd()
             os.chdir(tmp)
             try:
-                with patch.object(self.module, "_run_one_probe", return_value=local_run), patch.object(
-                    self.module, "_compare_probe_artifacts", side_effect=capture_compare
-                ):
-                    self.module._execute_probe(
+                with patch.object(self.module, "_compare_probe_artifacts", side_effect=capture_compare):
+                    self.module.run_probe_bench(
                         bench,
                         op,
                         base,
                         "torch-npu-profiler",
+                        measurement,
                         metric_source="auto",
                         npu_devices=None,
                         verbose=False,
                         remote=None,
                         remote_workdir=None,
-                        keep_remote_workdir=False,
-                        stderr=None,
                     )
             finally:
                 os.chdir(orig_dir)
@@ -416,6 +413,42 @@ class ProbeBaselineSnapshotTests(unittest.TestCase):
             )
             self.assertEqual(display_path.name, "baseline_probe_perf.txt")
             self.assertFalse(read_path.exists(), f"snapshot not cleaned up: {read_path}")
+
+
+class ProbeApiTests(unittest.TestCase):
+    def test_local_api_uses_neutral_benchmark_limits(self) -> None:
+        module = load_probe_local_api_module()
+        sentinel = object()
+        def execute(*args, **_kwargs):
+            args[4](Path("baseline.py"), 1, 3)
+            return sentinel
+
+        with patch.object(module, "run_local_bench_with_limits", return_value=(make_skill_result(0, "", ""), None)) as measure, \
+             patch.object(module, "run_probe_bench", side_effect=execute):
+            result = module.run_local_probe_bench(
+                Path("bench.py"), Path("candidate.py"), Path("baseline.py"), "torch-npu-profiler"
+            )
+
+        self.assertIs(result, sentinel)
+        self.assertEqual(measure.call_args.kwargs["warmup_cap"], 1)
+        self.assertEqual(measure.call_args.kwargs["repeats_cap"], 3)
+
+    def test_remote_api_uses_neutral_benchmark_limits(self) -> None:
+        module = load_probe_remote_api_module()
+        sentinel = object()
+        def execute(*args, **_kwargs):
+            args[4](Path("baseline.py"), 1, 3)
+            return sentinel
+
+        with patch.object(module, "run_remote_bench_with_limits", return_value=(make_skill_result(0, "", ""), None, "workspace")) as measure, \
+             patch.object(module, "run_probe_bench", side_effect=execute):
+            result = module.run_remote_probe_bench(
+                Path("bench.py"), Path("candidate.py"), Path("baseline.py"), "torch-npu-profiler", "host", None
+            )
+
+        self.assertIs(result, sentinel)
+        self.assertEqual(measure.call_args.kwargs["warmup_cap"], 1)
+        self.assertEqual(measure.call_args.kwargs["repeats_cap"], 3)
 
 
 class ParsePerfPairValidationTests(unittest.TestCase):
@@ -498,7 +531,7 @@ class ParsePerfPairValidationTests(unittest.TestCase):
 
 class RemoteVerboseTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_probe_runner_module()
+        self.module = load_probe_execution_module()
 
     def test_remote_verbose_omits_workspace_line(self) -> None:
         payload = {"return_code": 0, "stdout": "", "stderr": "some stderr"}
