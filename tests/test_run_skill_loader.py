@@ -2,7 +2,6 @@ import ast
 from dataclasses import fields
 import importlib.util
 import sys
-from typing import get_type_hints
 import unittest
 from pathlib import Path
 
@@ -14,8 +13,6 @@ from helix.skills.loader import (
     operator_eval_script_path,
     skill_script_path,
 )
-import helix.optimize.naming as optimize_naming
-import helix.optimize.pt_cleanup as optimize_pt_cleanup
 from helix.optimize.models import BaselineState, OptimizeCheckResult, RoundState
 
 
@@ -34,6 +31,10 @@ class RunSkillLoaderTests(unittest.TestCase):
 
     def test_bench_execution_wrapper_module_has_been_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("helix.run_bench_execution"))
+
+    def test_optimize_pure_forwarding_modules_have_been_removed(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.checks"))
+        self.assertIsNone(importlib.util.find_spec("helix.optimize.round_contract"))
 
     def test_operator_eval_script_path_points_to_run_eval_cli(self) -> None:
         path = operator_eval_script_path("cli")
@@ -146,7 +147,7 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "bootstrap_state"))
 
-    def test_optimize_runtime_models_reuse_split_submit_skill_contract_classes(self) -> None:
+    def test_optimize_runtime_models_are_owned_by_helix(self) -> None:
         baseline_module = load_skill_script_module(
             "ascend-npu-optimize-state",
             "baseline/check",
@@ -156,9 +157,17 @@ class RunSkillLoaderTests(unittest.TestCase):
             "round/check",
         )
 
-        self.assertIs(baseline_module.BaselineState, BaselineState)
-        self.assertIs(round_module.OptimizeCheckResult, OptimizeCheckResult)
-        self.assertIs(round_module.RoundState, RoundState)
+        self.assertIsNot(baseline_module.BaselineState, BaselineState)
+        self.assertIsNot(round_module.OptimizeCheckResult, OptimizeCheckResult)
+        self.assertIsNot(round_module.RoundState, RoundState)
+        self.assertEqual(
+            [field.name for field in fields(baseline_module.BaselineState)],
+            [field.name for field in fields(BaselineState)],
+        )
+        self.assertEqual(
+            [field.name for field in fields(round_module.RoundState)],
+            [field.name for field in fields(RoundState)],
+        )
 
     def test_optimize_state_baseline_and_round_contracts_share_check_result_shape(self) -> None:
         baseline_module = load_skill_script_module(
@@ -177,29 +186,59 @@ class RunSkillLoaderTests(unittest.TestCase):
             [field.name for field in fields(baseline_result_type)],
             [field.name for field in fields(round_result_type)],
         )
+
+    def test_optimize_and_run_eval_facades_expose_explicit_api(self) -> None:
+        optimize_api = load_skill_script_module("ascend-npu-optimize-state", "optimize_state_api")
         self.assertEqual(
-            get_type_hints(baseline_result_type)["kind"],
-            get_type_hints(round_result_type)["kind"],
+            set(optimize_api.__all__),
+            {
+                "baseline_gate_issues",
+                "best_completed_round_geomean_speedup",
+                "bootstrap_state",
+                "check_baseline",
+                "check_round",
+                "cleanup_dir_pt_files",
+                "cleanup_pt_file",
+                "cleanup_workspace_profile_artifacts",
+                "count_completed_round_directories",
+                "count_terminal_round_directories",
+                "inspect_baseline_artifacts",
+                "inspect_round_artifacts",
+                "iter_terminal_round_directories",
+                "load_baseline_state",
+                "load_round_state",
+                "load_state",
+                "mark_baseline_passed",
+                "ordinary_optimize_pt_cleanup_mode",
+                "render_phase_summary",
+                "resolve_round_operator_file",
+                "resolve_round_perf_file",
+            },
         )
+        for script_name, expected_export in (
+            ("compare_result_api", "compare_result_files"),
+            ("perf_artifacts_api", "compare_perf_files"),
+            ("run_simulator_api", "run_local_simulator"),
+            ("remote_execution_env_api", "resolve_remote_execution"),
+            ("run_runtime_api", "parse_remote_spec"),
+        ):
+            module = load_operator_eval_script_module(script_name)
+            self.assertIn(expected_export, module.__all__)
 
-    def test_optimize_runtime_naming_helpers_reuse_optimize_state_round_contract_functions(self) -> None:
-        module = load_skill_script_module(
-            "ascend-npu-optimize-state",
-            "round/check",
-        )
-
-        self.assertIs(optimize_naming.expected_round_operator_name, module.expected_round_operator_name)
-        self.assertIs(optimize_naming.expected_round_perf_name, module.expected_round_perf_name)
-        self.assertIs(optimize_naming.resolve_round_operator_file, module.resolve_round_operator_file)
-        self.assertIs(optimize_naming.resolve_round_perf_file, module.resolve_round_perf_file)
-
-    def test_optimize_runtime_pt_cleanup_helpers_reuse_optimize_state_round_contract_functions(self) -> None:
-        module = load_skill_script_module(
-            "ascend-npu-optimize-state",
-            "round/check",
-        )
-
-        self.assertIs(optimize_pt_cleanup.cleanup_dir_pt_files, module.cleanup_dir_pt_files)
+    def test_helix_business_modules_load_skills_only_through_bridges(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "src" / "helix"
+        allowed = {
+            root / "skills" / "loader.py",
+            *(root / "skill_bridges").glob("*.py"),
+        }
+        for path in sorted(root.rglob("*.py")):
+            if path in allowed:
+                continue
+            content = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.relative_to(root).as_posix()):
+                self.assertNotIn("load_skill_script_module(", content)
+                self.assertNotIn("load_operator_eval_script_module(", content)
+                self.assertNotIn("operator_eval_script_path(", content)
 
     def test_run_skill_scripts_do_not_import_helix(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"

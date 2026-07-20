@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from helix.models import AgentRequest, AgentResult, CommandKind
 from helix.optimize.batch import run_optimize_batch
-from helix.optimize import checks as optimize_checks
+from helix.skill_bridges import optimize_state
 import helix.optimize.execution as execution_module
 from helix.optimize.compiler_source import CompilerSourceInfo
 from helix.optimize.models import OptimizeRunOptions
@@ -1418,7 +1418,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "helix.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
-                    with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
+                    with patch("helix.optimize.execution.optimize_state.check_round", side_effect=fake_check_round):
                         result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -1578,7 +1578,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -1752,7 +1752,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.optimize_state.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
@@ -1833,7 +1833,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -1842,7 +1842,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ),
             ):
                 with patch(
-                    "helix.optimize.execution.best_completed_round_geomean_speedup",
+                    "helix.optimize.execution.optimize_state.best_completed_round_geomean_speedup",
                     side_effect=[None, 1.15],
                 ):
                     result = controller.run_round_loop(request)
@@ -2083,7 +2083,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.optimize_state.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 1)
@@ -2188,7 +2188,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -2288,7 +2288,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -2418,7 +2418,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 verbose_stream=StringIO(),
             )
 
-            with patch("helix.optimize.execution.check_round", side_effect=fake_check_round):
+            with patch("helix.optimize.execution.optimize_state.check_round", side_effect=fake_check_round):
                 result = controller.run_round_loop(request)
 
             self.assertEqual(result.return_code, 0)
@@ -2545,7 +2545,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="fail",
@@ -4206,7 +4206,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return_value=guidance_state,
                 ):
                     with patch(
-                        "helix.optimize.execution.check_round",
+                        "helix.optimize.execution.optimize_state.check_round",
                         return_value=SimpleNamespace(
                             kind="round",
                             status="pass",
@@ -4385,7 +4385,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch(
-                "helix.optimize.execution.check_round",
+                "helix.optimize.execution.optimize_state.check_round",
                 return_value=SimpleNamespace(
                     kind="round",
                     status="pass",
@@ -4457,7 +4457,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             with patch("helix.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "helix.optimize.execution.check_round",
+                    "helix.optimize.execution.optimize_state.check_round",
                     return_value=SimpleNamespace(
                         kind="round",
                         status="fail",
@@ -4720,7 +4720,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-2")
-            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
+            self.assertEqual(optimize_state.count_completed_round_directories(workdir), 1)
 
     def test_round_helpers_treat_rejected_terminal_round_as_latest_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4744,7 +4744,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-2")
-            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
+            self.assertEqual(optimize_state.count_completed_round_directories(workdir), 1)
 
     def test_round_helpers_ignore_incomplete_precreated_round_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4762,7 +4762,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-1")
-            self.assertEqual(optimize_checks.count_completed_round_directories(workdir), 1)
+            self.assertEqual(optimize_state.count_completed_round_directories(workdir), 1)
 
     def test_run_optimize_batch_auto_upload_on_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

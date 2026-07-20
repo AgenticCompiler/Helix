@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, cast
 
 from helix.eval.runners import (
     run_local_bench,
@@ -19,49 +19,13 @@ from helix.eval.runners import (
     run_remote_test,
 )
 from helix.models import AgentResult
-from helix.optimize.baseline import load_baseline_state
-from helix.optimize.pt_cleanup import cleanup_dir_pt_files
-from helix.optimize.round_contract import inspect_round_artifacts, load_round_state
 from helix.status.core import inspect_optimize_status_workspace
 from helix.status.models import OptimizeStatusWorkspace
-from helix.skills.loader import load_operator_eval_script_module
+from helix.skill_bridges import optimize_state, run_eval_comparison
 
 
 Phase = Literal["all", "test", "bench"]
 _CONSISTENCY_ABS_TOLERANCE = 0.2
-
-
-class BenchPerfParserModule(Protocol):
-    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
-
-    def parse_required_perf_file(
-        self,
-        path: Path,
-        required_latency_ids: Iterable[str],
-    ) -> dict[str, float]: ...
-
-    def parse_perf_file_for_metric_source(
-        self,
-        path: Path,
-        *,
-        metric_source: str = "auto",
-    ) -> dict[str, float]: ...
-
-    def parse_required_perf_file_for_metric_source(
-        self,
-        path: Path,
-        required_latency_ids: Iterable[str],
-        *,
-        metric_source: str = "auto",
-    ) -> dict[str, float]: ...
-
-    def parse_perf_pair_for_comparison(
-        self,
-        baseline_perf: Path,
-        compare_perf: Path,
-        *,
-        metric_source: str = "auto",
-    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
 
 
 @dataclass(frozen=True)
@@ -117,7 +81,7 @@ def prepare_verify_target(
     if not round_dir.is_dir():
         raise ValueError(f"Best round directory does not exist: {round_dir}")
 
-    baseline_state = load_baseline_state(workspace)
+    baseline_state = optimize_state.load_baseline_state(workspace)
     baseline_state_dir = workspace / "baseline"
     source_baseline_operator = _resolve_state_file(
         baseline_state_dir,
@@ -144,10 +108,10 @@ def prepare_verify_target(
         label="perf_artifact",
     )
 
-    round_artifacts = inspect_round_artifacts(round_dir)
+    round_artifacts = optimize_state.inspect_round_artifacts(round_dir)
     if round_artifacts.operator_path is None:
         raise ValueError(f"Best round is missing round-local operator output: {round_dir}")
-    round_state = load_round_state(round_dir)
+    round_state = optimize_state.load_round_state(round_dir)
     if round_state.effective_metric_source is None:
         raise ValueError(f"Best round is missing effective_metric_source: {round_dir}")
 
@@ -283,7 +247,7 @@ def run_verify(
         baseline_perf_path=baseline_perf_path,
         best_perf_path=best_perf_path,
     )
-    cleanup_dir_pt_files(target.verify_dir)
+    optimize_state.cleanup_dir_pt_files(target.verify_dir)
     return VerifyResult(
         return_code=return_code,
         verify_dir=target.verify_dir,
@@ -483,22 +447,21 @@ def _build_speedup_state(
 
     warnings: list[str] = []
     try:
-        parser = _load_bench_perf_parser()
         resolved_baseline_perf_path = cast(Path, baseline_perf_path)
         resolved_best_perf_path = cast(Path, best_perf_path)
         metric_source = _metric_source_for_verification(target.effective_metric_source)
         if metric_source == "auto":
-            baseline_values, verify_values, _comparison_modes = parser.parse_perf_pair_for_comparison(
+            baseline_values, verify_values, _comparison_modes = run_eval_comparison.parse_perf_pair_for_comparison(
                 resolved_baseline_perf_path,
                 resolved_best_perf_path,
                 metric_source=metric_source,
             )
         else:
-            baseline_values = parser.parse_perf_file_for_metric_source(
+            baseline_values = run_eval_comparison.parse_perf_file_for_metric_source(
                 resolved_baseline_perf_path,
                 metric_source=metric_source,
             )
-            verify_values = parser.parse_required_perf_file_for_metric_source(
+            verify_values = run_eval_comparison.parse_required_perf_file_for_metric_source(
                 resolved_best_perf_path,
                 baseline_values,
                 metric_source=metric_source,
@@ -551,8 +514,7 @@ def _build_latency_state(perf_path: Path | None) -> dict[str, float] | None:
     if perf_path is None:
         return None
     try:
-        parser = _load_bench_perf_parser()
-        return dict(parser.parse_perf_file(perf_path))
+        return dict(run_eval_comparison.parse_perf_file(perf_path))
     except (OSError, ValueError):
         return None
 
@@ -609,10 +571,6 @@ def _metric_delta(actual: object, expected: float | None) -> float | None:
     if actual is None or expected is None:
         return None
     return cast(float, actual) - expected
-
-
-def _load_bench_perf_parser() -> BenchPerfParserModule:
-    return cast(BenchPerfParserModule, load_operator_eval_script_module("perf_artifacts"))
 
 
 def _mean_value(values: Iterable[float]) -> float:

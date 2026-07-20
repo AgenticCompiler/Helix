@@ -3,71 +3,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Protocol, TextIO, cast
+from typing import TextIO
 
 from helix.remote.env import resolve_remote_execution
-from helix.skills.loader import load_operator_eval_script_module
-
-
-class CompareResultModule(Protocol):
-    def compare_result_payload_objects(
-        self,
-        ref_payload: object,
-        new_payload: object,
-        *,
-        accuracy_mode: str | None = None,
-    ) -> int: ...
-
-    def compare_result_files(
-        self,
-        ref_result: Path,
-        new_result: Path,
-        *,
-        accuracy_mode: str | None = None,
-    ) -> int: ...
-
-    def load_case_result_payload(
-        self,
-        ref_result: Path,
-        case_id: str,
-    ) -> object: ...
-
-    def find_case_result_payload(
-        self,
-        ref_result: Path,
-        case_id: str,
-    ) -> object | None: ...
-
-    def compare_remote_result_files(
-        self,
-        ref_result: Path,
-        new_result: Path,
-        remote: str,
-        remote_workdir: str | None,
-        *,
-        accuracy_mode: str | None = None,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> int: ...
-
-
-class ComparePerfModule(Protocol):
-    def compare_perf_files(
-        self,
-        baseline_perf: Path,
-        compare_perf: Path,
-        *,
-        skip_latency_errors: bool = False,
-        metric_source: str = "auto",
-    ) -> int: ...
-
-
-def _load_compare_result() -> CompareResultModule:
-    return cast(CompareResultModule, load_operator_eval_script_module("compare_result"))
-
-
-def _load_compare_perf() -> ComparePerfModule:
-    return cast(ComparePerfModule, load_operator_eval_script_module("perf_artifacts"))
+from helix.skill_bridges import run_eval_comparison
 
 
 def compare_result_files(
@@ -76,7 +15,7 @@ def compare_result_files(
     *,
     accuracy_mode: str | None = None,
 ) -> int:
-    return _load_compare_result().compare_result_files(
+    return run_eval_comparison.compare_result_files(
         ref_result,
         new_result,
         accuracy_mode=accuracy_mode,
@@ -89,7 +28,7 @@ def compare_result_payload_objects(
     *,
     accuracy_mode: str | None = None,
 ) -> int:
-    return _load_compare_result().compare_result_payload_objects(
+    return run_eval_comparison.compare_result_payload_objects(
         ref_payload,
         new_payload,
         accuracy_mode=accuracy_mode,
@@ -100,14 +39,14 @@ def load_case_result_payload(
     ref_result: Path,
     case_id: str,
 ) -> object:
-    return _load_compare_result().load_case_result_payload(ref_result, case_id)
+    return run_eval_comparison.load_case_result_payload(ref_result, case_id)
 
 
 def find_case_result_payload(
     ref_result: Path,
     case_id: str,
 ) -> object | None:
-    return _load_compare_result().find_case_result_payload(ref_result, case_id)
+    return run_eval_comparison.find_case_result_payload(ref_result, case_id)
 
 
 def compare_remote_result_files(
@@ -120,7 +59,7 @@ def compare_remote_result_files(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> int:
-    return _load_compare_result().compare_remote_result_files(
+    return run_eval_comparison.compare_remote_result_files(
         ref_result,
         new_result,
         remote,
@@ -138,7 +77,7 @@ def compare_perf_files(
     skip_latency_errors: bool = False,
     metric_source: str = "auto",
 ) -> int:
-    return _load_compare_perf().compare_perf_files(
+    return run_eval_comparison.compare_perf_files(
         baseline_perf,
         compare_perf,
         skip_latency_errors=skip_latency_errors,

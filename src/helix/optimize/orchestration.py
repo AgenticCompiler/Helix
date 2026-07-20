@@ -10,7 +10,6 @@ from helix.backends.factory import create_runner
 from helix.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from helix.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from helix.optimize import execution as optimize_execution
-from helix.optimize.checks import count_terminal_round_directories
 from helix.optimize.compiler_source import prepare_compiler_source
 from helix.optimize.env import merge_optimize_session_env
 from helix.optimize.session_artifacts import OptimizeSessionArtifactsManager
@@ -22,6 +21,7 @@ from helix.paths import skills_root
 from helix.skills.selection import resolve_staged_skills
 from helix.skills.staging import SkillLinkManager
 from helix.terminal.verbose import emit_verbose, emit_verbose_lines
+from helix.skill_bridges import optimize_state
 
 def _initial_batch_bounds(
     workdir: Path,
@@ -31,7 +31,7 @@ def _initial_batch_bounds(
     round_batch_size: int,
     interact: bool = False,
 ) -> tuple[int, int]:
-    terminal_rounds = count_terminal_round_directories(workdir)
+    terminal_rounds = optimize_state.count_terminal_round_directories(workdir)
     batch_start = terminal_rounds + 1
     if interact:
         batch_end = min_rounds

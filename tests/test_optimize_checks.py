@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from helix.optimize import checks as optimize_checks
+from helix.skill_bridges import optimize_state
 
 TRITON_ROUND_OPERATOR = """\
 import torch
@@ -93,11 +93,11 @@ class OptimizeCheckTests(unittest.TestCase):
             count_completed_round_directories=lambda path: 7 if path.name == "workspace" else 0,
             count_terminal_round_directories=lambda path: 9 if path.name == "workspace" else 0,
         )
-        with patch("helix.optimize.checks.load_skill_script_module", return_value=module) as mocked:
-            baseline_result = optimize_checks.check_baseline(Path("/tmp/baseline"))
-            round_result = optimize_checks.check_round(Path("/tmp/opt-round-1"))
-            completed_count = optimize_checks.count_completed_round_directories(Path("/tmp/workspace"))
-            terminal_count = optimize_checks.count_terminal_round_directories(Path("/tmp/workspace"))
+        with patch("helix.skill_bridges.optimize_state._api", return_value=module) as mocked:
+            baseline_result = optimize_state.check_baseline(Path("/tmp/baseline"))
+            round_result = optimize_state.check_round(Path("/tmp/opt-round-1"))
+            completed_count = optimize_state.count_completed_round_directories(Path("/tmp/workspace"))
+            terminal_count = optimize_state.count_terminal_round_directories(Path("/tmp/workspace"))
 
         self.assertEqual(baseline_result.status, "fail")
         self.assertEqual(baseline_result.kind, "baseline")
@@ -108,14 +108,7 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.summary, "checked opt-round-1")
         self.assertEqual(completed_count, 7)
         self.assertEqual(terminal_count, 9)
-        mocked.assert_any_call(
-            "ascend-npu-optimize-state",
-            "baseline/check",
-        )
-        mocked.assert_any_call(
-            "ascend-npu-optimize-state",
-            "round/check",
-        )
+        self.assertEqual(mocked.call_count, 4)
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,7 +135,7 @@ class OptimizeCheckTests(unittest.TestCase):
             )
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
-            result = optimize_checks.check_baseline(baseline_dir)
+            result = optimize_state.check_baseline(baseline_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "baseline")
@@ -157,7 +150,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_baseline(workdir)
             round_dir = self._write_round(workdir, "opt-round-1")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -194,7 +187,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertEqual(optimize_checks.count_terminal_round_directories(workdir), 2)
+            self.assertEqual(optimize_state.count_terminal_round_directories(workdir), 2)
 
     def test_check_round_reports_status_not_missing_perf_when_benchmark_not_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,7 +205,7 @@ class OptimizeCheckTests(unittest.TestCase):
             state_path.write_text(json.dumps(payload), encoding="utf-8")
             (round_dir / "opt_kernel_perf.txt").unlink()
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.issues, ("correctness_status=failed",))
@@ -227,7 +220,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("HELIX_OPTIMIZE_DELETE_PT_FILES", None)
-                result = optimize_checks.check_round(round_dir)
+                result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -242,7 +235,7 @@ class OptimizeCheckTests(unittest.TestCase):
             pt_file.write_text("stub\n", encoding="utf-8")
 
             with patch.dict(os.environ, {"HELIX_OPTIMIZE_DELETE_PT_FILES": "round"}, clear=False):
-                result = optimize_checks.check_round(round_dir)
+                result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -262,7 +255,7 @@ class OptimizeCheckTests(unittest.TestCase):
                     {"HELIX_OPTIMIZE_DELETE_PT_FILES": value},
                     clear=False,
                 ):
-                    result = optimize_checks.check_round(round_dir)
+                    result = optimize_state.check_round(round_dir)
 
                 self.assertEqual(result.status, "pass")
                 self.assertFalse(pt_file.exists())
@@ -281,7 +274,7 @@ class OptimizeCheckTests(unittest.TestCase):
                     {"HELIX_OPTIMIZE_DELETE_PT_FILES": value},
                     clear=False,
                 ):
-                    result = optimize_checks.check_round(round_dir)
+                    result = optimize_state.check_round(round_dir)
 
                 self.assertEqual(result.status, "pass")
                 self.assertTrue(pt_file.exists())
@@ -297,7 +290,7 @@ class OptimizeCheckTests(unittest.TestCase):
             profile_file = round_dir / "PROF_marker"
             profile_file.write_text("profile\n", encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertFalse(profile_dir.exists())
@@ -309,7 +302,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_baseline(workdir)
             round_dir = self._write_round(workdir, "opt-round-1")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
 
@@ -342,7 +335,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertIn(
@@ -360,7 +353,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 perf_analysis_path="perf-analysis.md",
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertIn(
@@ -378,7 +371,7 @@ class OptimizeCheckTests(unittest.TestCase):
             payload.pop("comparison_target", None)
             (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertTrue(
@@ -404,7 +397,7 @@ class OptimizeCheckTests(unittest.TestCase):
             payload.pop("comparison_target", None)
             (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertIn(
@@ -428,7 +421,7 @@ class OptimizeCheckTests(unittest.TestCase):
             )
             round_dir = self._write_round(workdir, "opt-round-1")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertTrue(
@@ -465,7 +458,7 @@ class OptimizeCheckTests(unittest.TestCase):
             )
             (baseline_dir / "perf.txt").write_text('{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":1.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n', encoding="utf-8")
 
-            result = optimize_checks.check_baseline(baseline_dir)
+            result = optimize_state.check_baseline(baseline_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertIn(
@@ -483,7 +476,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 operator_source=PURE_TORCH_ROUND_OPERATOR,
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "round")
@@ -502,7 +495,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 operator_source=MULTILINE_TRITON_ROUND_OPERATOR,
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -537,7 +530,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -572,7 +565,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -589,7 +582,7 @@ class OptimizeCheckTests(unittest.TestCase):
             payload["effective_metric_source"] = "total-op"
             (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -606,7 +599,7 @@ class OptimizeCheckTests(unittest.TestCase):
             payload["effective_metric_source"] = "mixed"
             (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
 
-            result = optimize_checks.check_round(round_dir, optimize_target="kernel")
+            result = optimize_state.check_round(round_dir, optimize_target="kernel")
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
@@ -642,7 +635,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.3,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertTrue(
@@ -679,7 +672,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":7.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertFalse(
@@ -709,7 +702,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.3,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertFalse(
@@ -742,7 +735,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":8.5,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertTrue(
@@ -778,7 +771,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text='{"case_label":"a","kernel_names":[],"kernel_source":"fixture","kernel_avg_time_us":100.0,"ops":null,"total_op_avg_time_us":null,"error_message":null,"case_wall_clock_seconds":null}\n',
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertTrue(
@@ -817,7 +810,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 round_perf_text=baseline_perf.replace("10.0", "8.3").replace("50.0", "41.5"),
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertFalse(
@@ -830,7 +823,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_baseline(workdir)
             round_dir = self._write_round(workdir, "opt-round-2")
 
-            result = optimize_checks.check_round(round_dir, current_round=2, final_round=4)
+            result = optimize_state.check_round(round_dir, current_round=2, final_round=4)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.next_option, "opt-round-3")
@@ -852,7 +845,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_baseline(workdir)
             round_dir = self._write_round(workdir, "opt-round-4")
 
-            result = optimize_checks.check_round(round_dir, current_round=4, final_round=4)
+            result = optimize_state.check_round(round_dir, current_round=4, final_round=4)
 
             self.assertEqual(result.status, "pass")
             self.assertIsNone(result.next_option)
@@ -872,7 +865,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                result = optimize_checks.check_round(round_dir)
+                result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             # Invalid env vars silently fall back to defaults without warnings.
@@ -934,7 +927,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = optimize_checks.check_round(round_dir)
+            result = optimize_state.check_round(round_dir)
 
             self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
