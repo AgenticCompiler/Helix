@@ -18,7 +18,11 @@ from helix.batch.discovery import (
     resolve_batch_operator_file,
 )
 from helix.convert.models import ConvertOptions
-from helix.convert.orchestration import build_convert_request, run_convert_request
+from helix.convert.orchestration import (
+    build_convert_request,
+    prepare_convert_triton_cache_request,
+    run_convert_request,
+)
 from helix.eval.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from helix.models import AgentResult, CommandKind
 from helix.batch.affinity import (
@@ -30,6 +34,7 @@ from helix.batch.affinity import (
     validate_batch_affinity_capacity,
 )
 from helix.skills.selection import resolve_staged_skills
+from helix.eval.triton_runtime import cleanup_triton_runtime_session
 
 _BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_", "tilelang_")
 _BATCH_CONVERT_EXCLUDED_NAMES = {"__init__.py"}
@@ -109,21 +114,27 @@ def run_convert_batch(
             item.workspace,
             options,
         )
-        if affinity_pool is not None:
-            with affinity_pool.acquire() as device:
-                request = replace(
-                    request,
-                    extra_env={
-                        **(request.extra_env or {}),
-                        **affinity_env_for_device(device),
-                    },
-                )
-                if forwarded_stdout is not None or forwarded_stderr is not None:
-                    return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
-                return convert_request_runner(request)
-        if forwarded_stdout is not None or forwarded_stderr is not None:
-            return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
-        return convert_request_runner(request)
+        request, triton_cache = prepare_convert_triton_cache_request(request)
+        try:
+            if affinity_pool is not None:
+                with affinity_pool.acquire() as device:
+                    request = replace(
+                        request,
+                        extra_env={
+                            **(request.extra_env or {}),
+                            **affinity_env_for_device(device),
+                        },
+                    )
+                    if forwarded_stdout is not None or forwarded_stderr is not None:
+                        return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
+                    return convert_request_runner(request)
+            if forwarded_stdout is not None or forwarded_stderr is not None:
+                return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
+            return convert_request_runner(request)
+        finally:
+            if triton_cache is not None:
+                for warning in cleanup_triton_runtime_session(triton_cache):
+                    print(f"Warning: {warning}", file=sys.stderr)
 
     staged_skill_names, _ = resolve_staged_skills(CommandKind.CONVERT, enable_mcp=options.enable_mcp)
     scope = (

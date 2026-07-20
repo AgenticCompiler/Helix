@@ -15,10 +15,12 @@ from typing import Any, Optional, TextIO, TypedDict, cast
 
 from env_registry import (
     HELIX_EVAL_TIMEOUT_SECONDS,
+    HELIX_REMOTE_TRITON_CACHE,
     HELIX_PYTHON,
     HELIX_SCP_TIMEOUT_SECONDS,
     HELIX_SSH_TIMEOUT_SECONDS,
     TRITON_ALL_BLOCKS_PARALLEL,
+    TRITON_CACHE_DIR,
 )
 from result_payload import ResultPayload, make_result
 
@@ -590,7 +592,7 @@ def run_remote_command_streaming(
     stall_timeout_seconds: int | None = None,
     timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
-    env_prefix = _shell_env_prefix(extra_env)
+    env_prefix = _shell_env_prefix(_remote_execution_extra_env(remote_workspace, extra_env))
     command_text = _normalize_remote_command(remote_command)
     command = _ssh_command(
         spec,
@@ -626,7 +628,7 @@ def run_remote_command_buffered(
     stall_timeout_seconds: int | None = None,
     timeout_env_name: str = HELIX_EVAL_TIMEOUT_SECONDS,
 ) -> ResultPayload:
-    env_prefix = _shell_env_prefix(extra_env)
+    env_prefix = _shell_env_prefix(_remote_execution_extra_env(remote_workspace, extra_env))
     command_text = _normalize_remote_command(remote_command)
     command = _ssh_command(
         spec,
@@ -704,6 +706,21 @@ def _normalized_execution_extra_env(extra_env: dict[str, str] | None) -> dict[st
         and os.environ.get(TRITON_ALL_BLOCKS_PARALLEL) == _BLOCKS_PARALLEL_SAFE_VALUE
     ):
         normalized[TRITON_ALL_BLOCKS_PARALLEL] = _BLOCKS_PARALLEL_SAFE_VALUE
+    return normalized
+
+
+def _remote_execution_extra_env(
+    remote_workspace: str,
+    extra_env: dict[str, str] | None,
+) -> dict[str, str]:
+    normalized = _normalized_execution_extra_env(extra_env)
+    use_remote_cache = normalized.pop(HELIX_REMOTE_TRITON_CACHE, None)
+    if use_remote_cache is None:
+        use_remote_cache = os.environ.get(HELIX_REMOTE_TRITON_CACHE)
+    if use_remote_cache == "1":
+        normalized[TRITON_CACHE_DIR] = str(
+            PurePosixPath(remote_workspace) / ".helix-triton-cache"
+        )
     return normalized
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO, cast
 
@@ -19,6 +20,13 @@ from helix.skills.selection import resolve_staged_skills
 from helix.skills.staging import SkillLinkManager
 from helix.terminal.logs import show_output_log_path
 from helix.terminal.verbose import emit_verbose, emit_verbose_lines
+from helix.eval.triton_runtime import (
+    TritonRuntimeSession,
+    cleanup_triton_runtime_session,
+    prepare_triton_runtime_session,
+    triton_runtime_env,
+    triton_runtime_prompt,
+)
 
 
 def build_convert_request(
@@ -98,13 +106,20 @@ def run_convert_request(
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> AgentResult:
+    # CLI workflows may already own the session so verification shares its cache.
+    request, managed_cache = prepare_convert_triton_cache_request(request)
     manager = SkillLinkManager(skills_root())
-    links = manager.prepare_skills(
-        request.agent_name,
-        request.workdir,
-        skill_names=request.staged_skill_names,
-        skill_sources=request.staged_skill_sources,
-    )
+    try:
+        links = manager.prepare_skills(
+            request.agent_name,
+            request.workdir,
+            skill_names=request.staged_skill_names,
+            skill_sources=request.staged_skill_sources,
+        )
+    except Exception:
+        if managed_cache is not None:
+            cleanup_triton_runtime_session(managed_cache)
+        raise
     if request.verbose:
         emit_verbose_lines(stderr or sys.stderr, "skills", manager.describe_prepare(links))
     try:
@@ -128,6 +143,27 @@ def run_convert_request(
         warnings = manager.cleanup(links)
         for warning in warnings:
             emit_verbose(stderr or sys.stderr, "skills", warning)
+        if managed_cache is not None:
+            for warning in cleanup_triton_runtime_session(managed_cache):
+                emit_verbose(stderr or sys.stderr, "convert", warning)
+
+
+def prepare_convert_triton_cache_request(
+    request: AgentRequest,
+) -> tuple[AgentRequest, TritonRuntimeSession | None]:
+    if request.language != "triton" or (request.extra_env or {}).get("TRITON_CACHE_DIR") is not None:
+        return request, None
+    run_id = request.run_id or new_trace_run_id(prefix="convert")
+    session = prepare_triton_runtime_session(request.workdir, run_id)
+    return (
+        replace(
+            request,
+            run_id=run_id,
+            prompt=f"{request.prompt}\n\n{triton_runtime_prompt(session)}",
+            extra_env=triton_runtime_env(session, request.extra_env),
+        ),
+        session,
+    )
 
 
 def _write_convert_trace_summary(request: AgentRequest) -> None:

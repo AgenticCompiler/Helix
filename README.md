@@ -194,7 +194,7 @@ Common options:
 
 - `--output test_a.py`: write to a specific path.
 - `--test-mode standalone|differential`: choose the generated test style. Default is `standalone`.
-- `--agent codex|opencode|pi|claude|openhands|traecli`: choose the backend.
+- `--agent codex|opencode|pi|claude|openhands|traecli`: choose the backend (default: `opencode`).
 - `--interact`: open an interactive agent session.
 - `--no-stream-output`: disable live streaming for non-interactive agent output.
 - `--force-overwrite`: replace an existing generated file.
@@ -273,7 +273,7 @@ What it is for:
 
 Common options:
 
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
 - `--interact`
@@ -307,7 +307,7 @@ What it is for:
 Common options:
 
 - `--output triton_a.py`: write to a specific converted-operator path.
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--test-mode standalone|differential`: default is `differential`
 - `--interact`
 - `--no-stream-output`
@@ -343,7 +343,7 @@ Common options:
 
 - `--output bench_a.py`
 - `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--interact`
 - `--no-stream-output`
 - `--force-overwrite`
@@ -425,7 +425,7 @@ You may also point `--input` at a single operator workspace directory when that 
 Common options:
 
 - `--output opt_a.py`: write the optimized operator to a specific path.
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`. For fresh runs, sets the test mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
 - `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. For fresh runs, sets the benchmark mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
@@ -562,7 +562,7 @@ uv run helix gen-eval --input operators_root --concurrency 4
 
 Common options:
 
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--test-mode standalone|differential`
 - `--bench-mode torch-npu-profiler|msprof`
 - `-c, --concurrency <N|max>`: defaults to `1`
@@ -579,7 +579,7 @@ uv run helix convert --input operators_root --concurrency 4
 
 Common options:
 
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--test-mode standalone|differential`: default is `differential`
 - `-c, --concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
@@ -708,7 +708,7 @@ uv run helix optimize --input operators_root --concurrency 4
 
 Common options:
 
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
 - `--test-mode standalone|differential`: validated against existing harness metadata per workspace on resumed sessions.
 - `--bench-mode torch-npu-profiler|msprof`: validated against existing harness metadata per workspace on resumed sessions.
@@ -809,7 +809,7 @@ Common options:
 - `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
 - `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
 - `-c, --concurrency <N>`: on `log-check`, selects batch mode; on `log-check-batch`, defaults to `1`.
-- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--agent codex|opencode|pi|claude|openhands|traecli`: default is `opencode`.
 - `--no-stream-output`: disable live agent-output streaming.
 - `--verbose`: print more execution detail.
 

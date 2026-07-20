@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TextIO
 
@@ -40,6 +41,7 @@ def run_remote_test(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -50,10 +52,7 @@ def run_remote_test(
     )
     try:
         _copy_run_test_runtime(spec, test_file, operator_file, remote_workspace, verbose, stderr)
-        extra_env = {
-            TRITON_ALWAYS_COMPILE: "1",
-            **run_test_accuracy_env(accuracy_mode),
-        }
+        execution_env = _test_extra_env(accuracy_mode, extra_env)
         if test_mode == "standalone":
             if case_id is not None:
                 raise ValueError("--case-id is supported only with differential tests.")
@@ -66,7 +65,7 @@ def run_remote_test(
                 stall_timeout_seconds=eval_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
-                extra_env=extra_env,
+                extra_env=execution_env,
             )
             return filter_result_payload(result, verbose=verbose), None, remote_workspace
         if test_mode == "differential":
@@ -80,7 +79,7 @@ def run_remote_test(
                 stall_timeout_seconds=eval_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
-                extra_env=extra_env,
+                extra_env=execution_env,
             )
             archived_result = None
             if result_succeeded(result):
@@ -163,6 +162,7 @@ def run_remote_differential_comparison(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -175,10 +175,7 @@ def run_remote_differential_comparison(
     remote_test = f"{remote_workspace}/{test_file.name}"
     remote_ref_operator = f"{remote_workspace}/reference_{ref_operator_file.name}"
     remote_operator = f"{remote_workspace}/candidate_{operator_file.name}"
-    extra_env = {
-        TRITON_ALWAYS_COMPILE: "1",
-        **run_test_accuracy_env(accuracy_mode),
-    }
+    execution_env = _test_extra_env(accuracy_mode, extra_env)
     try:
         compare_script = SCRIPT_DIR / "compare_result.py"
         copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
@@ -205,7 +202,7 @@ def run_remote_differential_comparison(
             stall_timeout_seconds=eval_timeout_seconds(),
             verbose=verbose,
             stderr=stderr,
-            extra_env=extra_env,
+            extra_env=execution_env,
         )
         if not result_succeeded(reference_result):
             return filter_result_payload(reference_result, verbose=verbose), remote_workspace
@@ -221,7 +218,7 @@ def run_remote_differential_comparison(
             stall_timeout_seconds=eval_timeout_seconds(),
             verbose=verbose,
             stderr=stderr,
-            extra_env=extra_env,
+            extra_env=execution_env,
         )
         if not result_succeeded(candidate_result):
             return filter_result_payload(candidate_result, verbose=verbose), remote_workspace
@@ -242,7 +239,7 @@ def run_remote_differential_comparison(
             stall_timeout_seconds=eval_timeout_seconds(),
             verbose=verbose,
             stderr=stderr,
-            extra_env=extra_env,
+            extra_env=execution_env,
         )
         return filter_result_payload(compare_result, verbose=verbose), remote_workspace
     finally:
@@ -266,6 +263,17 @@ def _copy_remote_differential_archive(
         stderr=stderr,
     )
     return archive_path
+
+
+def _test_extra_env(
+    accuracy_mode: str | None,
+    extra_env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    return {
+        TRITON_ALWAYS_COMPILE: "1",
+        **run_test_accuracy_env(accuracy_mode),
+        **(extra_env or {}),
+    }
 
 
 def _copy_run_test_runtime(

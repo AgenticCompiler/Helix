@@ -637,6 +637,22 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         command = mocked.call_args.args[0]
         self.assertIn("TRITON_ALL_BLOCKS_PARALLEL=0", command[-1])
 
+    def test_run_remote_command_streaming_maps_isolated_cache_to_remote_workspace(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.run_remote_command_streaming(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/workspace",
+                ["python3", "bench.py"],
+                extra_env={"HELIX_REMOTE_TRITON_CACHE": "1", "TRITON_CACHE_DIR": "/local/cache"},
+            )
+
+        command = mocked.call_args.args[0]
+        self.assertIn("TRITON_CACHE_DIR=/tmp/workspace/.helix-triton-cache", command[-1])
+        self.assertNotIn("/local/cache", command[-1])
+        self.assertNotIn("HELIX_REMOTE_TRITON_CACHE", command[-1])
+
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
         module = load_remote_api_module()
 

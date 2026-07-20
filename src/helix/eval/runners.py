@@ -40,6 +40,7 @@ class TestRunnerModule(Protocol):
         *,
         case_id: str | None = None,
         accuracy_mode: str | None = None,
+        extra_env: Mapping[str, str] | None = None,
         verbose: bool = False,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
@@ -53,6 +54,7 @@ class TestRunnerModule(Protocol):
         *,
         case_id: str | None = None,
         accuracy_mode: str | None = None,
+        extra_env: Mapping[str, str] | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
@@ -92,6 +94,7 @@ class TestRunnerModule(Protocol):
         *,
         case_id: str | None = None,
         accuracy_mode: str | None = None,
+        extra_env: Mapping[str, str] | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
@@ -185,6 +188,7 @@ def run_local_test(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     verbose: bool = False,
 ) -> tuple[AgentResult, Path | None]:
     result, archived = _load_test_api().run_local_test(
@@ -193,6 +197,7 @@ def run_local_test(
         test_mode,
         case_id=case_id,
         accuracy_mode=accuracy_mode,
+        extra_env=extra_env,
         verbose=verbose,
     )
     return _normalize_agent_result(result), archived
@@ -207,6 +212,7 @@ def run_remote_test(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -219,6 +225,7 @@ def run_remote_test(
         remote_workdir,
         case_id=case_id,
         accuracy_mode=accuracy_mode,
+        extra_env=extra_env,
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
         stderr=stderr,
@@ -235,6 +242,7 @@ def run_remote_differential_comparison(
     *,
     case_id: str | None = None,
     accuracy_mode: str | None = None,
+    extra_env: Mapping[str, str] | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
@@ -247,6 +255,7 @@ def run_remote_differential_comparison(
         remote_workdir,
         case_id=case_id,
         accuracy_mode=accuracy_mode,
+        extra_env=extra_env,
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
         stderr=stderr,
